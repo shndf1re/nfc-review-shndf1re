@@ -22,7 +22,7 @@ export default function AdminPage() {
   const [editingDeviceId, setEditingDeviceId] = useState(null);
   const [editTargetUrl, setEditTargetUrl] = useState('');
 
-  // Cek sesi login admin
+  // Cek sesi login admin saat pertama buka
   useEffect(() => {
     const savedSession = localStorage.getItem('nfc_admin_session');
     if (savedSession === 'true') {
@@ -31,15 +31,18 @@ export default function AdminPage() {
     }
   }, []);
 
-  // Fetch daftar kartu dari Supabase
+  // Fetch daftar kartu dari Supabase (Aman tanpa batas created_at & memuat semua data lama)
   const fetchDevices = async () => {
     const { data, error } = await supabase
       .from('devices')
-      .select('*')
-      .order('created_at', { ascending: false });
+      .select('*');
 
-    if (!error && data) {
-      setDevices(data);
+    if (error) {
+      console.error('Gagal mengambil data:', error.message);
+    } else if (data) {
+      // Urutkan data berdasarkan ID secara menurun
+      const sortedData = data.sort((a, b) => b.id.localeCompare(a.id));
+      setDevices(sortedData);
     }
   };
 
@@ -247,47 +250,47 @@ export default function AdminPage() {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {devices.map((device) => (
-            <div key={device.id} style={{ padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', backgroundColor: device.is_active ? '#f8fafc' : '#ffffff' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <div>
-                  <strong style={{ fontSize: '15px' }}>{device.id}</strong>
-                  <span style={{ marginLeft: '8px', fontSize: '11px', padding: '2px 8px', borderRadius: '12px', backgroundColor: device.is_active ? '#dcfce7' : '#fef3c7', color: device.is_active ? '#15803d' : '#b45309', fontWeight: '600' }}>
-                    {device.is_active ? 'Aktif' : 'Belum Dipakai'}
-                  </span>
+          {devices.map((device) => {
+            const isCardActive = Boolean(device.is_active);
+            return (
+              <div key={device.id} style={{ padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', backgroundColor: isCardActive ? '#f8fafc' : '#ffffff' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <div>
+                    <strong style={{ fontSize: '15px' }}>{device.id}</strong>
+                    <span style={{ marginLeft: '8px', fontSize: '11px', padding: '2px 8px', borderRadius: '12px', backgroundColor: isCardActive ? '#dcfce7' : '#fef3c7', color: isCardActive ? '#15803d' : '#b45309', fontWeight: '600' }}>
+                      {isCardActive ? 'Aktif' : 'Belum Dipakai'}
+                    </span>
+                  </div>
+                  <span style={{ fontSize: '12px', color: '#64748b' }}>PIN: <strong>{device.pin || '-'}</strong></span>
                 </div>
-                <span style={{ fontSize: '12px', color: '#64748b' }}>PIN: <strong>{device.pin}</strong></span>
-              </div>
 
-              {/* Status Link / Target URL */}
-              {device.is_active ? (
-                <div style={{ fontSize: '12px', color: '#475569', wordBreak: 'break-all', marginTop: '6px' }}>
-                  🔗 Link: <a href={device.target_url} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>{device.target_url}</a>
-                </div>
-              ) : (
-                <div style={{ marginTop: '8px' }}>
-                  {editingDeviceId === device.id ? (
-                    <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
-                      <input type="url" placeholder="Masukkan Link Google Review" value={editTargetUrl} onChange={(e) => setEditTargetUrl(e.target.value)} style={{ flex: 1, padding: '8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
-                      <button onClick={() => handleSaveEdit(device.id)} style={{ padding: '8px 12px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '600' }}>Simpan</button>
-                      <button onClick={() => setEditingDeviceId(null)} style={{ padding: '8px', backgroundColor: '#cbd5e1', border: 'none', borderRadius: '6px', fontSize: '12px' }}>X</button>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
-                      <button onClick={() => { setEditingDeviceId(device.id); setEditTargetUrl(''); }} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', padding: 0, fontWeight: '600', cursor: 'pointer' }}>
-                        ✏️ Isi Link & Aktifkan
-                      </button>
-                      
-                      {/* Tombol Hapus Hanya untuk yang Belum Aktif */}
-                      <button onClick={() => handleDeleteDevice(device)} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
-                        🗑️ Hapus Kartu
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
+                {isCardActive ? (
+                  <div style={{ fontSize: '12px', color: '#475569', wordBreak: 'break-all', marginTop: '6px' }}>
+                    🔗 Link: <a href={device.target_url} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>{device.target_url}</a>
+                  </div>
+                ) : (
+                  <div style={{ marginTop: '8px' }}>
+                    {editingDeviceId === device.id ? (
+                      <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+                        <input type="url" placeholder="Masukkan Link Google Review" value={editTargetUrl} onChange={(e) => setEditTargetUrl(e.target.value)} style={{ flex: 1, padding: '8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+                        <button onClick={() => handleSaveEdit(device.id)} style={{ padding: '8px 12px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '600' }}>Simpan</button>
+                        <button onClick={() => setEditingDeviceId(null)} style={{ padding: '8px', backgroundColor: '#cbd5e1', border: 'none', borderRadius: '6px', fontSize: '12px' }}>X</button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
+                        <button onClick={() => { setEditingDeviceId(device.id); setEditTargetUrl(''); }} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', padding: 0, fontWeight: '600', cursor: 'pointer' }}>
+                          ✏️ Isi Link & Aktifkan
+                        </button>
+                        <button onClick={() => handleDeleteDevice(device)} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                          🗑️ Hapus Kartu
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
 
           {devices.length === 0 && <p style={{ textAlign: 'center', fontSize: '13px', color: '#94a3b8' }}>Belum ada kartu terdaftar.</p>}
         </div>
