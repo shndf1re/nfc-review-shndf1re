@@ -114,27 +114,35 @@ export default function AdminPage() {
     }
   };
 
-  // Helper Format Review URL yang Aman & Bebas Eror
+  // Helper Konversi ke Link Direct Review (seperti CARD-001)
   const formatReviewUrl = (url) => {
     let cleanUrl = url.trim();
 
-    // 1. Jika pengguna memasukkan Place ID murni (misal: ChIJrfzkjSV_9i0R_UFFaoAD1ic)
+    // Jika pengguna memasukkan Place ID murni (misal: ChIJrfzkjSV_9i0R_UFFaoAD1ic)
     if (cleanUrl.startsWith('ChIJ') && !cleanUrl.includes(' ')) {
       return `https://search.google.com/local/writereview?placeid=${cleanUrl}`;
     }
 
-    // 2. Jika link sudah mengandung parameter placeid= yang valid
+    // Jika link mengandung parameter placeid=
     const match = cleanUrl.match(/placeid=([a-zA-Z0-9_-]+)/);
     if (match && match[1]) {
       return `https://search.google.com/local/writereview?placeid=${match[1]}`;
     }
 
-    // 3. Jika pengguna memasukkan link Google Maps biasa (g.page / maps.app.goo.gl / link share)
     return cleanUrl;
   };
 
-  const handleSaveEdit = async (id) => {
+  // Edit Link dengan Konfirmasi PIN Kartu
+  const handleSaveEditWithPin = async (device) => {
     if (!editTargetUrl) return;
+
+    const inputPin = prompt(`Masukkan PIN untuk mengonfirmasi perubahan pada ${device.id}:`);
+    if (!inputPin) return;
+
+    if (inputPin.trim() !== String(device.pin).trim()) {
+      alert('❌ PIN Konfirmasi Salah! Perubahan dibatalkan.');
+      return;
+    }
 
     const formattedUrl = formatReviewUrl(editTargetUrl);
 
@@ -144,31 +152,35 @@ export default function AdminPage() {
         target_url: formattedUrl,
         is_active: true
       })
-      .eq('id', id);
+      .eq('id', device.id);
 
     if (error) {
       alert('Gagal memperbarui data!');
     } else {
+      alert(`✅ Berhasil memperbarui link ${device.id}!`);
       setEditingDeviceId(null);
       setEditTargetUrl('');
       fetchDevices();
     }
   };
 
-  const handleDeleteDevice = async (device) => {
-    if (device.is_active) {
-      alert('Kartu yang sudah aktif tidak dapat dihapus!');
+  // Hapus Kartu dengan Konfirmasi PIN Kartu
+  const handleDeleteDeviceWithPin = async (device) => {
+    const inputPin = prompt(`⚠️ PERINGATAN: Menghapus kartu ${device.id}.\nMasukkan PIN kartu untuk mengonfirmasi penghapusan:`);
+    if (!inputPin) return;
+
+    if (inputPin.trim() !== String(device.pin).trim()) {
+      alert('❌ PIN Konfirmasi Salah! Penghapusan dibatalkan.');
       return;
     }
 
-    if (confirm(`Apakah Anda yakin ingin menghapus ${device.id}?`)) {
-      const { error } = await supabase.from('devices').delete().eq('id', device.id);
-      if (error) {
-        alert('Gagal menghapus kartu!');
-      } else {
-        fetchDevices();
-        if (currentDevice?.id === device.id) setCurrentDevice(null);
-      }
+    const { error } = await supabase.from('devices').delete().eq('id', device.id);
+    if (error) {
+      alert('Gagal menghapus kartu!');
+    } else {
+      alert(`🗑️ Kartu ${device.id} berhasil dihapus.`);
+      fetchDevices();
+      if (currentDevice?.id === device.id) setCurrentDevice(null);
     }
   };
 
@@ -258,30 +270,41 @@ export default function AdminPage() {
                   <span style={{ fontSize: '12px', color: '#64748b' }}>PIN: <strong>{device.pin || '-'}</strong></span>
                 </div>
 
-                {isCardActive ? (
-                  <div style={{ fontSize: '12px', color: '#475569', wordBreak: 'break-all', marginTop: '6px' }}>
+                {isCardActive && (
+                  <div style={{ fontSize: '12px', color: '#475569', wordBreak: 'break-all', marginTop: '6px', marginBottom: '8px' }}>
                     🔗 Link Review: <a href={device.target_url} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>{device.target_url}</a>
                   </div>
-                ) : (
-                  <div style={{ marginTop: '8px' }}>
-                    {editingDeviceId === device.id ? (
-                      <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
-                        <input type="text" placeholder="Link Google Review / Place ID" value={editTargetUrl} onChange={(e) => setEditTargetUrl(e.target.value)} style={{ flex: 1, padding: '8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
-                        <button onClick={() => handleSaveEdit(device.id)} style={{ padding: '8px 12px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '600' }}>Simpan</button>
-                        <button onClick={() => setEditingDeviceId(null)} style={{ padding: '8px', backgroundColor: '#cbd5e1', border: 'none', borderRadius: '6px', fontSize: '12px' }}>X</button>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
-                        <button onClick={() => { setEditingDeviceId(device.id); setEditTargetUrl(''); }} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', padding: 0, fontWeight: '600', cursor: 'pointer' }}>
-                          ✏️ Isi Link Review & Aktifkan
-                        </button>
-                        <button onClick={() => handleDeleteDevice(device)} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
-                          🗑️ Hapus Kartu
-                        </button>
-                      </div>
-                    )}
-                  </div>
                 )}
+
+                <div style={{ marginTop: '8px' }}>
+                  {editingDeviceId === device.id ? (
+                    <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+                      <input
+                        type="text"
+                        placeholder="Link Direct Review atau Place ID (ChIJ...)"
+                        value={editTargetUrl}
+                        onChange={(e) => setEditTargetUrl(e.target.value)}
+                        style={{ flex: 1, padding: '8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                      />
+                      <button onClick={() => handleSaveEditWithPin(device)} style={{ padding: '8px 12px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                        Simpan
+                      </button>
+                      <button onClick={() => setEditingDeviceId(null)} style={{ padding: '8px', backgroundColor: '#cbd5e1', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>
+                        X
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', borderTop: '1px solid #f1f5f9', paddingTop: '8px' }}>
+                      <button onClick={() => { setEditingDeviceId(device.id); setEditTargetUrl(device.target_url || ''); }} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', padding: 0, fontWeight: '600', cursor: 'pointer' }}>
+                        ✏️ {isCardActive ? 'Edit Link (PIN)' : 'Isi Link & Aktifkan'}
+                      </button>
+                      
+                      <button onClick={() => handleDeleteDeviceWithPin(device)} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                        🗑️ Hapus Kartu (PIN)
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}
