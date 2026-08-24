@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
 
 export default function HomePage() {
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
@@ -38,7 +37,7 @@ export default function HomePage() {
             borderRadius: '10px',
             display: 'flex',
             alignItems: 'center',
-            justify.content: 'center',
+            justifyContent: 'center',
             fontWeight: 'bold',
             fontSize: '18px'
           }}>⚡</div>
@@ -46,7 +45,7 @@ export default function HomePage() {
         </div>
 
         {/* Akses Cepat Admin */}
-        <Link
+        <a
           href="/admin"
           style={{
             padding: '8px 16px',
@@ -60,7 +59,7 @@ export default function HomePage() {
           }}
         >
           {isAdminLoggedIn ? '🔑 Ke Dashboard Admin' : '🔒 Login Admin'}
-        </Link>
+        </a>
       </nav>
 
       {/* Hero Section */}
@@ -101,7 +100,7 @@ export default function HomePage() {
           <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 12px 0' }}>
             Kelola chip NFC, generate PIN aktivasi baru, dan unduh cetakan QR Code.
           </p>
-          <Link
+          <a
             href="/admin"
             style={{
               display: 'block',
@@ -116,7 +115,7 @@ export default function HomePage() {
             }}
           >
             Masuk Portal Dashboard →
-          </Link>
+          </a>
         </div>
       </section>
 
