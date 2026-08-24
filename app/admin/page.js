@@ -22,7 +22,6 @@ export default function AdminPage() {
   const [editingDeviceId, setEditingDeviceId] = useState(null);
   const [editTargetUrl, setEditTargetUrl] = useState('');
 
-  // Cek sesi login admin saat pertama buka
   useEffect(() => {
     const savedSession = localStorage.getItem('nfc_admin_session');
     if (savedSession === 'true') {
@@ -31,22 +30,14 @@ export default function AdminPage() {
     }
   }, []);
 
-  // Fetch daftar kartu dari Supabase (Aman tanpa batas created_at & memuat semua data lama)
   const fetchDevices = async () => {
-    const { data, error } = await supabase
-      .from('devices')
-      .select('*');
-
-    if (error) {
-      console.error('Gagal mengambil data:', error.message);
-    } else if (data) {
-      // Urutkan data berdasarkan ID secara menurun
+    const { data, error } = await supabase.from('devices').select('*');
+    if (!error && data) {
       const sortedData = data.sort((a, b) => b.id.localeCompare(a.id));
       setDevices(sortedData);
     }
   };
 
-  // Login Handler
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoginLoading(true);
@@ -79,7 +70,6 @@ export default function AdminPage() {
     localStorage.removeItem('nfc_admin_session');
   };
 
-  // Generate ID & PIN Baru
   const handleGenerateNew = async () => {
     setLoading(true);
     setStatus('Membuat ID & PIN baru...');
@@ -103,7 +93,6 @@ export default function AdminPage() {
     setLoading(false);
   };
 
-  // Tulis & Kunci Web NFC
   const handleWriteAndLockNFC = async (deviceId) => {
     if (!('NDEFReader' in window)) {
       setStatus('⚠️ Browser tidak mendukung Web NFC. Gunakan Chrome di Android.');
@@ -115,9 +104,7 @@ export default function AdminPage() {
       const ndef = new window.NDEFReader();
       const targetUrl = `${window.location.origin}/r/${deviceId}`;
 
-      await ndef.write({
-        records: [{ recordType: 'url', data: targetUrl }]
-      });
+      await ndef.write({ records: [{ recordType: 'url', data: targetUrl }] });
 
       setStatus('🔒 Menulis sukses! Mengunci chip NFC secara permanen...');
       await ndef.makeReadOnly();
@@ -127,14 +114,28 @@ export default function AdminPage() {
     }
   };
 
-  // Edit Manual & Aktivasi Kartu
+  // Helper Format Direct Write Review URL
+  const formatReviewUrl = (url) => {
+    let cleanUrl = url.trim();
+    if (!cleanUrl.startsWith('http') && cleanUrl.length > 15) {
+      return `https://search.google.com/local/writereview?placeid=${cleanUrl}`;
+    }
+    const match = cleanUrl.match(/placeid=([a-zA-Z0-9_-]+)/);
+    if (match && match[1]) {
+      return `https://search.google.com/local/writereview?placeid=${match[1]}`;
+    }
+    return cleanUrl;
+  };
+
   const handleSaveEdit = async (id) => {
     if (!editTargetUrl) return;
+
+    const formattedUrl = formatReviewUrl(editTargetUrl);
 
     const { error } = await supabase
       .from('devices')
       .update({
-        target_url: editTargetUrl,
+        target_url: formattedUrl,
         is_active: true
       })
       .eq('id', id);
@@ -148,7 +149,6 @@ export default function AdminPage() {
     }
   };
 
-  // Hapus Kartu (Hanya untuk yang BELUM AKTIF)
   const handleDeleteDevice = async (device) => {
     if (device.is_active) {
       alert('Kartu yang sudah aktif tidak dapat dihapus!');
@@ -156,11 +156,7 @@ export default function AdminPage() {
     }
 
     if (confirm(`Apakah Anda yakin ingin menghapus ${device.id}?`)) {
-      const { error } = await supabase
-        .from('devices')
-        .delete()
-        .eq('id', device.id);
-
+      const { error } = await supabase.from('devices').delete().eq('id', device.id);
       if (error) {
         alert('Gagal menghapus kartu!');
       } else {
@@ -170,7 +166,6 @@ export default function AdminPage() {
     }
   };
 
-  // LAYAR LOGIN
   if (!isAuthenticated) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', boxSizing: 'border-box' }}>
@@ -200,11 +195,8 @@ export default function AdminPage() {
     );
   }
 
-  // LAYAR DASHBOARD UTAMA
   return (
     <div style={{ maxWidth: '520px', margin: '0 auto', padding: '24px 16px', boxSizing: 'border-box', fontFamily: '-apple-system, sans-serif' }}>
-      
-      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', backgroundColor: '#ffffff', padding: '16px 20px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
         <div>
           <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700' }}>Dashboard NFC</h2>
@@ -213,12 +205,10 @@ export default function AdminPage() {
         <button onClick={handleLogout} style={{ padding: '8px 14px', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>Logout</button>
       </div>
 
-      {/* Button Generate */}
       <button onClick={handleGenerateNew} disabled={loading} style={{ width: '100%', padding: '14px', backgroundColor: loading ? '#94a3b8' : '#2563eb', color: '#ffffff', border: 'none', borderRadius: '12px', fontWeight: '600', fontSize: '15px', cursor: loading ? 'not-allowed' : 'pointer', marginBottom: '20px', boxShadow: '0 4px 12px rgba(37, 99, 235, 0.2)' }}>
         + Generate Kartu / QR Baru
       </button>
 
-      {/* Result Generate Baru */}
       {currentDevice && (
         <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '2px solid #2563eb', marginBottom: '24px' }}>
           <h4 style={{ margin: '0 0 12px 0', color: '#2563eb' }}>✨ Kartu Baru Berhasil dibuat:</h4>
@@ -239,10 +229,8 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* Log Status */}
       {status && <div style={{ padding: '12px', backgroundColor: '#ffffff', borderRadius: '10px', borderLeft: '4px solid #2563eb', fontSize: '13px', marginBottom: '20px' }}>{status}</div>}
 
-      {/* DAFTAR KARTU / DEVICE MANAGER */}
       <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '700' }}>Daftar Kartu NFC ({devices.length})</h3>
@@ -266,20 +254,20 @@ export default function AdminPage() {
 
                 {isCardActive ? (
                   <div style={{ fontSize: '12px', color: '#475569', wordBreak: 'break-all', marginTop: '6px' }}>
-                    🔗 Link: <a href={device.target_url} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>{device.target_url}</a>
+                    🔗 Link Direct Review: <a href={device.target_url} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>{device.target_url}</a>
                   </div>
                 ) : (
                   <div style={{ marginTop: '8px' }}>
                     {editingDeviceId === device.id ? (
                       <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
-                        <input type="url" placeholder="Masukkan Link Google Review" value={editTargetUrl} onChange={(e) => setEditTargetUrl(e.target.value)} style={{ flex: 1, padding: '8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+                        <input type="text" placeholder="Link Direct Review atau Place ID" value={editTargetUrl} onChange={(e) => setEditTargetUrl(e.target.value)} style={{ flex: 1, padding: '8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
                         <button onClick={() => handleSaveEdit(device.id)} style={{ padding: '8px 12px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '600' }}>Simpan</button>
                         <button onClick={() => setEditingDeviceId(null)} style={{ padding: '8px', backgroundColor: '#cbd5e1', border: 'none', borderRadius: '6px', fontSize: '12px' }}>X</button>
                       </div>
                     ) : (
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
                         <button onClick={() => { setEditingDeviceId(device.id); setEditTargetUrl(''); }} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', padding: 0, fontWeight: '600', cursor: 'pointer' }}>
-                          ✏️ Isi Link & Aktifkan
+                          ✏️ Isi Link Review & Aktifkan
                         </button>
                         <button onClick={() => handleDeleteDevice(device)} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
                           🗑️ Hapus Kartu
@@ -295,7 +283,6 @@ export default function AdminPage() {
           {devices.length === 0 && <p style={{ textAlign: 'center', fontSize: '13px', color: '#94a3b8' }}>Belum ada kartu terdaftar.</p>}
         </div>
       </div>
-
     </div>
   );
 }
