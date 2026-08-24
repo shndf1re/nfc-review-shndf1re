@@ -114,16 +114,22 @@ export default function AdminPage() {
     }
   };
 
-  // Helper Format Direct Write Review URL
+  // Helper Format Review URL yang Aman & Bebas Eror
   const formatReviewUrl = (url) => {
     let cleanUrl = url.trim();
-    if (!cleanUrl.startsWith('http') && cleanUrl.length > 15) {
+
+    // 1. Jika pengguna memasukkan Place ID murni (misal: ChIJrfzkjSV_9i0R_UFFaoAD1ic)
+    if (cleanUrl.startsWith('ChIJ') && !cleanUrl.includes(' ')) {
       return `https://search.google.com/local/writereview?placeid=${cleanUrl}`;
     }
+
+    // 2. Jika link sudah mengandung parameter placeid= yang valid
     const match = cleanUrl.match(/placeid=([a-zA-Z0-9_-]+)/);
     if (match && match[1]) {
       return `https://search.google.com/local/writereview?placeid=${match[1]}`;
     }
+
+    // 3. Jika pengguna memasukkan link Google Maps biasa (g.page / maps.app.goo.gl / link share)
     return cleanUrl;
   };
 
@@ -254,13 +260,13 @@ export default function AdminPage() {
 
                 {isCardActive ? (
                   <div style={{ fontSize: '12px', color: '#475569', wordBreak: 'break-all', marginTop: '6px' }}>
-                    🔗 Link Direct Review: <a href={device.target_url} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>{device.target_url}</a>
+                    🔗 Link Review: <a href={device.target_url} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>{device.target_url}</a>
                   </div>
                 ) : (
                   <div style={{ marginTop: '8px' }}>
                     {editingDeviceId === device.id ? (
                       <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
-                        <input type="text" placeholder="Link Direct Review atau Place ID" value={editTargetUrl} onChange={(e) => setEditTargetUrl(e.target.value)} style={{ flex: 1, padding: '8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+                        <input type="text" placeholder="Link Google Review / Place ID" value={editTargetUrl} onChange={(e) => setEditTargetUrl(e.target.value)} style={{ flex: 1, padding: '8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
                         <button onClick={() => handleSaveEdit(device.id)} style={{ padding: '8px 12px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '600' }}>Simpan</button>
                         <button onClick={() => setEditingDeviceId(null)} style={{ padding: '8px', backgroundColor: '#cbd5e1', border: 'none', borderRadius: '6px', fontSize: '12px' }}>X</button>
                       </div>
