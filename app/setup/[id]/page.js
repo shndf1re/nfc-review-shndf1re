@@ -18,10 +18,30 @@ export default function SetupPage({ params }) {
   const [message, setMessage] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
 
+  // Helper untuk membersihkan & mengonversi Link Google Review
+  const formatReviewUrl = (url) => {
+    let cleanUrl = url.trim();
+
+    // Jika pengguna memasukkan Place ID langsung (misal: ChIJrfzkjSV_9i0R_UFFaoAD1ic)
+    if (!cleanUrl.startsWith('http') && cleanUrl.length > 15) {
+      return `https://search.google.com/local/writereview?placeid=${cleanUrl}`;
+    }
+
+    // Ekstrak Place ID jika link mengandung parameter placeid=
+    const match = cleanUrl.match(/placeid=([a-zA-Z0-9_-]+)/);
+    if (match && match[1]) {
+      return `https://search.google.com/local/writereview?placeid=${match[1]}`;
+    }
+
+    return cleanUrl;
+  };
+
   const handleActivate = async (e) => {
     e.preventDefault();
     setLoading(true);
     setMessage('');
+
+    const formattedUrl = formatReviewUrl(targetUrl);
 
     try {
       const { data: device, error } = await supabase
@@ -40,7 +60,7 @@ export default function SetupPage({ params }) {
       const { error: updateError } = await supabase
         .from('devices')
         .update({
-          target_url: targetUrl,
+          target_url: formattedUrl,
           is_active: true
         })
         .eq('id', id);
@@ -59,108 +79,146 @@ export default function SetupPage({ params }) {
 
   return (
     <div style={{
-      maxWidth: '420px',
-      margin: '40px auto',
-      padding: '24px',
-      fontFamily: 'sans-serif',
-      boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-      borderRadius: '12px',
-      backgroundColor: '#ffffff'
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '20px',
+      boxSizing: 'border-box'
     }}>
-      <h2 style={{ textAlign: 'center', marginBottom: '8px' }}>Aktivasi Papan NFC</h2>
-      <p style={{ textAlign: 'center', color: '#666', fontSize: '14px', marginBottom: '24px' }}>
-        ID Perangkat: <strong>{id}</strong>
-      </p>
-
-      {isSuccess ? (
-        <div style={{ textAlign: 'center', padding: '20px 0' }}>
-          <h3 style={{ color: '#2e7d32' }}>🎉 Aktivasi Berhasil!</h3>
-          <p style={{ color: '#444', fontSize: '14px', lineHeight: '1.5' }}>
-            Papan akrilik NFC & QR Code Anda sudah aktif dan terhubung ke halaman Google Review toko Anda.
+      <div style={{
+        width: '100%',
+        maxWidth: '420px',
+        backgroundColor: '#ffffff',
+        borderRadius: '20px',
+        padding: '32px 24px',
+        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.05)',
+        border: '1px solid #e2e8f0'
+      }}>
+        <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+          <div style={{
+            width: '56px',
+            height: '56px',
+            backgroundColor: '#eff6ff',
+            color: '#2563eb',
+            borderRadius: '16px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '28px',
+            marginBottom: '12px'
+          }}>✨</div>
+          <h2 style={{ margin: '0 0 6px 0', fontSize: '22px', fontWeight: '700', color: '#0f172a' }}>Aktivasi Perangkat</h2>
+          <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
+            ID Akrilik: <strong style={{ color: '#2563eb' }}>{id}</strong>
           </p>
-          <a
-            href={targetUrl}
-            style={{
-              display: 'inline-block',
-              marginTop: '16px',
-              padding: '10px 20px',
-              backgroundColor: '#1976d2',
-              color: '#fff',
-              borderRadius: '6px',
-              textDecoration: 'none',
-              fontWeight: 'bold'
-            }}
-          >
-            Uji Coba Buka Link Google Review
-          </a>
         </div>
-      ) : (
-        <form onSubmit={handleActivate}>
-          <div style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', fontSize: '14px', marginBottom: '6px', fontWeight: 'bold' }}>
-              PIN Aktivasi (dari Kertas Panduan):
-            </label>
-            <input
-              type="text"
-              required
-              placeholder="Contoh: 882190"
-              value={pinInput}
-              onChange={(e) => setPinInput(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '10px',
-                borderRadius: '6px',
-                border: '1px solid #ccc',
-                boxSizing: 'border-box'
-              }}
-            />
-          </div>
 
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', fontSize: '14px', marginBottom: '6px', fontWeight: 'bold' }}>
-              Link Google Review Toko Anda:
-            </label>
-            <input
-              type="url"
-              required
-              placeholder="https://g.page/r/xxxxx/review atau link Google Maps"
-              value={targetUrl}
-              onChange={(e) => setTargetUrl(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '10px',
-                borderRadius: '6px',
-                border: '1px solid #ccc',
-                boxSizing: 'border-box'
-              }}
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              width: '100%',
-              padding: '12px',
-              backgroundColor: loading ? '#ccc' : '#2e7d32',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '6px',
-              fontSize: '16px',
-              fontWeight: 'bold',
-              cursor: loading ? 'not-allowed' : 'pointer'
-            }}
-          >
-            {loading ? 'Memproses...' : 'Aktifkan Papan Akrilik'}
-          </button>
-
-          {message && (
-            <p style={{ marginTop: '16px', color: '#d32f2f', textAlign: 'center', fontSize: '14px' }}>
-              {message}
+        {isSuccess ? (
+          <div style={{ textAlign: 'center', padding: '16px 0' }}>
+            <div style={{ fontSize: '48px', marginBottom: '12px' }}>🎉</div>
+            <h3 style={{ margin: '0 0 8px 0', color: '#16a34a', fontSize: '18px' }}>Aktivasi Berhasil!</h3>
+            <p style={{ color: '#475569', fontSize: '14px', lineHeight: '1.5', margin: '0 0 24px 0' }}>
+              Papan NFC & QR Code Anda sudah aktif dan terhubung langsung ke kolom ulasan Google Review.
             </p>
-          )}
-        </form>
-      )}
+            <a
+              href={targetUrl}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                display: 'block',
+                width: '100%',
+                padding: '12px',
+                backgroundColor: '#2563eb',
+                color: '#ffffff',
+                borderRadius: '10px',
+                textDecoration: 'none',
+                fontWeight: '600',
+                fontSize: '14px',
+                boxSizing: 'border-box'
+              }}
+            >
+              Uji Coba Tautan Direct Review
+            </a>
+          </div>
+        ) : (
+          <form onSubmit={handleActivate}>
+            <div style={{ marginBottom: '18px' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
+                PIN Aktivasi (dari Panduan):
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="Masukkan 6 digit PIN"
+                value={pinInput}
+                onChange={(e) => setPinInput(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  borderRadius: '10px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '14px',
+                  boxSizing: 'border-box',
+                  outline: 'none',
+                  backgroundColor: '#f8fafc'
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '24px' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
+                Link Google Review / Place ID Toko:
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="https://search.google.com/local/writereview?placeid=... atau Place ID"
+                value={targetUrl}
+                onChange={(e) => setTargetUrl(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  borderRadius: '10px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '14px',
+                  boxSizing: 'border-box',
+                  outline: 'none',
+                  backgroundColor: '#f8fafc'
+                }}
+              />
+              <span style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', display: 'block' }}>
+                💡 <em>Format Direct Review (placeid=...) disarankan agar kolom bintang 5 langsung muncul otomatis.</em>
+              </span>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                width: '100%',
+                padding: '14px',
+                backgroundColor: loading ? '#94a3b8' : '#16a34a',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '12px',
+                fontSize: '15px',
+                fontWeight: '600',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                boxShadow: '0 4px 12px rgba(22, 163, 74, 0.2)'
+              }}
+            >
+              {loading ? 'Memproses...' : 'Aktifkan Papan Akrilik'}
+            </button>
+
+            {message && (
+              <p style={{ marginTop: '16px', color: '#dc2626', textAlign: 'center', fontSize: '13px', fontWeight: '500' }}>
+                {message}
+              </p>
+            )}
+          </form>
+        )}
+      </div>
     </div>
   );
 }
