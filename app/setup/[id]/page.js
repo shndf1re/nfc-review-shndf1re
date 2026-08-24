@@ -18,21 +18,22 @@ export default function SetupPage({ params }) {
   const [message, setMessage] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
 
-  // Helper untuk membersihkan & mengonversi Link Google Review
+  // Helper Format Review URL yang Aman & Bebas Eror
   const formatReviewUrl = (url) => {
     let cleanUrl = url.trim();
 
-    // Jika pengguna memasukkan Place ID langsung (misal: ChIJrfzkjSV_9i0R_UFFaoAD1ic)
-    if (!cleanUrl.startsWith('http') && cleanUrl.length > 15) {
+    // 1. Jika pengguna memasukkan Place ID murni (misal: ChIJrfzkjSV_9i0R_UFFaoAD1ic)
+    if (cleanUrl.startsWith('ChIJ') && !cleanUrl.includes(' ')) {
       return `https://search.google.com/local/writereview?placeid=${cleanUrl}`;
     }
 
-    // Ekstrak Place ID jika link mengandung parameter placeid=
+    // 2. Jika link sudah mengandung parameter placeid= yang valid
     const match = cleanUrl.match(/placeid=([a-zA-Z0-9_-]+)/);
     if (match && match[1]) {
       return `https://search.google.com/local/writereview?placeid=${match[1]}`;
     }
 
+    // 3. Jika pengguna memasukkan link Google Maps biasa (g.page / maps.app.goo.gl / link share)
     return cleanUrl;
   };
 
@@ -119,7 +120,7 @@ export default function SetupPage({ params }) {
             <div style={{ fontSize: '48px', marginBottom: '12px' }}>🎉</div>
             <h3 style={{ margin: '0 0 8px 0', color: '#16a34a', fontSize: '18px' }}>Aktivasi Berhasil!</h3>
             <p style={{ color: '#475569', fontSize: '14px', lineHeight: '1.5', margin: '0 0 24px 0' }}>
-              Papan NFC & QR Code Anda sudah aktif dan terhubung langsung ke kolom ulasan Google Review.
+              Papan NFC & QR Code Anda sudah aktif dan terhubung ke halaman ulasan Google Review toko Anda.
             </p>
             <a
               href={targetUrl}
@@ -138,7 +139,7 @@ export default function SetupPage({ params }) {
                 boxSizing: 'border-box'
               }}
             >
-              Uji Coba Tautan Direct Review
+              Uji Coba Tautan Google Review
             </a>
           </div>
         ) : (
@@ -168,12 +169,12 @@ export default function SetupPage({ params }) {
 
             <div style={{ marginBottom: '24px' }}>
               <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-                Link Google Review / Place ID Toko:
+                Link Google Review / Maps Toko:
               </label>
               <input
                 type="text"
                 required
-                placeholder="https://search.google.com/local/writereview?placeid=... atau Place ID"
+                placeholder="Tempelkan link Google Maps / Place ID Toko"
                 value={targetUrl}
                 onChange={(e) => setTargetUrl(e.target.value)}
                 style={{
@@ -188,7 +189,7 @@ export default function SetupPage({ params }) {
                 }}
               />
               <span style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', display: 'block' }}>
-                💡 <em>Format Direct Review (placeid=...) disarankan agar kolom bintang 5 langsung muncul otomatis.</em>
+                💡 <em>Bisa menggunakan Link Share dari Google Maps, Link Direct Review, atau Place ID (ChIJ...).</em>
               </span>
             </div>
 
