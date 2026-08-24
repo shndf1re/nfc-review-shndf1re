@@ -15,19 +15,35 @@ export default function AdminPage() {
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
 
+  const [devices, setDevices] = useState([]);
   const [currentDevice, setCurrentDevice] = useState(null);
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
+  const [editingDeviceId, setEditingDeviceId] = useState(null);
+  const [editTargetUrl, setEditTargetUrl] = useState('');
 
-  // Cek apakah admin sudah pernah login sebelumnya (Auto Login)
+  // Cek sesi login admin
   useEffect(() => {
     const savedSession = localStorage.getItem('nfc_admin_session');
     if (savedSession === 'true') {
       setIsAuthenticated(true);
+      fetchDevices();
     }
   }, []);
 
-  // Login dengan memeriksa ke Database Supabase
+  // Fetch daftar kartu dari Supabase
+  const fetchDevices = async () => {
+    const { data, error } = await supabase
+      .from('devices')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (!error && data) {
+      setDevices(data);
+    }
+  };
+
+  // Login Handler
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoginLoading(true);
@@ -46,6 +62,7 @@ export default function AdminPage() {
       } else {
         setIsAuthenticated(true);
         localStorage.setItem('nfc_admin_session', 'true');
+        fetchDevices();
       }
     } catch (err) {
       setLoginError('Terjadi kesalahan koneksi.');
@@ -59,6 +76,7 @@ export default function AdminPage() {
     localStorage.removeItem('nfc_admin_session');
   };
 
+  // Generate ID & PIN Baru
   const handleGenerateNew = async () => {
     setLoading(true);
     setStatus('Membuat ID & PIN baru...');
@@ -77,12 +95,13 @@ export default function AdminPage() {
     } else {
       setCurrentDevice(data);
       setStatus(`✅ Berhasil dibuat: ${data.id}`);
+      fetchDevices();
     }
     setLoading(false);
   };
 
-  const handleWriteAndLockNFC = async () => {
-    if (!currentDevice) return;
+  // Tulis & Kunci Web NFC
+  const handleWriteAndLockNFC = async (deviceId) => {
     if (!('NDEFReader' in window)) {
       setStatus('⚠️ Browser tidak mendukung Web NFC. Gunakan Chrome di Android.');
       return;
@@ -91,7 +110,7 @@ export default function AdminPage() {
     try {
       setStatus('📱 Dekatkan chip NFC ke bagian belakang HP...');
       const ndef = new window.NDEFReader();
-      const targetUrl = `${window.location.origin}/r/${currentDevice.id}`;
+      const targetUrl = `${window.location.origin}/r/${deviceId}`;
 
       await ndef.write({
         records: [{ recordType: 'url', data: targetUrl }]
@@ -99,45 +118,62 @@ export default function AdminPage() {
 
       setStatus('🔒 Menulis sukses! Mengunci chip NFC secara permanen...');
       await ndef.makeReadOnly();
-      setStatus(`🎉 SUKSES! Perangkat ${currentDevice.id} selesai ditulis & TERKUNCI PERMANEN.`);
+      setStatus(`🎉 SUKSES! Perangkat ${deviceId} selesai ditulis & TERKUNCI PERMANEN.`);
     } catch (error) {
       setStatus('❌ Gagal NFC: ' + error.message);
     }
   };
 
-  // LAYAR LOGIN ADMIN
+  // Edit Manual & Aktivasi Kartu
+  const handleSaveEdit = async (id) => {
+    if (!editTargetUrl) return;
+
+    const { error } = await supabase
+      .from('devices')
+      .update({
+        target_url: editTargetUrl,
+        is_active: true
+      })
+      .eq('id', id);
+
+    if (error) {
+      alert('Gagal memperbarui data!');
+    } else {
+      setEditingDeviceId(null);
+      setEditTargetUrl('');
+      fetchDevices();
+    }
+  };
+
+  // Hapus Kartu (Hanya untuk yang BELUM AKTIF)
+  const handleDeleteDevice = async (device) => {
+    if (device.is_active) {
+      alert('Kartu yang sudah aktif tidak dapat dihapus!');
+      return;
+    }
+
+    if (confirm(`Apakah Anda yakin ingin menghapus ${device.id}?`)) {
+      const { error } = await supabase
+        .from('devices')
+        .delete()
+        .eq('id', device.id);
+
+      if (error) {
+        alert('Gagal menghapus kartu!');
+      } else {
+        fetchDevices();
+        if (currentDevice?.id === device.id) setCurrentDevice(null);
+      }
+    }
+  };
+
+  // LAYAR LOGIN
   if (!isAuthenticated) {
     return (
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '20px',
-        boxSizing: 'border-box'
-      }}>
-        <div style={{
-          width: '100%',
-          maxWidth: '380px',
-          backgroundColor: '#ffffff',
-          borderRadius: '16px',
-          padding: '32px 24px',
-          boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01)',
-          border: '1px solid #e2e8f0'
-        }}>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', boxSizing: 'border-box' }}>
+        <div style={{ width: '100%', maxWidth: '380px', backgroundColor: '#ffffff', borderRadius: '16px', padding: '32px 24px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.05)', border: '1px solid #e2e8f0' }}>
           <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-            <div style={{
-              width: '48px',
-              height: '48px',
-              backgroundColor: '#eff6ff',
-              color: '#2563eb',
-              borderRadius: '12px',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '24px',
-              marginBottom: '12px'
-            }}>🔒</div>
+            <div style={{ width: '48px', height: '48px', backgroundColor: '#eff6ff', color: '#2563eb', borderRadius: '12px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', marginBottom: '12px' }}>🔒</div>
             <h2 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: '700', color: '#0f172a' }}>Admin Portal</h2>
             <p style={{ margin: 0, fontSize: '14px', color: '#64748b' }}>Masuk untuk mengelola chip NFC & QR</p>
           </div>
@@ -145,70 +181,16 @@ export default function AdminPage() {
           <form onSubmit={handleLogin}>
             <div style={{ marginBottom: '16px' }}>
               <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>Username</label>
-              <input
-                type="text"
-                required
-                placeholder="Masukkan username"
-                value={usernameInput}
-                onChange={(e) => setUsernameInput(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  borderRadius: '10px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '14px',
-                  boxSizing: 'border-box',
-                  outline: 'none',
-                  backgroundColor: '#f8fafc'
-                }}
-              />
+              <input type="text" required placeholder="Username" value={usernameInput} onChange={(e) => setUsernameInput(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '14px', boxSizing: 'border-box', backgroundColor: '#f8fafc' }} />
             </div>
-
             <div style={{ marginBottom: '20px' }}>
               <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>Password</label>
-              <input
-                type="password"
-                required
-                placeholder="••••••••"
-                value={passwordInput}
-                onChange={(e) => setPasswordInput(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  borderRadius: '10px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '14px',
-                  boxSizing: 'border-box',
-                  outline: 'none',
-                  backgroundColor: '#f8fafc'
-                }}
-              />
+              <input type="password" required placeholder="••••••••" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '14px', boxSizing: 'border-box', backgroundColor: '#f8fafc' }} />
             </div>
-
-            <button
-              type="submit"
-              disabled={loginLoading}
-              style={{
-                width: '100%',
-                padding: '12px',
-                backgroundColor: loginLoading ? '#94a3b8' : '#2563eb',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '10px',
-                fontWeight: '600',
-                fontSize: '15px',
-                cursor: loginLoading ? 'not-allowed' : 'pointer',
-                transition: 'all 0.2s'
-              }}
-            >
+            <button type="submit" disabled={loginLoading} style={{ width: '100%', padding: '12px', backgroundColor: loginLoading ? '#94a3b8' : '#2563eb', color: '#ffffff', border: 'none', borderRadius: '10px', fontWeight: '600', fontSize: '15px', cursor: loginLoading ? 'not-allowed' : 'pointer' }}>
               {loginLoading ? 'Memeriksa...' : 'Masuk Dashboard'}
             </button>
-
-            {loginError && (
-              <p style={{ marginTop: '16px', color: '#ef4444', textAlign: 'center', fontSize: '13px', fontWeight: '500' }}>
-                {loginError}
-              </p>
-            )}
+            {loginError && <p style={{ marginTop: '16px', color: '#ef4444', textAlign: 'center', fontSize: '13px', fontWeight: '500' }}>{loginError}</p>}
           </form>
         </div>
       </div>
@@ -217,131 +199,100 @@ export default function AdminPage() {
 
   // LAYAR DASHBOARD UTAMA
   return (
-    <div style={{ maxWidth: '480px', margin: '0 auto', padding: '24px 16px', boxSizing: 'border-box' }}>
+    <div style={{ maxWidth: '520px', margin: '0 auto', padding: '24px 16px', boxSizing: 'border-box', fontFamily: '-apple-system, sans-serif' }}>
+      
       {/* Header */}
-      <div style={{
-        display: 'flex',
-        justify: 'space-between',
-        alignItems: 'center',
-        marginBottom: '24px',
-        backgroundColor: '#ffffff',
-        padding: '16px 20px',
-        borderRadius: '16px',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-        border: '1px solid #e2e8f0'
-      }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', backgroundColor: '#ffffff', padding: '16px 20px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
         <div>
           <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700' }}>Dashboard NFC</h2>
           <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Sistem Manajemen Perangkat</p>
         </div>
-        <button
-          onClick={handleLogout}
-          style={{
-            padding: '8px 14px',
-            backgroundColor: '#f1f5f9',
-            color: '#475569',
-            border: 'none',
-            borderRadius: '8px',
-            fontSize: '13px',
-            fontWeight: '600',
-            cursor: 'pointer'
-          }}
-        >
-          Logout
-        </button>
+        <button onClick={handleLogout} style={{ padding: '8px 14px', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>Logout</button>
       </div>
 
-      {/* Action Button */}
-      <button
-        onClick={handleGenerateNew}
-        disabled={loading}
-        style={{
-          width: '100%',
-          padding: '14px',
-          backgroundColor: loading ? '#94a3b8' : '#2563eb',
-          color: '#ffffff',
-          border: 'none',
-          borderRadius: '12px',
-          fontWeight: '600',
-          fontSize: '15px',
-          cursor: loading ? 'not-allowed' : 'pointer',
-          marginBottom: '20px',
-          boxShadow: '0 4px 12px rgba(37, 99, 235, 0.2)'
-        }}
-      >
+      {/* Button Generate */}
+      <button onClick={handleGenerateNew} disabled={loading} style={{ width: '100%', padding: '14px', backgroundColor: loading ? '#94a3b8' : '#2563eb', color: '#ffffff', border: 'none', borderRadius: '12px', fontWeight: '600', fontSize: '15px', cursor: loading ? 'not-allowed' : 'pointer', marginBottom: '20px', boxShadow: '0 4px 12px rgba(37, 99, 235, 0.2)' }}>
         + Generate Kartu / QR Baru
       </button>
 
-      {/* Device Card Result */}
+      {/* Result Generate Baru */}
       {currentDevice && (
-        <div style={{
-          backgroundColor: '#ffffff',
-          padding: '20px',
-          borderRadius: '16px',
-          boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
-          border: '1px solid #e2e8f0',
-          marginBottom: '20px'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', borderBottom: '1px solid #f1f5f9', pb: '10px' }}>
+        <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '2px solid #2563eb', marginBottom: '24px' }}>
+          <h4 style={{ margin: '0 0 12px 0', color: '#2563eb' }}>✨ Kartu Baru Berhasil dibuat:</h4>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
             <span style={{ fontSize: '13px', color: '#64748b' }}>ID Device:</span>
-            <strong style={{ fontSize: '14px', color: '#0f172a' }}>{currentDevice.id}</strong>
+            <strong>{currentDevice.id}</strong>
           </div>
-
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
             <span style={{ fontSize: '13px', color: '#64748b' }}>PIN Pembeli:</span>
-            <strong style={{ fontSize: '16px', color: '#dc2626', letterSpacing: '1px' }}>{currentDevice.pin}</strong>
+            <strong style={{ color: '#dc2626' }}>{currentDevice.pin}</strong>
           </div>
-
-          <div style={{
-            textAlign: 'center',
-            padding: '16px',
-            backgroundColor: '#f8fafc',
-            borderRadius: '12px',
-            marginBottom: '16px'
-          }}>
-            <img
-              src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(
-                typeof window !== 'undefined' ? `${window.location.origin}/r/${currentDevice.id}` : ''
-              )}`}
-              alt="QR Code"
-              style={{ borderRadius: '8px', border: '1px solid #cbd5e1' }}
-            />
-            <p style={{ margin: '8px 0 0 0', fontSize: '11px', color: '#64748b' }}>Cetak / Simpan QR Code Ini</p>
+          <div style={{ textAlign: 'center', padding: '12px', backgroundColor: '#f8fafc', borderRadius: '12px', marginBottom: '12px' }}>
+            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}/r/${currentDevice.id}` : '')}`} alt="QR Code" style={{ borderRadius: '8px' }} />
           </div>
-
-          <button
-            onClick={handleWriteAndLockNFC}
-            style={{
-              width: '100%',
-              padding: '12px',
-              backgroundColor: '#16a34a',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '10px',
-              fontWeight: '600',
-              fontSize: '14px',
-              cursor: 'pointer'
-            }}
-          >
-            📲 Tulis & Kunci Chip NFC
+          <button onClick={() => handleWriteAndLockNFC(currentDevice.id)} style={{ width: '100%', padding: '12px', backgroundColor: '#16a34a', color: '#ffffff', border: 'none', borderRadius: '10px', fontWeight: '600', cursor: 'pointer' }}>
+            📲 Tulis & Kunci Chip NFC Ini
           </button>
         </div>
       )}
 
-      {/* Status Log */}
-      {status && (
-        <div style={{
-          padding: '14px 16px',
-          backgroundColor: '#ffffff',
-          borderRadius: '12px',
-          borderLeft: '4px solid #2563eb',
-          fontSize: '13px',
-          color: '#334155',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-        }}>
-          {status}
+      {/* Log Status */}
+      {status && <div style={{ padding: '12px', backgroundColor: '#ffffff', borderRadius: '10px', borderLeft: '4px solid #2563eb', fontSize: '13px', marginBottom: '20px' }}>{status}</div>}
+
+      {/* DAFTAR KARTU / DEVICE MANAGER */}
+      <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '700' }}>Daftar Kartu NFC ({devices.length})</h3>
+          <button onClick={fetchDevices} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>🔄 Refresh</button>
         </div>
-      )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {devices.map((device) => (
+            <div key={device.id} style={{ padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', backgroundColor: device.is_active ? '#f8fafc' : '#ffffff' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <div>
+                  <strong style={{ fontSize: '15px' }}>{device.id}</strong>
+                  <span style={{ marginLeft: '8px', fontSize: '11px', padding: '2px 8px', borderRadius: '12px', backgroundColor: device.is_active ? '#dcfce7' : '#fef3c7', color: device.is_active ? '#15803d' : '#b45309', fontWeight: '600' }}>
+                    {device.is_active ? 'Aktif' : 'Belum Dipakai'}
+                  </span>
+                </div>
+                <span style={{ fontSize: '12px', color: '#64748b' }}>PIN: <strong>{device.pin}</strong></span>
+              </div>
+
+              {/* Status Link / Target URL */}
+              {device.is_active ? (
+                <div style={{ fontSize: '12px', color: '#475569', wordBreak: 'break-all', marginTop: '6px' }}>
+                  🔗 Link: <a href={device.target_url} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>{device.target_url}</a>
+                </div>
+              ) : (
+                <div style={{ marginTop: '8px' }}>
+                  {editingDeviceId === device.id ? (
+                    <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+                      <input type="url" placeholder="Masukkan Link Google Review" value={editTargetUrl} onChange={(e) => setEditTargetUrl(e.target.value)} style={{ flex: 1, padding: '8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+                      <button onClick={() => handleSaveEdit(device.id)} style={{ padding: '8px 12px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '600' }}>Simpan</button>
+                      <button onClick={() => setEditingDeviceId(null)} style={{ padding: '8px', backgroundColor: '#cbd5e1', border: 'none', borderRadius: '6px', fontSize: '12px' }}>X</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
+                      <button onClick={() => { setEditingDeviceId(device.id); setEditTargetUrl(''); }} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', padding: 0, fontWeight: '600', cursor: 'pointer' }}>
+                        ✏️ Isi Link & Aktifkan
+                      </button>
+                      
+                      {/* Tombol Hapus Hanya untuk yang Belum Aktif */}
+                      <button onClick={() => handleDeleteDevice(device)} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                        🗑️ Hapus Kartu
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+
+          {devices.length === 0 && <p style={{ textAlign: 'center', fontSize: '13px', color: '#94a3b8' }}>Belum ada kartu terdaftar.</p>}
+        </div>
+      </div>
+
     </div>
   );
 }
