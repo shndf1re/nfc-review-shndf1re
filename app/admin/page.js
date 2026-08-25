@@ -255,7 +255,7 @@ export default function AdminPage() {
           </div>
 
           <div style={{ textAlign: 'center', padding: '12px', backgroundColor: '#f8fafc', borderRadius: '12px', marginBottom: '12px' }}>
-            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}/r/${currentDevice.id}` : '')}`} alt="QR Code" style={{ borderRadius: '8px' }} />
+            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}/r/${currentDevice.id}` : '')}`} alt="QR Code" style={{ borderRadius: '8px' }} />
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -308,15 +308,15 @@ export default function AdminPage() {
 
                 {/* Tampilan QR Code jika tombol ditekan */}
                 {isQrShown && (
-                  <div style={{ textAlign: 'center', padding: '12px', backgroundColor: '#ffffff', borderRadius: '10px', border: '1px solid #cbd5e1', margin: '10px 0' }}>
+                  <div style={{ textAlign: 'center', padding: '14px', backgroundColor: '#ffffff', borderRadius: '10px', border: '1px solid #cbd5e1', margin: '10px 0' }}>
                     <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
                         typeof window !== 'undefined' ? `${window.location.origin}/r/${device.id}` : ''
                       )}`}
                       alt={`QR Code ${device.id}`}
                       style={{ borderRadius: '6px' }}
                     />
-                    <p style={{ margin: '6px 0 0 0', fontSize: '11px', color: '#64748b' }}>
+                    <p style={{ margin: '8px 0 0 0', fontSize: '11px', color: '#64748b' }}>
                       Tentukan / Cetak QR Code untuk <strong>{device.id}</strong>
                     </p>
                   </div>
@@ -360,7 +360,6 @@ export default function AdminPage() {
                         </button>
                       </div>
 
-                      {/* Tombol Lihat/Tutup QR Code */}
                       <button
                         onClick={() => setActiveQrDeviceId(isQrShown ? null : device.id)}
                         style={{ width: '100%', padding: '6px 10px', backgroundColor: isQrShown ? '#e2e8f0' : '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', textAlign: 'center' }}
