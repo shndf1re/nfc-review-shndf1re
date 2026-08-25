@@ -8,9 +8,10 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 );
 
-// Komponen Pembantu Canvas QR Code dengan Overlay Logo Google & Download
-function QrCodeWithLogo({ text, deviceId, size = 200 }) {
+// Komponen Canvas QR Code High-Resolution (1000px HD)
+function QrCodeWithLogo({ text, deviceId }) {
   const canvasRef = useRef(null);
+  const renderSize = 1000; // Render Resolusi Tinggi (Ultra HD)
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -19,23 +20,24 @@ function QrCodeWithLogo({ text, deviceId, size = 200 }) {
 
     const qrImage = new Image();
     qrImage.crossOrigin = 'Anonymous';
-    qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(text)}`;
+    // Request QR Code ukuran besar 1000x1000 dari API
+    qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=${renderSize}x${renderSize}&data=${encodeURIComponent(text)}`;
 
     qrImage.onload = () => {
-      // 1. Gambar QR Code Dasar
-      ctx.drawImage(qrImage, 0, 0, size, size);
+      // 1. Gambar QR Code Dasar (High Res)
+      ctx.drawImage(qrImage, 0, 0, renderSize, renderSize);
 
-      // 2. Gambar Background Putih Bulat di Tengah
-      const logoSize = size * 0.24;
-      const center = size / 2;
-      const radius = logoSize / 2 + 3;
+      // 2. Gambar Lingkaran Putih di Tengah
+      const logoSize = renderSize * 0.22;
+      const center = renderSize / 2;
+      const radius = logoSize / 2 + 15;
 
       ctx.beginPath();
       ctx.arc(center, center, radius, 0, 2 * Math.PI, false);
       ctx.fillStyle = '#ffffff';
       ctx.fill();
 
-      // 3. Load & Draw Logo Google "G" di Tengah
+      // 3. Load & Draw Logo Google "G" di Tengah (High Res)
       const googleLogo = new Image();
       googleLogo.crossOrigin = 'Anonymous';
       googleLogo.src = 'https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg';
@@ -50,41 +52,48 @@ function QrCodeWithLogo({ text, deviceId, size = 200 }) {
         );
       };
     };
-  }, [text, size]);
+  }, [text]);
 
   const handleDownload = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const image = canvas.toDataURL('image/png');
+    const image = canvas.toDataURL('image/png', 1.0);
     const link = document.createElement('a');
     link.href = image;
-    link.download = `qrcode-${deviceId}.png`;
+    link.download = `qrcode-HD-${deviceId}.png`;
     link.click();
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+      {/* Canvas di-render 1000px di dalam memori, tapi ditampilkan responsive di layar */}
       <canvas
         ref={canvasRef}
-        width={size}
-        height={size}
-        style={{ borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}
+        width={renderSize}
+        height={renderSize}
+        style={{
+          width: '180px',
+          height: '180px',
+          borderRadius: '12px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+          backgroundColor: '#ffffff'
+        }}
       />
       <button
         onClick={handleDownload}
         style={{
-          padding: '8px 16px',
+          padding: '10px 18px',
           backgroundColor: '#2563eb',
           color: '#ffffff',
           border: 'none',
           borderRadius: '8px',
-          fontSize: '12px',
+          fontSize: '13px',
           fontWeight: '600',
           cursor: 'pointer',
-          boxShadow: '0 2px 6px rgba(37, 99, 235, 0.2)'
+          boxShadow: '0 2px 8px rgba(37, 99, 235, 0.2)'
         }}
       >
-        📥 Download Gambar QR Code (PNG)
+        📥 Download QR Code Ultra HD (PNG)
       </button>
     </div>
   );
@@ -340,7 +349,6 @@ export default function AdminPage() {
             <QrCodeWithLogo
               text={typeof window !== 'undefined' ? `${window.location.origin}/r/${currentDevice.id}` : ''}
               deviceId={currentDevice.id}
-              size={180}
             />
           </div>
 
@@ -392,16 +400,15 @@ export default function AdminPage() {
                   </div>
                 )}
 
-                {/* Tampilan QR Code Custom dengan Logo Google & Tombol Download */}
+                {/* Tampilan QR Code HD 1000px */}
                 {isQrShown && (
                   <div style={{ textAlign: 'center', padding: '16px', backgroundColor: '#ffffff', borderRadius: '10px', border: '1px solid #cbd5e1', margin: '10px 0' }}>
                     <QrCodeWithLogo
                       text={typeof window !== 'undefined' ? `${window.location.origin}/r/${device.id}` : ''}
                       deviceId={device.id}
-                      size={180}
                     />
                     <p style={{ margin: '10px 0 0 0', fontSize: '11px', color: '#64748b' }}>
-                      QR Code Google Review <strong>{device.id}</strong>
+                      QR Code Google Review <strong>{device.id}</strong> (Resolusi Tinggi Siap Cetak)
                     </p>
                   </div>
                 )}
@@ -448,7 +455,7 @@ export default function AdminPage() {
                         onClick={() => setActiveQrDeviceId(isQrShown ? null : device.id)}
                         style={{ width: '100%', padding: '6px 10px', backgroundColor: isQrShown ? '#e2e8f0' : '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', textAlign: 'center' }}
                       >
-                        {isQrShown ? '❌ Tutup QR Code' : '🖼️ Lihat / Cetak QR Code (With Google Logo)'}
+                        {isQrShown ? '❌ Tutup QR Code' : '🖼️ Lihat / Cetak QR Code (Ultra HD)'}
                       </button>
 
                       <button onClick={() => handleCopyNfcUrl(device.id)} style={{ width: '100%', padding: '6px 10px', backgroundColor: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', textAlign: 'center' }}>
