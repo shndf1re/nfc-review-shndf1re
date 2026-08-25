@@ -21,6 +21,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(false);
   const [editingDeviceId, setEditingDeviceId] = useState(null);
   const [editTargetUrl, setEditTargetUrl] = useState('');
+  const [editLabelName, setEditLabelName] = useState('');
 
   useEffect(() => {
     const savedSession = localStorage.getItem('nfc_admin_session');
@@ -93,7 +94,6 @@ export default function AdminPage() {
     setLoading(false);
   };
 
-  // Fungsi Salin Tautan URL NFC ke Clipboard
   const handleCopyNfcUrl = (deviceId) => {
     const nfcUrl = `${window.location.origin}/r/${deviceId}`;
     navigator.clipboard.writeText(nfcUrl);
@@ -123,6 +123,7 @@ export default function AdminPage() {
 
   const formatReviewUrl = (url) => {
     let cleanUrl = url.trim();
+    if (!cleanUrl) return '';
     if (cleanUrl.startsWith('ChIJ') && !cleanUrl.includes(' ')) {
       return `https://search.google.com/local/writereview?placeid=${cleanUrl}`;
     }
@@ -133,9 +134,8 @@ export default function AdminPage() {
     return cleanUrl;
   };
 
+  // Simpan Edit Link & Label Toko Menggunakan PIN
   const handleSaveEditWithPin = async (device) => {
-    if (!editTargetUrl) return;
-
     const inputPin = prompt(`Masukkan PIN untuk mengonfirmasi perubahan pada ${device.id}:`);
     if (!inputPin) return;
 
@@ -146,20 +146,27 @@ export default function AdminPage() {
 
     const formattedUrl = formatReviewUrl(editTargetUrl);
 
+    const updatePayload = {
+      label_name: editLabelName.trim() || null
+    };
+
+    if (formattedUrl) {
+      updatePayload.target_url = formattedUrl;
+      updatePayload.is_active = true;
+    }
+
     const { error } = await supabase
       .from('devices')
-      .update({
-        target_url: formattedUrl,
-        is_active: true
-      })
+      .update(updatePayload)
       .eq('id', device.id);
 
     if (error) {
-      alert('Gagal memperbarui data!');
+      alert('Gagal memperbarui data: ' + error.message);
     } else {
-      alert(`✅ Berhasil memperbarui link ${device.id}!`);
+      alert(`✅ Berhasil memperbarui data ${device.id}!`);
       setEditingDeviceId(null);
       setEditTargetUrl('');
+      setEditLabelName('');
       fetchDevices();
     }
   };
@@ -243,7 +250,6 @@ export default function AdminPage() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {/* Tombol Salin Khusus iPhone */}
             <button onClick={() => handleCopyNfcUrl(currentDevice.id)} style={{ width: '100%', padding: '12px', backgroundColor: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '10px', fontWeight: '600', fontSize: '14px', cursor: 'pointer' }}>
               📋 Salin URL NFC (iPhone / App NFC Tools)
             </button>
@@ -267,7 +273,7 @@ export default function AdminPage() {
             const isCardActive = Boolean(device.is_active);
             return (
               <div key={device.id} style={{ padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', backgroundColor: isCardActive ? '#f8fafc' : '#ffffff' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                   <div>
                     <strong style={{ fontSize: '15px' }}>{device.id}</strong>
                     <span style={{ marginLeft: '8px', fontSize: '11px', padding: '2px 8px', borderRadius: '12px', backgroundColor: isCardActive ? '#dcfce7' : '#fef3c7', color: isCardActive ? '#15803d' : '#b45309', fontWeight: '600' }}>
@@ -277,34 +283,50 @@ export default function AdminPage() {
                   <span style={{ fontSize: '12px', color: '#64748b' }}>PIN: <strong>{device.pin || '-'}</strong></span>
                 </div>
 
+                {/* Display Nama / Label Toko */}
+                {device.label_name && (
+                  <div style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a', marginBottom: '4px' }}>
+                    🏪 Toko: <span style={{ color: '#2563eb' }}>{device.label_name}</span>
+                  </div>
+                )}
+
                 {isCardActive && (
-                  <div style={{ fontSize: '12px', color: '#475569', wordBreak: 'break-all', marginTop: '6px', marginBottom: '8px' }}>
+                  <div style={{ fontSize: '12px', color: '#475569', wordBreak: 'break-all', marginTop: '4px', marginBottom: '8px' }}>
                     🔗 Link Review: <a href={device.target_url} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>{device.target_url}</a>
                   </div>
                 )}
 
                 <div style={{ marginTop: '8px' }}>
                   {editingDeviceId === device.id ? (
-                    <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px', backgroundColor: '#f1f5f9', padding: '10px', borderRadius: '8px' }}>
+                      <input
+                        type="text"
+                        placeholder="Nama Toko / Catatan (misal: Kopi Tiam Sebelas Satu)"
+                        value={editLabelName}
+                        onChange={(e) => setEditLabelName(e.target.value)}
+                        style={{ width: '100%', padding: '8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
+                      />
                       <input
                         type="text"
                         placeholder="Link Direct Review atau Place ID (ChIJ...)"
                         value={editTargetUrl}
                         onChange={(e) => setEditTargetUrl(e.target.value)}
-                        style={{ flex: 1, padding: '8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                        style={{ width: '100%', padding: '8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
                       />
-                      <button onClick={() => handleSaveEditWithPin(device)} style={{ padding: '8px 12px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
-                        Simpan
-                      </button>
-                      <button onClick={() => setEditingDeviceId(null)} style={{ padding: '8px', backgroundColor: '#cbd5e1', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>
-                        X
-                      </button>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button onClick={() => handleSaveEditWithPin(device)} style={{ flex: 1, padding: '8px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                          Simpan (PIN)
+                        </button>
+                        <button onClick={() => setEditingDeviceId(null)} style={{ padding: '8px 12px', backgroundColor: '#cbd5e1', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>
+                          Batal
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px', borderTop: '1px solid #f1f5f9', paddingTop: '8px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <button onClick={() => { setEditingDeviceId(device.id); setEditTargetUrl(device.target_url || ''); }} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', padding: 0, fontWeight: '600', cursor: 'pointer' }}>
-                          ✏️ {isCardActive ? 'Edit Link (PIN)' : 'Isi Link & Aktifkan'}
+                        <button onClick={() => { setEditingDeviceId(device.id); setEditTargetUrl(device.target_url || ''); setEditLabelName(device.label_name || ''); }} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', padding: 0, fontWeight: '600', cursor: 'pointer' }}>
+                          ✏️ Edit Nama & Link (PIN)
                         </button>
                         
                         <button onClick={() => handleDeleteDeviceWithPin(device)} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
@@ -312,7 +334,6 @@ export default function AdminPage() {
                         </button>
                       </div>
 
-                      {/* Tombol Salin URL NFC untuk Kartu Mana Saja */}
                       <button onClick={() => handleCopyNfcUrl(device.id)} style={{ width: '100%', padding: '6px 10px', backgroundColor: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', textAlign: 'center' }}>
                         📋 Salin URL NFC ({device.id})
                       </button>
