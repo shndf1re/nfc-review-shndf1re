@@ -93,9 +93,16 @@ export default function AdminPage() {
     setLoading(false);
   };
 
+  // Fungsi Salin Tautan URL NFC ke Clipboard
+  const handleCopyNfcUrl = (deviceId) => {
+    const nfcUrl = `${window.location.origin}/r/${deviceId}`;
+    navigator.clipboard.writeText(nfcUrl);
+    alert(`📋 URL NFC disalin ke clipboard:\n${nfcUrl}`);
+  };
+
   const handleWriteAndLockNFC = async (deviceId) => {
     if (!('NDEFReader' in window)) {
-      setStatus('⚠️ Browser tidak mendukung Web NFC. Gunakan Chrome di Android.');
+      setStatus('⚠️ Browser tidak mendukung Web NFC. Gunakan aplikasi NFC Tools di iPhone.');
       return;
     }
 
@@ -114,25 +121,18 @@ export default function AdminPage() {
     }
   };
 
-  // Helper Konversi ke Link Direct Review (seperti CARD-001)
   const formatReviewUrl = (url) => {
     let cleanUrl = url.trim();
-
-    // Jika pengguna memasukkan Place ID murni (misal: ChIJrfzkjSV_9i0R_UFFaoAD1ic)
     if (cleanUrl.startsWith('ChIJ') && !cleanUrl.includes(' ')) {
       return `https://search.google.com/local/writereview?placeid=${cleanUrl}`;
     }
-
-    // Jika link mengandung parameter placeid=
     const match = cleanUrl.match(/placeid=([a-zA-Z0-9_-]+)/);
     if (match && match[1]) {
       return `https://search.google.com/local/writereview?placeid=${match[1]}`;
     }
-
     return cleanUrl;
   };
 
-  // Edit Link dengan Konfirmasi PIN Kartu
   const handleSaveEditWithPin = async (device) => {
     if (!editTargetUrl) return;
 
@@ -164,7 +164,6 @@ export default function AdminPage() {
     }
   };
 
-  // Hapus Kartu dengan Konfirmasi PIN Kartu
   const handleDeleteDeviceWithPin = async (device) => {
     const inputPin = prompt(`⚠️ PERINGATAN: Menghapus kartu ${device.id}.\nMasukkan PIN kartu untuk mengonfirmasi penghapusan:`);
     if (!inputPin) return;
@@ -238,12 +237,20 @@ export default function AdminPage() {
             <span style={{ fontSize: '13px', color: '#64748b' }}>PIN Pembeli:</span>
             <strong style={{ color: '#dc2626' }}>{currentDevice.pin}</strong>
           </div>
+
           <div style={{ textAlign: 'center', padding: '12px', backgroundColor: '#f8fafc', borderRadius: '12px', marginBottom: '12px' }}>
             <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}/r/${currentDevice.id}` : '')}`} alt="QR Code" style={{ borderRadius: '8px' }} />
           </div>
-          <button onClick={() => handleWriteAndLockNFC(currentDevice.id)} style={{ width: '100%', padding: '12px', backgroundColor: '#16a34a', color: '#ffffff', border: 'none', borderRadius: '10px', fontWeight: '600', cursor: 'pointer' }}>
-            📲 Tulis & Kunci Chip NFC Ini
-          </button>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {/* Tombol Salin Khusus iPhone */}
+            <button onClick={() => handleCopyNfcUrl(currentDevice.id)} style={{ width: '100%', padding: '12px', backgroundColor: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '10px', fontWeight: '600', fontSize: '14px', cursor: 'pointer' }}>
+              📋 Salin URL NFC (iPhone / App NFC Tools)
+            </button>
+            <button onClick={() => handleWriteAndLockNFC(currentDevice.id)} style={{ width: '100%', padding: '10px', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '10px', fontWeight: '600', fontSize: '12px', cursor: 'pointer' }}>
+              📲 Tulis via Chrome (Android Only)
+            </button>
+          </div>
         </div>
       )}
 
@@ -294,13 +301,20 @@ export default function AdminPage() {
                       </button>
                     </div>
                   ) : (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', borderTop: '1px solid #f1f5f9', paddingTop: '8px' }}>
-                      <button onClick={() => { setEditingDeviceId(device.id); setEditTargetUrl(device.target_url || ''); }} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', padding: 0, fontWeight: '600', cursor: 'pointer' }}>
-                        ✏️ {isCardActive ? 'Edit Link (PIN)' : 'Isi Link & Aktifkan'}
-                      </button>
-                      
-                      <button onClick={() => handleDeleteDeviceWithPin(device)} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
-                        🗑️ Hapus Kartu (PIN)
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px', borderTop: '1px solid #f1f5f9', paddingTop: '8px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <button onClick={() => { setEditingDeviceId(device.id); setEditTargetUrl(device.target_url || ''); }} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', padding: 0, fontWeight: '600', cursor: 'pointer' }}>
+                          ✏️ {isCardActive ? 'Edit Link (PIN)' : 'Isi Link & Aktifkan'}
+                        </button>
+                        
+                        <button onClick={() => handleDeleteDeviceWithPin(device)} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                          🗑️ Hapus Kartu (PIN)
+                        </button>
+                      </div>
+
+                      {/* Tombol Salin URL NFC untuk Kartu Mana Saja */}
+                      <button onClick={() => handleCopyNfcUrl(device.id)} style={{ width: '100%', padding: '6px 10px', backgroundColor: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', textAlign: 'center' }}>
+                        📋 Salin URL NFC ({device.id})
                       </button>
                     </div>
                   )}
