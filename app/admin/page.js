@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import Link from 'next/link';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -10,7 +11,7 @@ const supabase = createClient(
 
 const TIMEOUT_DURATION = 30 * 60 * 1000; // 30 Menit Auto Logout
 
-// Komponen Canvas QR Code High-Resolution (1000px HD)
+// Komponen Canvas QR Code High-Resolution (1000px HD) dengan Parameter src=qr
 function QrCodeWithLogo({ text, deviceId }) {
   const canvasRef = useRef(null);
   const renderSize = 1000;
@@ -20,9 +21,12 @@ function QrCodeWithLogo({ text, deviceId }) {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
 
+    // Tambahkan parameter ?src=qr ke URL agar terbaca sebagai scan QR di statistik
+    const qrUrl = text.includes('?') ? `${text}&src=qr` : `${text}?src=qr`;
+
     const qrImage = new Image();
     qrImage.crossOrigin = 'Anonymous';
-    qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=${renderSize}x${renderSize}&data=${encodeURIComponent(text)}`;
+    qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=${renderSize}x${renderSize}&data=${encodeURIComponent(qrUrl)}`;
 
     qrImage.onload = () => {
       ctx.drawImage(qrImage, 0, 0, renderSize, renderSize);
@@ -118,7 +122,7 @@ export default function AdminPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('newest');
 
-  // --- Session Timeout Manager ---
+  // Manager Session Timeout
   const timeoutRef = useRef(null);
 
   const resetSessionTimer = () => {
@@ -226,7 +230,7 @@ export default function AdminPage() {
   };
 
   const handleCopyNfcUrl = (deviceId) => {
-    const nfcUrl = `${window.location.origin}/r/${deviceId}`;
+    const nfcUrl = `${window.location.origin}/r/${deviceId}?src=nfc`;
     navigator.clipboard.writeText(nfcUrl);
     alert(`📋 URL NFC disalin ke clipboard:\n${nfcUrl}`);
   };
@@ -240,7 +244,7 @@ export default function AdminPage() {
     try {
       setStatus('📱 Dekatkan chip NFC ke bagian belakang HP...');
       const ndef = new window.NDEFReader();
-      const targetUrl = `${window.location.origin}/r/${deviceId}`;
+      const targetUrl = `${window.location.origin}/r/${deviceId}?src=nfc`;
 
       await ndef.write({ records: [{ recordType: 'url', data: targetUrl }] });
 
@@ -321,7 +325,7 @@ export default function AdminPage() {
     }
   };
 
-  // --- Filter & Sort Logic ---
+  // Filter & Sorting
   const filteredDevices = devices.filter((device) => {
     const query = searchQuery.toLowerCase();
     const idMatch = device.id.toLowerCase().includes(query);
@@ -387,19 +391,25 @@ export default function AdminPage() {
 
   return (
     <div style={{ maxWidth: '520px', margin: '0 auto', padding: '24px 16px', boxSizing: 'border-box', fontFamily: '-apple-system, sans-serif' }}>
+      {/* HEADER UTAMA: ADA TOMBOL DOKUMEN / STATISTIK */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', backgroundColor: '#ffffff', padding: '16px 20px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
         <div>
           <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700' }}>Dashboard NFC</h2>
           <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Sistem Manajemen Perangkat</p>
         </div>
-        <button onClick={() => handleLogout('Berhasil logout.')} style={{ padding: '8px 14px', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>Logout</button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <Link href="/admin/stats" style={{ padding: '8px 12px', backgroundColor: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: '8px', fontSize: '12px', fontWeight: '600', textDecoration: 'none' }}>
+            📊 Statistik
+          </Link>
+          <button onClick={() => handleLogout('Berhasil logout.')} style={{ padding: '8px 12px', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>Logout</button>
+        </div>
       </div>
 
       <button onClick={handleGenerateNew} disabled={loading} style={{ width: '100%', padding: '14px', backgroundColor: loading ? '#94a3b8' : '#2563eb', color: '#ffffff', border: 'none', borderRadius: '12px', fontWeight: '600', fontSize: '15px', cursor: loading ? 'not-allowed' : 'pointer', marginBottom: '20px', boxShadow: '0 4px 12px rgba(37, 99, 235, 0.2)' }}>
         + Generate Unique Code & QR Baru
       </button>
 
-      {/* MODAL PREVIEW CARD (UNTUK CARD YANG SEDANG DI-PREVIEW/BARU DIGENERATE) */}
+      {/* PREVIEW KARTU BARU DIGENERATE ATAU TOMBOL PREVIEW DITEKAN */}
       {(currentDevice || previewDeviceModal) && (
         <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '2px solid #2563eb', marginBottom: '24px', position: 'relative' }}>
           <button
@@ -450,7 +460,7 @@ export default function AdminPage() {
 
       {status && <div style={{ padding: '12px', backgroundColor: '#ffffff', borderRadius: '10px', borderLeft: '4px solid #2563eb', fontSize: '13px', marginBottom: '20px' }}>{status}</div>}
 
-      {/* KOTAK KONTROL SEARCH & SORTING */}
+      {/* SEARCH & SORT CONTROL BAR */}
       <div style={{ backgroundColor: '#ffffff', padding: '18px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
         <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
           <input
@@ -569,7 +579,6 @@ export default function AdminPage() {
                         </button>
                       </div>
 
-                      {/* Tombol Preview Mode Baru */}
                       <button
                         onClick={() => { setPreviewDeviceModal(device); setCurrentDevice(null); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
                         style={{ width: '100%', padding: '6px 10px', backgroundColor: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', textAlign: 'center' }}
