@@ -1,12 +1,66 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 );
+
+// Komponen Pembantu Canvas QR Code dengan Overlay Logo Google
+function QrCodeWithLogo({ text, size = 200 }) {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    const qrImage = new Image();
+    qrImage.crossOrigin = 'Anonymous';
+    qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(text)}`;
+
+    qrImage.onload = () => {
+      // 1. Gambar QR Code Dasar
+      ctx.drawImage(qrImage, 0, 0, size, size);
+
+      // 2. Gambar Background Putih Bulat di Tengah
+      const logoSize = size * 0.24;
+      const center = size / 2;
+      const radius = logoSize / 2 + 3;
+
+      ctx.beginPath();
+      ctx.arc(center, center, radius, 0, 2 * Math.PI, false);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+
+      // 3. Load & Draw Logo Google "G" di Tengah
+      const googleLogo = new Image();
+      googleLogo.crossOrigin = 'Anonymous';
+      googleLogo.src = 'https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg';
+
+      googleLogo.onload = () => {
+        ctx.drawImage(
+          googleLogo,
+          center - logoSize / 2,
+          center - logoSize / 2,
+          logoSize,
+          logoSize
+        );
+      };
+    };
+  }, [text, size]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={size}
+      height={size}
+      style={{ borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}
+    />
+  );
+}
 
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -255,7 +309,10 @@ export default function AdminPage() {
           </div>
 
           <div style={{ textAlign: 'center', padding: '12px', backgroundColor: '#f8fafc', borderRadius: '12px', marginBottom: '12px' }}>
-            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}/r/${currentDevice.id}` : '')}`} alt="QR Code" style={{ borderRadius: '8px' }} />
+            <QrCodeWithLogo
+              text={typeof window !== 'undefined' ? `${window.location.origin}/r/${currentDevice.id}` : ''}
+              size={180}
+            />
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -306,18 +363,15 @@ export default function AdminPage() {
                   </div>
                 )}
 
-                {/* Tampilan QR Code jika tombol ditekan */}
+                {/* Tampilan QR Code Custom dengan Logo Google di Tengah */}
                 {isQrShown && (
-                  <div style={{ textAlign: 'center', padding: '14px', backgroundColor: '#ffffff', borderRadius: '10px', border: '1px solid #cbd5e1', margin: '10px 0' }}>
-                    <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
-                        typeof window !== 'undefined' ? `${window.location.origin}/r/${device.id}` : ''
-                      )}`}
-                      alt={`QR Code ${device.id}`}
-                      style={{ borderRadius: '6px' }}
+                  <div style={{ textAlign: 'center', padding: '16px', backgroundColor: '#ffffff', borderRadius: '10px', border: '1px solid #cbd5e1', margin: '10px 0' }}>
+                    <QrCodeWithLogo
+                      text={typeof window !== 'undefined' ? `${window.location.origin}/r/${device.id}` : ''}
+                      size={180}
                     />
-                    <p style={{ margin: '8px 0 0 0', fontSize: '11px', color: '#64748b' }}>
-                      Tentukan / Cetak QR Code untuk <strong>{device.id}</strong>
+                    <p style={{ margin: '10px 0 0 0', fontSize: '11px', color: '#64748b' }}>
+                      QR Code Google Review <strong>{device.id}</strong> (Siap Cetak / Screenshot)
                     </p>
                   </div>
                 )}
@@ -364,7 +418,7 @@ export default function AdminPage() {
                         onClick={() => setActiveQrDeviceId(isQrShown ? null : device.id)}
                         style={{ width: '100%', padding: '6px 10px', backgroundColor: isQrShown ? '#e2e8f0' : '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', textAlign: 'center' }}
                       >
-                        {isQrShown ? '❌ Tutup QR Code' : '🖼️ Lihat / Cetak QR Code'}
+                        {isQrShown ? '❌ Tutup QR Code' : '🖼️ Lihat / Cetak QR Code (With Google Logo)'}
                       </button>
 
                       <button onClick={() => handleCopyNfcUrl(device.id)} style={{ width: '100%', padding: '6px 10px', backgroundColor: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', textAlign: 'center' }}>
