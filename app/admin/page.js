@@ -8,8 +8,8 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 );
 
-// Komponen Pembantu Canvas QR Code dengan Overlay Logo Google
-function QrCodeWithLogo({ text, size = 200 }) {
+// Komponen Pembantu Canvas QR Code dengan Overlay Logo Google & Download
+function QrCodeWithLogo({ text, deviceId, size = 200 }) {
   const canvasRef = useRef(null);
 
   useEffect(() => {
@@ -52,13 +52,41 @@ function QrCodeWithLogo({ text, size = 200 }) {
     };
   }, [text, size]);
 
+  const handleDownload = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const image = canvas.toDataURL('image/png');
+    const link = document.createElement('a');
+    link.href = image;
+    link.download = `qrcode-${deviceId}.png`;
+    link.click();
+  };
+
   return (
-    <canvas
-      ref={canvasRef}
-      width={size}
-      height={size}
-      style={{ borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}
-    />
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+      <canvas
+        ref={canvasRef}
+        width={size}
+        height={size}
+        style={{ borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}
+      />
+      <button
+        onClick={handleDownload}
+        style={{
+          padding: '8px 16px',
+          backgroundColor: '#2563eb',
+          color: '#ffffff',
+          border: 'none',
+          borderRadius: '8px',
+          fontSize: '12px',
+          fontWeight: '600',
+          cursor: 'pointer',
+          boxShadow: '0 2px 6px rgba(37, 99, 235, 0.2)'
+        }}
+      >
+        📥 Download Gambar QR Code (PNG)
+      </button>
+    </div>
   );
 }
 
@@ -311,6 +339,7 @@ export default function AdminPage() {
           <div style={{ textAlign: 'center', padding: '12px', backgroundColor: '#f8fafc', borderRadius: '12px', marginBottom: '12px' }}>
             <QrCodeWithLogo
               text={typeof window !== 'undefined' ? `${window.location.origin}/r/${currentDevice.id}` : ''}
+              deviceId={currentDevice.id}
               size={180}
             />
           </div>
@@ -363,15 +392,16 @@ export default function AdminPage() {
                   </div>
                 )}
 
-                {/* Tampilan QR Code Custom dengan Logo Google di Tengah */}
+                {/* Tampilan QR Code Custom dengan Logo Google & Tombol Download */}
                 {isQrShown && (
                   <div style={{ textAlign: 'center', padding: '16px', backgroundColor: '#ffffff', borderRadius: '10px', border: '1px solid #cbd5e1', margin: '10px 0' }}>
                     <QrCodeWithLogo
                       text={typeof window !== 'undefined' ? `${window.location.origin}/r/${device.id}` : ''}
+                      deviceId={device.id}
                       size={180}
                     />
                     <p style={{ margin: '10px 0 0 0', fontSize: '11px', color: '#64748b' }}>
-                      QR Code Google Review <strong>{device.id}</strong> (Siap Cetak / Screenshot)
+                      QR Code Google Review <strong>{device.id}</strong>
                     </p>
                   </div>
                 )}
