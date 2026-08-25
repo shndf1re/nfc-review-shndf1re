@@ -71,11 +71,22 @@ export default function AdminPage() {
     localStorage.removeItem('nfc_admin_session');
   };
 
+  // Helper Generator Unique Code (8 Karakter Acak Alfanumerik)
+  const generateUniqueCode = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+    let result = '';
+    for (let i = 0; i < 8; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return 'NFC-' + result;
+  };
+
+  // Generate ID Acak Unik & PIN Baru
   const handleGenerateNew = async () => {
     setLoading(true);
-    setStatus('Membuat ID & PIN baru...');
+    setStatus('Membuat Unique Code & PIN baru...');
 
-    const randomId = 'CARD-' + Math.floor(1000 + Math.random() * 9000);
+    const randomId = generateUniqueCode();
     const randomPin = Math.floor(100000 + Math.random() * 900000).toString();
 
     const { data, error } = await supabase
@@ -88,7 +99,7 @@ export default function AdminPage() {
       setStatus('❌ Gagal membuat ID baru: ' + error.message);
     } else {
       setCurrentDevice(data);
-      setStatus(`✅ Berhasil dibuat: ${data.id}`);
+      setStatus(`✅ Unique Code Berhasil dibuat: ${data.id}`);
       fetchDevices();
     }
     setLoading(false);
@@ -134,7 +145,6 @@ export default function AdminPage() {
     return cleanUrl;
   };
 
-  // Simpan Edit Link & Label Toko Menggunakan PIN
   const handleSaveEditWithPin = async (device) => {
     const inputPin = prompt(`Masukkan PIN untuk mengonfirmasi perubahan pada ${device.id}:`);
     if (!inputPin) return;
@@ -230,15 +240,15 @@ export default function AdminPage() {
       </div>
 
       <button onClick={handleGenerateNew} disabled={loading} style={{ width: '100%', padding: '14px', backgroundColor: loading ? '#94a3b8' : '#2563eb', color: '#ffffff', border: 'none', borderRadius: '12px', fontWeight: '600', fontSize: '15px', cursor: loading ? 'not-allowed' : 'pointer', marginBottom: '20px', boxShadow: '0 4px 12px rgba(37, 99, 235, 0.2)' }}>
-        + Generate Kartu / QR Baru
+        + Generate Unique Code & QR Baru
       </button>
 
       {currentDevice && (
         <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '2px solid #2563eb', marginBottom: '24px' }}>
-          <h4 style={{ margin: '0 0 12px 0', color: '#2563eb' }}>✨ Kartu Baru Berhasil dibuat:</h4>
+          <h4 style={{ margin: '0 0 12px 0', color: '#2563eb' }}>✨ Unique Code Berhasil dibuat:</h4>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <span style={{ fontSize: '13px', color: '#64748b' }}>ID Device:</span>
-            <strong>{currentDevice.id}</strong>
+            <span style={{ fontSize: '13px', color: '#64748b' }}>Unique ID:</span>
+            <strong style={{ letterSpacing: '0.5px' }}>{currentDevice.id}</strong>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
             <span style={{ fontSize: '13px', color: '#64748b' }}>PIN Pembeli:</span>
@@ -283,7 +293,6 @@ export default function AdminPage() {
                   <span style={{ fontSize: '12px', color: '#64748b' }}>PIN: <strong>{device.pin || '-'}</strong></span>
                 </div>
 
-                {/* Display Nama / Label Toko */}
                 {device.label_name && (
                   <div style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a', marginBottom: '4px' }}>
                     🏪 Toko: <span style={{ color: '#2563eb' }}>{device.label_name}</span>
@@ -301,7 +310,7 @@ export default function AdminPage() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px', backgroundColor: '#f1f5f9', padding: '10px', borderRadius: '8px' }}>
                       <input
                         type="text"
-                        placeholder="Nama Toko / Catatan (misal: Kopi Tiam Sebelas Satu)"
+                        placeholder="Nama Toko / Catatan"
                         value={editLabelName}
                         onChange={(e) => setEditLabelName(e.target.value)}
                         style={{ width: '100%', padding: '8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
