@@ -8,10 +8,12 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 );
 
+const TIMEOUT_DURATION = 30 * 60 * 1000; // 30 Menit Auto Logout
+
 // Komponen Canvas QR Code High-Resolution (1000px HD)
 function QrCodeWithLogo({ text, deviceId }) {
   const canvasRef = useRef(null);
-  const renderSize = 1000; // Render Resolusi Tinggi (Ultra HD)
+  const renderSize = 1000;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -20,14 +22,11 @@ function QrCodeWithLogo({ text, deviceId }) {
 
     const qrImage = new Image();
     qrImage.crossOrigin = 'Anonymous';
-    // Request QR Code ukuran besar 1000x1000 dari API
     qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=${renderSize}x${renderSize}&data=${encodeURIComponent(text)}`;
 
     qrImage.onload = () => {
-      // 1. Gambar QR Code Dasar (High Res)
       ctx.drawImage(qrImage, 0, 0, renderSize, renderSize);
 
-      // 2. Gambar Lingkaran Putih di Tengah
       const logoSize = renderSize * 0.22;
       const center = renderSize / 2;
       const radius = logoSize / 2 + 15;
@@ -37,7 +36,6 @@ function QrCodeWithLogo({ text, deviceId }) {
       ctx.fillStyle = '#ffffff';
       ctx.fill();
 
-      // 3. Load & Draw Logo Google "G" di Tengah (High Res)
       const googleLogo = new Image();
       googleLogo.crossOrigin = 'Anonymous';
       googleLogo.src = 'https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg';
@@ -66,7 +64,6 @@ function QrCodeWithLogo({ text, deviceId }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
-      {/* Canvas di-render 1000px di dalam memori, tapi ditampilkan responsive di layar */}
       <canvas
         ref={canvasRef}
         width={renderSize}
@@ -82,12 +79,12 @@ function QrCodeWithLogo({ text, deviceId }) {
       <button
         onClick={handleDownload}
         style={{
-          padding: '10px 18px',
+          padding: '8px 16px',
           backgroundColor: '#2563eb',
           color: '#ffffff',
           border: 'none',
           borderRadius: '8px',
-          fontSize: '13px',
+          fontSize: '12px',
           fontWeight: '600',
           cursor: 'pointer',
           boxShadow: '0 2px 8px rgba(37, 99, 235, 0.2)'
@@ -108,6 +105,8 @@ export default function AdminPage() {
 
   const [devices, setDevices] = useState([]);
   const [currentDevice, setCurrentDevice] = useState(null);
+  const [previewDeviceModal, setPreviewDeviceModal] = useState(null);
+
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
   const [editingDeviceId, setEditingDeviceId] = useState(null);
@@ -115,19 +114,47 @@ export default function AdminPage() {
   const [editLabelName, setEditLabelName] = useState('');
   const [activeQrDeviceId, setActiveQrDeviceId] = useState(null);
 
+  // State Search & Sort
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState('newest');
+
+  // --- Session Timeout Manager ---
+  const timeoutRef = useRef(null);
+
+  const resetSessionTimer = () => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => {
+      handleLogout('Session expired karena tidak ada aktivitas selama 30 menit.');
+    }, TIMEOUT_DURATION);
+  };
+
   useEffect(() => {
     const savedSession = localStorage.getItem('nfc_admin_session');
     if (savedSession === 'true') {
       setIsAuthenticated(true);
       fetchDevices();
+      resetSessionTimer();
     }
+
+    const events = ['mousemove', 'keydown', 'click', 'touchstart', 'scroll'];
+    const handleUserActivity = () => {
+      if (localStorage.getItem('nfc_admin_session') === 'true') {
+        resetSessionTimer();
+      }
+    };
+
+    events.forEach(event => window.addEventListener(event, handleUserActivity));
+
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      events.forEach(event => window.removeEventListener(event, handleUserActivity));
+    };
   }, []);
 
   const fetchDevices = async () => {
     const { data, error } = await supabase.from('devices').select('*');
     if (!error && data) {
-      const sortedData = data.sort((a, b) => b.id.localeCompare(a.id));
-      setDevices(sortedData);
+      setDevices(data);
     }
   };
 
@@ -149,6 +176,7 @@ export default function AdminPage() {
       } else {
         setIsAuthenticated(true);
         localStorage.setItem('nfc_admin_session', 'true');
+        resetSessionTimer();
         fetchDevices();
       }
     } catch (err) {
@@ -158,9 +186,11 @@ export default function AdminPage() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = (msg) => {
     setIsAuthenticated(false);
     localStorage.removeItem('nfc_admin_session');
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    if (typeof msg === 'string') alert(msg);
   };
 
   const generateUniqueCode = () => {
@@ -287,8 +317,44 @@ export default function AdminPage() {
       alert(`🗑️ Kartu ${device.id} berhasil dihapus.`);
       fetchDevices();
       if (currentDevice?.id === device.id) setCurrentDevice(null);
+      if (previewDeviceModal?.id === device.id) setPreviewDeviceModal(null);
     }
   };
+
+  // --- Filter & Sort Logic ---
+  const filteredDevices = devices.filter((device) => {
+    const query = searchQuery.toLowerCase();
+    const idMatch = device.id.toLowerCase().includes(query);
+    const labelMatch = device.label_name ? device.label_name.toLowerCase().includes(query) : false;
+    return idMatch || labelMatch;
+  });
+
+  const sortedDevices = [...filteredDevices].sort((a, b) => {
+    if (sortBy === 'newest') {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      if (timeA !== timeB) return timeB - timeA;
+      return b.id.localeCompare(a.id);
+    } else if (sortBy === 'oldest') {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      if (timeA !== timeB) return timeA - timeB;
+      return a.id.localeCompare(b.id);
+    } else if (sortBy === 'name_asc') {
+      const nameA = a.label_name || 'zzz';
+      const nameB = b.label_name || 'zzz';
+      return nameA.localeCompare(nameB);
+    } else if (sortBy === 'name_desc') {
+      const nameA = a.label_name || '';
+      const nameB = b.label_name || '';
+      return nameB.localeCompare(nameA);
+    } else if (sortBy === 'status_inactive') {
+      return Number(a.is_active) - Number(b.is_active);
+    } else if (sortBy === 'status_active') {
+      return Number(b.is_active) - Number(a.is_active);
+    }
+    return 0;
+  });
 
   if (!isAuthenticated) {
     return (
@@ -326,37 +392,56 @@ export default function AdminPage() {
           <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700' }}>Dashboard NFC</h2>
           <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Sistem Manajemen Perangkat</p>
         </div>
-        <button onClick={handleLogout} style={{ padding: '8px 14px', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>Logout</button>
+        <button onClick={() => handleLogout('Berhasil logout.')} style={{ padding: '8px 14px', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>Logout</button>
       </div>
 
       <button onClick={handleGenerateNew} disabled={loading} style={{ width: '100%', padding: '14px', backgroundColor: loading ? '#94a3b8' : '#2563eb', color: '#ffffff', border: 'none', borderRadius: '12px', fontWeight: '600', fontSize: '15px', cursor: loading ? 'not-allowed' : 'pointer', marginBottom: '20px', boxShadow: '0 4px 12px rgba(37, 99, 235, 0.2)' }}>
         + Generate Unique Code & QR Baru
       </button>
 
-      {currentDevice && (
-        <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '2px solid #2563eb', marginBottom: '24px' }}>
-          <h4 style={{ margin: '0 0 12px 0', color: '#2563eb' }}>✨ Unique Code Berhasil dibuat:</h4>
+      {/* MODAL PREVIEW CARD (UNTUK CARD YANG SEDANG DI-PREVIEW/BARU DIGENERATE) */}
+      {(currentDevice || previewDeviceModal) && (
+        <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '2px solid #2563eb', marginBottom: '24px', position: 'relative' }}>
+          <button
+            onClick={() => { setCurrentDevice(null); setPreviewDeviceModal(null); }}
+            style={{ position: 'absolute', top: '12px', right: '12px', background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', color: '#64748b' }}
+          >
+            ✖
+          </button>
+          
+          <h4 style={{ margin: '0 0 12px 0', color: '#2563eb' }}>
+            ✨ {currentDevice ? 'Kartu Baru dibuat:' : 'Preview Detail Kartu:'}
+          </h4>
+          
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
             <span style={{ fontSize: '13px', color: '#64748b' }}>Unique ID:</span>
-            <strong style={{ letterSpacing: '0.5px' }}>{currentDevice.id}</strong>
+            <strong style={{ letterSpacing: '0.5px' }}>{(currentDevice || previewDeviceModal).id}</strong>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
+          
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
             <span style={{ fontSize: '13px', color: '#64748b' }}>PIN Pembeli:</span>
-            <strong style={{ color: '#dc2626' }}>{currentDevice.pin}</strong>
+            <strong style={{ color: '#dc2626' }}>{(currentDevice || previewDeviceModal).pin}</strong>
           </div>
+
+          {(currentDevice || previewDeviceModal).label_name && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
+              <span style={{ fontSize: '13px', color: '#64748b' }}>Nama Toko:</span>
+              <strong style={{ color: '#2563eb' }}>{(currentDevice || previewDeviceModal).label_name}</strong>
+            </div>
+          )}
 
           <div style={{ textAlign: 'center', padding: '12px', backgroundColor: '#f8fafc', borderRadius: '12px', marginBottom: '12px' }}>
             <QrCodeWithLogo
-              text={typeof window !== 'undefined' ? `${window.location.origin}/r/${currentDevice.id}` : ''}
-              deviceId={currentDevice.id}
+              text={typeof window !== 'undefined' ? `${window.location.origin}/r/${(currentDevice || previewDeviceModal).id}` : ''}
+              deviceId={(currentDevice || previewDeviceModal).id}
             />
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <button onClick={() => handleCopyNfcUrl(currentDevice.id)} style={{ width: '100%', padding: '12px', backgroundColor: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '10px', fontWeight: '600', fontSize: '14px', cursor: 'pointer' }}>
+            <button onClick={() => handleCopyNfcUrl((currentDevice || previewDeviceModal).id)} style={{ width: '100%', padding: '12px', backgroundColor: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '10px', fontWeight: '600', fontSize: '14px', cursor: 'pointer' }}>
               📋 Salin URL NFC (iPhone / App NFC Tools)
             </button>
-            <button onClick={() => handleWriteAndLockNFC(currentDevice.id)} style={{ width: '100%', padding: '10px', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '10px', fontWeight: '600', fontSize: '12px', cursor: 'pointer' }}>
+            <button onClick={() => handleWriteAndLockNFC((currentDevice || previewDeviceModal).id)} style={{ width: '100%', padding: '10px', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '10px', fontWeight: '600', fontSize: '12px', cursor: 'pointer' }}>
               📲 Tulis via Chrome (Android Only)
             </button>
           </div>
@@ -365,14 +450,48 @@ export default function AdminPage() {
 
       {status && <div style={{ padding: '12px', backgroundColor: '#ffffff', borderRadius: '10px', borderLeft: '4px solid #2563eb', fontSize: '13px', marginBottom: '20px' }}>{status}</div>}
 
+      {/* KOTAK KONTROL SEARCH & SORTING */}
+      <div style={{ backgroundColor: '#ffffff', padding: '18px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+          <input
+            type="text"
+            placeholder="🔍 Cari ID atau Nama Toko..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ flex: 1, padding: '10px 12px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }}
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery('')} style={{ padding: '0 12px', backgroundColor: '#e2e8f0', border: 'none', borderRadius: '8px', fontSize: '12px', cursor: 'pointer' }}>
+              Reset
+            </button>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+          <label style={{ fontSize: '12px', fontWeight: '600', color: '#64748b' }}>Urutkan:</label>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            style={{ flex: 1, padding: '8px 10px', fontSize: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', fontWeight: '500' }}
+          >
+            <option value="newest">📅 Waktu Terbaru ke Terlama</option>
+            <option value="oldest">📅 Waktu Terlama ke Terbaru</option>
+            <option value="name_asc">🔤 Nama Toko (A - Z)</option>
+            <option value="name_desc">🔤 Nama Toko (Z - A)</option>
+            <option value="status_inactive">⚠️ Status: Belum Dipakai Dulu</option>
+            <option value="status_active">✅ Status: Aktif Dulu</option>
+          </select>
+        </div>
+      </div>
+
       <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '700' }}>Daftar Kartu NFC ({devices.length})</h3>
+          <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '700' }}>Daftar Kartu NFC ({sortedDevices.length})</h3>
           <button onClick={fetchDevices} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>🔄 Refresh</button>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {devices.map((device) => {
+          {sortedDevices.map((device) => {
             const isCardActive = Boolean(device.is_active);
             const isQrShown = activeQrDeviceId === device.id;
 
@@ -400,7 +519,6 @@ export default function AdminPage() {
                   </div>
                 )}
 
-                {/* Tampilan QR Code HD 1000px */}
                 {isQrShown && (
                   <div style={{ textAlign: 'center', padding: '16px', backgroundColor: '#ffffff', borderRadius: '10px', border: '1px solid #cbd5e1', margin: '10px 0' }}>
                     <QrCodeWithLogo
@@ -408,7 +526,7 @@ export default function AdminPage() {
                       deviceId={device.id}
                     />
                     <p style={{ margin: '10px 0 0 0', fontSize: '11px', color: '#64748b' }}>
-                      QR Code Google Review <strong>{device.id}</strong> (Resolusi Tinggi Siap Cetak)
+                      QR Code Google Review <strong>{device.id}</strong>
                     </p>
                   </div>
                 )}
@@ -451,15 +569,19 @@ export default function AdminPage() {
                         </button>
                       </div>
 
+                      {/* Tombol Preview Mode Baru */}
+                      <button
+                        onClick={() => { setPreviewDeviceModal(device); setCurrentDevice(null); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                        style={{ width: '100%', padding: '6px 10px', backgroundColor: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', textAlign: 'center' }}
+                      >
+                        👁️ Preview Card & Salin Link / Write NFC
+                      </button>
+
                       <button
                         onClick={() => setActiveQrDeviceId(isQrShown ? null : device.id)}
                         style={{ width: '100%', padding: '6px 10px', backgroundColor: isQrShown ? '#e2e8f0' : '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', textAlign: 'center' }}
                       >
                         {isQrShown ? '❌ Tutup QR Code' : '🖼️ Lihat / Cetak QR Code (Ultra HD)'}
-                      </button>
-
-                      <button onClick={() => handleCopyNfcUrl(device.id)} style={{ width: '100%', padding: '6px 10px', backgroundColor: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', textAlign: 'center' }}>
-                        📋 Salin URL NFC ({device.id})
                       </button>
                     </div>
                   )}
@@ -468,7 +590,7 @@ export default function AdminPage() {
             );
           })}
 
-          {devices.length === 0 && <p style={{ textAlign: 'center', fontSize: '13px', color: '#94a3b8' }}>Belum ada kartu terdaftar.</p>}
+          {sortedDevices.length === 0 && <p style={{ textAlign: 'center', fontSize: '13px', color: '#94a3b8' }}>Tidak ada kartu yang cocok dengan pencarian.</p>}
         </div>
       </div>
     </div>
