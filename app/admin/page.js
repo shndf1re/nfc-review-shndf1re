@@ -22,6 +22,7 @@ export default function AdminPage() {
   const [editingDeviceId, setEditingDeviceId] = useState(null);
   const [editTargetUrl, setEditTargetUrl] = useState('');
   const [editLabelName, setEditLabelName] = useState('');
+  const [activeQrDeviceId, setActiveQrDeviceId] = useState(null);
 
   useEffect(() => {
     const savedSession = localStorage.getItem('nfc_admin_session');
@@ -71,7 +72,6 @@ export default function AdminPage() {
     localStorage.removeItem('nfc_admin_session');
   };
 
-  // Helper Generator Unique Code (8 Karakter Acak Alfanumerik)
   const generateUniqueCode = () => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
     let result = '';
@@ -81,7 +81,6 @@ export default function AdminPage() {
     return 'NFC-' + result;
   };
 
-  // Generate ID Acak Unik & PIN Baru
   const handleGenerateNew = async () => {
     setLoading(true);
     setStatus('Membuat Unique Code & PIN baru...');
@@ -281,6 +280,8 @@ export default function AdminPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {devices.map((device) => {
             const isCardActive = Boolean(device.is_active);
+            const isQrShown = activeQrDeviceId === device.id;
+
             return (
               <div key={device.id} style={{ padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', backgroundColor: isCardActive ? '#f8fafc' : '#ffffff' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
@@ -302,6 +303,22 @@ export default function AdminPage() {
                 {isCardActive && (
                   <div style={{ fontSize: '12px', color: '#475569', wordBreak: 'break-all', marginTop: '4px', marginBottom: '8px' }}>
                     🔗 Link Review: <a href={device.target_url} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>{device.target_url}</a>
+                  </div>
+                )}
+
+                {/* Tampilan QR Code jika tombol ditekan */}
+                {isQrShown && (
+                  <div style={{ textAlign: 'center', padding: '12px', backgroundColor: '#ffffff', borderRadius: '10px', border: '1px solid #cbd5e1', margin: '10px 0' }}>
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(
+                        typeof window !== 'undefined' ? `${window.location.origin}/r/${device.id}` : ''
+                      )}`}
+                      alt={`QR Code ${device.id}`}
+                      style={{ borderRadius: '6px' }}
+                    />
+                    <p style={{ margin: '6px 0 0 0', fontSize: '11px', color: '#64748b' }}>
+                      Tentukan / Cetak QR Code untuk <strong>{device.id}</strong>
+                    </p>
                   </div>
                 )}
 
@@ -342,6 +359,14 @@ export default function AdminPage() {
                           🗑️ Hapus Kartu (PIN)
                         </button>
                       </div>
+
+                      {/* Tombol Lihat/Tutup QR Code */}
+                      <button
+                        onClick={() => setActiveQrDeviceId(isQrShown ? null : device.id)}
+                        style={{ width: '100%', padding: '6px 10px', backgroundColor: isQrShown ? '#e2e8f0' : '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', textAlign: 'center' }}
+                      >
+                        {isQrShown ? '❌ Tutup QR Code' : '🖼️ Lihat / Cetak QR Code'}
+                      </button>
 
                       <button onClick={() => handleCopyNfcUrl(device.id)} style={{ width: '100%', padding: '6px 10px', backgroundColor: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', textAlign: 'center' }}>
                         📋 Salin URL NFC ({device.id})
