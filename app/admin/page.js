@@ -209,6 +209,7 @@ export default function AdminPage() {
     }, TIMEOUT_DURATION);
   };
 
+  // REALTIME & SESSION LISTENER
   useEffect(() => {
     const savedSession = localStorage.getItem('nfc_admin_session');
     if (savedSession === 'true') {
@@ -216,6 +217,34 @@ export default function AdminPage() {
       fetchDashboardData();
       resetSessionTimer();
     }
+
+    // LISTENER REALTIME SUPABASE
+    const channel = supabase
+      .channel('schema-db-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Mendengar semua aksi (INSERT, UPDATE, DELETE)
+          schema: 'public',
+          table: 'devices'
+        },
+        () => {
+          // Otomatis sinkronkan data saat ada perubahan dari device lain
+          fetchDashboardData();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'sales'
+        },
+        () => {
+          fetchDashboardData();
+        }
+      )
+      .subscribe();
 
     const events = ['mousemove', 'keydown', 'click', 'touchstart', 'scroll'];
     const handleUserActivity = () => {
@@ -229,6 +258,7 @@ export default function AdminPage() {
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       events.forEach(event => window.removeEventListener(event, handleUserActivity));
+      supabase.removeChannel(channel);
     };
   }, []);
 
