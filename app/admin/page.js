@@ -124,11 +124,12 @@ export default function AdminPage() {
 
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
-  // Modal PIN Konfirmasi Kustom
+  // State Modal PIN Kustom (Edit, Delete, & Bulk Generate)
   const [pinModal, setPinModal] = useState({
     isOpen: false,
-    actionType: null, // 'saveEdit' atau 'deleteCard'
+    actionType: null, // 'saveEdit', 'deleteCard', atau 'bulkGenerate'
     targetDevice: null,
+    bulkQty: 10,
     pinInput: '',
     errorMsg: '',
     isSubmitting: false
@@ -174,15 +175,12 @@ export default function AdminPage() {
   }, []);
 
   const fetchDashboardData = async () => {
-    // 1. Fetch Devices
     const { data: devData } = await supabase.from('devices').select('*');
     if (devData) setDevices(devData);
 
-    // 2. Fetch Stok
     const { data: invData } = await supabase.from('inventory').select('stock_quantity').eq('item_name', 'Papan Akrilik').single();
     if (invData) setAcrylicStock(invData.stock_quantity);
 
-    // 3. Fetch Omzet
     const { data: salesData } = await supabase.from('sales').select('total_price');
     if (salesData) {
       const sum = salesData.reduce((acc, curr) => acc + (parseFloat(curr.total_price) || 0), 0);
@@ -234,6 +232,7 @@ export default function AdminPage() {
     return 'NFC-' + result;
   };
 
+  // 1. GENERATE KARTU TUNGGAL
   const handleGenerateNew = async () => {
     setLoading(true);
     setStatus('Membuat Unique Code & PIN baru...');
@@ -256,6 +255,19 @@ export default function AdminPage() {
       fetchDashboardData();
     }
     setLoading(false);
+  };
+
+  // 2. OPEN MODAL BULK GENERATE
+  const openBulkGenerateModal = () => {
+    setPinModal({
+      isOpen: true,
+      actionType: 'bulkGenerate',
+      targetDevice: null,
+      bulkQty: 10,
+      pinInput: '',
+      errorMsg: '',
+      isSubmitting: false
+    });
   };
 
   const handleCopyNfcUrl = (deviceId) => {
@@ -285,11 +297,47 @@ export default function AdminPage() {
     return cleanUrl;
   };
 
-  // VERIFIKASI PIN KARTU DAN EKSEKUSI HAPUS/EDIT
-  const handleCardPinAction = async (e) => {
+  // EKSUSI MODAL PIN ADMIN & BULK GENERATE
+  const handleModalAction = async (e) => {
     e.preventDefault();
     setPinModal(prev => ({ ...prev, isSubmitting: true, errorMsg: '' }));
-    
+
+    // A. EKSEKUSI BULK GENERATE DENGAN PIN ADMIN TERENKRIPSI DATABASE
+    if (pinModal.actionType === 'bulkGenerate') {
+      const { data: isValidPin, error: pinErr } = await supabase.rpc('verify_sales_pin', {
+        input_pin: pinModal.pinInput.trim()
+      });
+
+      if (pinErr || !isValidPin) {
+        setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: '❌ PIN Admin Salah!' }));
+        return;
+      }
+
+      const count = parseInt(pinModal.bulkQty) || 1;
+      const newDevices = [];
+
+      for (let i = 0; i < count; i++) {
+        newDevices.push({
+          id: generateUniqueCode(),
+          pin: Math.floor(100000 + Math.random() * 900000).toString(),
+          is_active: false
+        });
+      }
+
+      const { error: insertError } = await supabase.from('devices').insert(newDevices);
+
+      if (insertError) {
+        setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: 'Gagal Bulk Generate: ' + insertError.message }));
+        return;
+      }
+
+      showToast(`⚡ Berhasil membuat ${count} kartu NFC & QR baru!`);
+      fetchDashboardData();
+      setPinModal({ isOpen: false, actionType: null, targetDevice: null, bulkQty: 10, pinInput: '', errorMsg: '', isSubmitting: false });
+      return;
+    }
+
+    // B. EKSEKUSI HAPUS & EDIT DENGAN PIN KARTU
     const device = pinModal.targetDevice;
     const inputPinClean = String(pinModal.pinInput).trim();
     const devicePinClean = String(device.pin).trim();
@@ -322,7 +370,6 @@ export default function AdminPage() {
       fetchDashboardData();
 
     } else if (pinModal.actionType === 'deleteCard') {
-      // EKSEKUSI HAPUS KARTU BY ID
       const { error } = await supabase.from('devices').delete().eq('id', device.id);
 
       if (error) {
@@ -336,7 +383,7 @@ export default function AdminPage() {
       if (previewDeviceModal?.id === device.id) setPreviewDeviceModal(null);
     }
 
-    setPinModal({ isOpen: false, actionType: null, targetDevice: null, pinInput: '', errorMsg: '', isSubmitting: false });
+    setPinModal({ isOpen: false, actionType: null, targetDevice: null, bulkQty: 10, pinInput: '', errorMsg: '', isSubmitting: false });
   };
 
   const filteredDevices = devices.filter((device) => {
@@ -432,9 +479,15 @@ export default function AdminPage() {
         </div>
       </div>
 
-      <button onClick={handleGenerateNew} disabled={loading} style={{ width: '100%', padding: '14px', backgroundColor: loading ? '#94a3b8' : '#2563eb', color: '#ffffff', border: 'none', borderRadius: '12px', fontWeight: '600', fontSize: '15px', cursor: loading ? 'not-allowed' : 'pointer', marginBottom: '20px', boxShadow: '0 4px 12px rgba(37, 99, 235, 0.2)' }}>
-        + Generate Unique Code & QR Baru
-      </button>
+      {/* TOMBOL GENERATE SINGLE & BULK */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+        <button onClick={handleGenerateNew} disabled={loading} style={{ flex: 1, padding: '14px', backgroundColor: loading ? '#94a3b8' : '#2563eb', color: '#ffffff', border: 'none', borderRadius: '12px', fontWeight: '600', fontSize: '13px', cursor: loading ? 'not-allowed' : 'pointer', boxShadow: '0 4px 12px rgba(37, 99, 235, 0.2)' }}>
+          + Generate 1 ID
+        </button>
+        <button onClick={openBulkGenerateModal} style={{ flex: 1, padding: '14px', backgroundColor: '#059669', color: '#ffffff', border: 'none', borderRadius: '12px', fontWeight: '700', fontSize: '13px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(5, 150, 105, 0.2)' }}>
+          ⚡ Bulk Generate (Custom)
+        </button>
+      </div>
 
       {(currentDevice || previewDeviceModal) && (
         <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '2px solid #2563eb', marginBottom: '24px', position: 'relative' }}>
@@ -565,7 +618,7 @@ export default function AdminPage() {
                         style={{ width: '100%', padding: '8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
                       />
                       <div style={{ display: 'flex', gap: '6px' }}>
-                        <button onClick={() => setPinModal({ isOpen: true, actionType: 'saveEdit', targetDevice: device, pinInput: '', errorMsg: '', isSubmitting: false })} style={{ flex: 1, padding: '8px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                        <button onClick={() => setPinModal({ isOpen: true, actionType: 'saveEdit', targetDevice: device, bulkQty: 10, pinInput: '', errorMsg: '', isSubmitting: false })} style={{ flex: 1, padding: '8px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
                           Simpan (PIN)
                         </button>
                         <button onClick={() => setEditingDeviceId(null)} style={{ padding: '8px 12px', backgroundColor: '#cbd5e1', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>
@@ -584,9 +637,8 @@ export default function AdminPage() {
                           ✏️ Edit Nama & Link (PIN)
                         </button>
                         
-                        {/* TOMBOL HAPUS KARTU */}
                         <button
-                          onClick={() => setPinModal({ isOpen: true, actionType: 'deleteCard', targetDevice: device, pinInput: '', errorMsg: '', isSubmitting: false })}
+                          onClick={() => setPinModal({ isOpen: true, actionType: 'deleteCard', targetDevice: device, bulkQty: 10, pinInput: '', errorMsg: '', isSubmitting: false })}
                           style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}
                         >
                           🗑️ Hapus Kartu (PIN)
@@ -601,7 +653,7 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* MODAL POP-UP PIN KUSTOM */}
+      {/* MODAL POP-UP PIN KUSTOM (SEKaligus Untuk BULK GENERATE) */}
       {pinModal.isOpen && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -614,27 +666,52 @@ export default function AdminPage() {
             border: '1px solid #e2e8f0', textAlign: 'center'
           }}>
             <h3 style={{ margin: '0 0 6px 0', fontSize: '17px', fontWeight: '700', color: '#0f172a' }}>
-              {pinModal.actionType === 'deleteCard' ? 'Hapus Kartu NFC' : 'Konfirmasi Perubahan'}
+              {pinModal.actionType === 'bulkGenerate' ? '⚡ Bulk Generate ID' : pinModal.actionType === 'deleteCard' ? 'Hapus Kartu NFC' : 'Konfirmasi Perubahan'}
             </h3>
 
             <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#64748b' }}>
-              Masukkan PIN Kartu (PIN: <strong>{pinModal.targetDevice?.pin}</strong>) untuk mengonfirmasi {pinModal.actionType === 'deleteCard' ? `penghapusan ${pinModal.targetDevice?.id}` : 'perubahan'}:
+              {pinModal.actionType === 'bulkGenerate'
+                ? 'Masukkan jumlah ID yang ingin dibuat dan PIN Admin Anda:'
+                : `Masukkan PIN Kartu (PIN: ${pinModal.targetDevice?.pin}):`}
             </p>
 
-            <form onSubmit={handleCardPinAction}>
-              <input
-                type="password"
-                required
-                autoFocus
-                placeholder="Masukkan PIN 6-digit"
-                value={pinModal.pinInput}
-                onChange={(e) => setPinModal(prev => ({ ...prev, pinInput: e.target.value }))}
-                style={{
-                  width: '100%', padding: '10px', fontSize: '16px', textAlign: 'center',
-                  letterSpacing: '4px', borderRadius: '8px', border: '1px solid #cbd5e1',
-                  boxSizing: 'border-box', marginBottom: '12px', outline: 'none'
-                }}
-              />
+            <form onSubmit={handleModalAction}>
+              {pinModal.actionType === 'bulkGenerate' && (
+                <div style={{ marginBottom: '12px', textAlign: 'left' }}>
+                  <label style={{ fontSize: '11px', fontWeight: '600', color: '#475569', display: 'block', marginBottom: '4px' }}>Jumlah Kartu (Qty)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    required
+                    value={pinModal.bulkQty}
+                    onChange={(e) => setPinModal(prev => ({ ...prev, bulkQty: e.target.value }))}
+                    style={{
+                      width: '100%', padding: '10px', fontSize: '14px', borderRadius: '8px',
+                      border: '1px solid #cbd5e1', boxSizing: 'border-box', outline: 'none'
+                    }}
+                  />
+                </div>
+              )}
+
+              <div style={{ marginBottom: '16px', textAlign: 'left' }}>
+                <label style={{ fontSize: '11px', fontWeight: '600', color: '#475569', display: 'block', marginBottom: '4px' }}>
+                  {pinModal.actionType === 'bulkGenerate' ? 'PIN Admin Konfirmasi' : 'PIN Kartu Konfirmasi'}
+                </label>
+                <input
+                  type="password"
+                  required
+                  autoFocus
+                  placeholder="Masukkan PIN 6-digit"
+                  value={pinModal.pinInput}
+                  onChange={(e) => setPinModal(prev => ({ ...prev, pinInput: e.target.value }))}
+                  style={{
+                    width: '100%', padding: '10px', fontSize: '15px', textAlign: 'center',
+                    letterSpacing: '4px', borderRadius: '8px', border: '1px solid #cbd5e1',
+                    boxSizing: 'border-box', outline: 'none', backgroundColor: '#f8fafc'
+                  }}
+                />
+              </div>
 
               {pinModal.errorMsg && (
                 <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#ef4444', fontWeight: '600' }}>
@@ -645,7 +722,7 @@ export default function AdminPage() {
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button
                   type="button"
-                  onClick={() => setPinModal({ isOpen: false, actionType: null, targetDevice: null, pinInput: '', errorMsg: '', isSubmitting: false })}
+                  onClick={() => setPinModal({ isOpen: false, actionType: null, targetDevice: null, bulkQty: 10, pinInput: '', errorMsg: '', isSubmitting: false })}
                   style={{ flex: 1, padding: '10px', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}
                 >
                   Batal
@@ -653,9 +730,9 @@ export default function AdminPage() {
                 <button
                   type="submit"
                   disabled={pinModal.isSubmitting}
-                  style={{ flex: 1, padding: '10px', backgroundColor: pinModal.actionType === 'deleteCard' ? '#ef4444' : '#2563eb', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: pinModal.isSubmitting ? 'not-allowed' : 'pointer' }}
+                  style={{ flex: 1, padding: '10px', backgroundColor: pinModal.actionType === 'deleteCard' ? '#ef4444' : '#059669', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: pinModal.isSubmitting ? 'not-allowed' : 'pointer' }}
                 >
-                  {pinModal.isSubmitting ? 'Memeriksa...' : 'Konfirmasi'}
+                  {pinModal.isSubmitting ? 'Memproses...' : 'Konfirmasi'}
                 </button>
               </div>
             </form>
