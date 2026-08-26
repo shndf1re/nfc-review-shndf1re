@@ -122,16 +122,16 @@ export default function AdminPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('newest');
 
-  // Toast State
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
-  // Modal State
+  // Modal PIN Konfirmasi Kustom
   const [pinModal, setPinModal] = useState({
     isOpen: false,
-    actionType: null,
+    actionType: null, // 'saveEdit' atau 'deleteCard'
     targetDevice: null,
     pinInput: '',
-    errorMsg: ''
+    errorMsg: '',
+    isSubmitting: false
   });
 
   const timeoutRef = useRef(null);
@@ -264,35 +264,12 @@ export default function AdminPage() {
     showToast('📋 Link NFC disalin ke clipboard!');
   };
 
-  // KIRIM PESAN SETUP OTOMATIS KE PEMBELI VIA WHATSAPP
   const handleSendWaCustomer = (device) => {
     const setupUrl = `${window.location.origin}/setup/${device.id}`;
     const message = `Halo Kak! Terima kasih telah memesan Papan Akrilik Google Review (${SITE_CONFIG.brandName}).\n\nBerikut detail aktivasi papan Anda:\n- ID Kartu: ${device.id}\n- PIN Akses: ${device.pin}\n\nSilakan buka link aktivasi berikut untuk menghubungkan papan ke link Google Review toko Anda:\n🔗 ${setupUrl}`;
     
     const waUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
     window.open(waUrl, '_blank');
-  };
-
-  const handleWriteAndLockNFC = async (deviceId) => {
-    if (!('NDEFReader' in window)) {
-      setStatus('⚠️ Browser tidak mendukung Web NFC. Gunakan aplikasi NFC Tools di iPhone.');
-      return;
-    }
-
-    try {
-      setStatus('📱 Dekatkan chip NFC ke bagian belakang HP...');
-      const ndef = new window.NDEFReader();
-      const targetUrl = `${window.location.origin}/r/${deviceId}?src=nfc`;
-
-      await ndef.write({ records: [{ recordType: 'url', data: targetUrl }] });
-
-      setStatus('🔒 Menulis sukses! Mengunci chip NFC secara permanen...');
-      await ndef.makeReadOnly();
-      setStatus(`🎉 SUKSES! Perangkat ${deviceId} selesai ditulis & TERKUNCI PERMANEN.`);
-      showToast(`Chip ${deviceId} Terkunci Permanen!`);
-    } catch (error) {
-      setStatus('❌ Gagal NFC: ' + error.message);
-    }
   };
 
   const formatReviewUrl = (url) => {
@@ -308,12 +285,17 @@ export default function AdminPage() {
     return cleanUrl;
   };
 
+  // VERIFIKASI PIN KARTU DAN EKSEKUSI HAPUS/EDIT
   const handleCardPinAction = async (e) => {
     e.preventDefault();
+    setPinModal(prev => ({ ...prev, isSubmitting: true, errorMsg: '' }));
+    
     const device = pinModal.targetDevice;
+    const inputPinClean = String(pinModal.pinInput).trim();
+    const devicePinClean = String(device.pin).trim();
 
-    if (pinModal.pinInput.trim() !== String(device.pin).trim()) {
-      setPinModal(prev => ({ ...prev, errorMsg: '❌ PIN Kartu Salah!' }));
+    if (inputPinClean !== devicePinClean) {
+      setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: '❌ PIN Kartu Salah!' }));
       return;
     }
 
@@ -327,24 +309,34 @@ export default function AdminPage() {
       }
 
       const { error } = await supabase.from('devices').update(updatePayload).eq('id', device.id);
-      if (!error) {
-        setEditingDeviceId(null);
-        setEditTargetUrl('');
-        setEditLabelName('');
-        showToast('Data toko berhasil diperbarui!');
-        fetchDashboardData();
+      
+      if (error) {
+        setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: 'Gagal update: ' + error.message }));
+        return;
       }
+
+      setEditingDeviceId(null);
+      setEditTargetUrl('');
+      setEditLabelName('');
+      showToast('Data toko berhasil diperbarui!');
+      fetchDashboardData();
+
     } else if (pinModal.actionType === 'deleteCard') {
+      // EKSEKUSI HAPUS KARTU BY ID
       const { error } = await supabase.from('devices').delete().eq('id', device.id);
-      if (!error) {
-        showToast(`Kartu ${device.id} berhasil dihapus!`, 'error');
-        fetchDashboardData();
-        if (currentDevice?.id === device.id) setCurrentDevice(null);
-        if (previewDeviceModal?.id === device.id) setPreviewDeviceModal(null);
+
+      if (error) {
+        setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: 'Gagal menghapus: ' + error.message }));
+        return;
       }
+
+      showToast(`Kartu ${device.id} berhasil dihapus!`, 'error');
+      fetchDashboardData();
+      if (currentDevice?.id === device.id) setCurrentDevice(null);
+      if (previewDeviceModal?.id === device.id) setPreviewDeviceModal(null);
     }
 
-    setPinModal({ isOpen: false, actionType: null, targetDevice: null, pinInput: '', errorMsg: '' });
+    setPinModal({ isOpen: false, actionType: null, targetDevice: null, pinInput: '', errorMsg: '', isSubmitting: false });
   };
 
   const filteredDevices = devices.filter((device) => {
@@ -360,11 +352,6 @@ export default function AdminPage() {
       const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
       if (timeA !== timeB) return timeB - timeA;
       return b.id.localeCompare(a.id);
-    } else if (sortBy === 'oldest') {
-      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
-      if (timeA !== timeB) return timeA - timeB;
-      return a.id.localeCompare(b.id);
     }
     return 0;
   });
@@ -374,7 +361,7 @@ export default function AdminPage() {
   if (!isAuthenticated) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', boxSizing: 'border-box', backgroundColor: '#f8fafc' }}>
-        <div style={{ width: '100%', maxWidth: '380px', backgroundColor: '#ffffff', borderRadius: '16px', padding: '32px 24px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.05)', border: '1px solid #e2e8f0', position: 'relative' }}>
+        <div style={{ width: '100%', maxWidth: '380px', backgroundColor: '#ffffff', borderRadius: '16px', padding: '32px 24px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.05)', border: '1px solid #e2e8f0' }}>
           
           <div style={{ marginBottom: '16px' }}>
             <Link href="/" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: '600', color: '#64748b', textDecoration: 'none', padding: '6px 10px', borderRadius: '8px', backgroundColor: '#f1f5f9' }}>
@@ -410,7 +397,7 @@ export default function AdminPage() {
   return (
     <div style={{ maxWidth: '560px', margin: '0 auto', padding: '24px 16px', boxSizing: 'border-box', fontFamily: '-apple-system, sans-serif' }}>
       
-      {/* HEADER UTAMA */}
+      {/* HEADER */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', backgroundColor: '#ffffff', padding: '16px 20px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
         <div>
           <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700' }}>{SITE_CONFIG?.adminTitle || 'Dashboard NFC'}</h2>
@@ -427,7 +414,7 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* 1. DASHBOARD KPI CARDS (RINGKASAN UTAMA) */}
+      {/* DASHBOARD KPI */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', marginBottom: '20px' }}>
         <div style={{ backgroundColor: '#ffffff', padding: '14px', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
           <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '600', display: 'block' }}>🏷️ Kartu Aktif / Total</span>
@@ -440,7 +427,7 @@ export default function AdminPage() {
         </div>
 
         <div style={{ backgroundColor: '#ffffff', padding: '14px', borderRadius: '14px', border: '1px solid #e2e8f0', gridColumn: 'span 2' }}>
-          <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '600', display: 'block' }}>💵 Total Omzet Tercatat</span>
+          <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '600', display: 'block' }}>💵 Total Omzet Penjualan</span>
           <strong style={{ fontSize: '20px', color: '#16a34a' }}>Rp {totalOmzet.toLocaleString('id-ID')}</strong>
         </div>
       </div>
@@ -492,9 +479,6 @@ export default function AdminPage() {
             </button>
             <button onClick={() => handleCopyNfcUrl((currentDevice || previewDeviceModal).id)} style={{ width: '100%', padding: '10px', backgroundColor: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: '10px', fontWeight: '600', fontSize: '12px', cursor: 'pointer' }}>
               📋 Salin URL NFC
-            </button>
-            <button onClick={() => handleWriteAndLockNFC((currentDevice || previewDeviceModal).id)} style={{ width: '100%', padding: '10px', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '10px', fontWeight: '600', fontSize: '12px', cursor: 'pointer' }}>
-              📲 Tulis via Chrome (Android Only)
             </button>
           </div>
         </div>
@@ -564,19 +548,52 @@ export default function AdminPage() {
                 )}
 
                 <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <button onClick={() => handleSendWaCustomer(device)} style={{ width: '100%', padding: '6px 10px', backgroundColor: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '6px', fontSize: '11px', fontWeight: '700', cursor: 'pointer', textAlign: 'center' }}>
-                    💬 Send Format Setup WA
-                  </button>
+                  {editingDeviceId === device.id ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px', backgroundColor: '#f1f5f9', padding: '10px', borderRadius: '8px' }}>
+                      <input
+                        type="text"
+                        placeholder="Nama Toko / Catatan"
+                        value={editLabelName}
+                        onChange={(e) => setEditLabelName(e.target.value)}
+                        style={{ width: '100%', padding: '8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
+                      />
+                      <input
+                        type="text"
+                        placeholder="Link Direct Review atau Place ID (ChIJ...)"
+                        value={editTargetUrl}
+                        onChange={(e) => setEditTargetUrl(e.target.value)}
+                        style={{ width: '100%', padding: '8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
+                      />
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button onClick={() => setPinModal({ isOpen: true, actionType: 'saveEdit', targetDevice: device, pinInput: '', errorMsg: '', isSubmitting: false })} style={{ flex: 1, padding: '8px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                          Simpan (PIN)
+                        </button>
+                        <button onClick={() => setEditingDeviceId(null)} style={{ padding: '8px 12px', backgroundColor: '#cbd5e1', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>
+                          Batal
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <button onClick={() => handleSendWaCustomer(device)} style={{ width: '100%', padding: '6px 10px', backgroundColor: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '6px', fontSize: '11px', fontWeight: '700', cursor: 'pointer', textAlign: 'center' }}>
+                        💬 Send Format Setup WA
+                      </button>
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <button onClick={() => { setEditingDeviceId(device.id); setEditTargetUrl(device.target_url || ''); setEditLabelName(device.label_name || ''); }} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', padding: 0, fontWeight: '600', cursor: 'pointer' }}>
-                      ✏️ Edit (PIN)
-                    </button>
-                    
-                    <button onClick={() => setPinModal({ isOpen: true, actionType: 'deleteCard', targetDevice: device, pinInput: '', errorMsg: '' })} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
-                      🗑️ Hapus (PIN)
-                    </button>
-                  </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                        <button onClick={() => { setEditingDeviceId(device.id); setEditTargetUrl(device.target_url || ''); setEditLabelName(device.label_name || ''); }} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', padding: 0, fontWeight: '600', cursor: 'pointer' }}>
+                          ✏️ Edit Nama & Link (PIN)
+                        </button>
+                        
+                        {/* TOMBOL HAPUS KARTU */}
+                        <button
+                          onClick={() => setPinModal({ isOpen: true, actionType: 'deleteCard', targetDevice: device, pinInput: '', errorMsg: '', isSubmitting: false })}
+                          style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}
+                        >
+                          🗑️ Hapus Kartu (PIN)
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             );
@@ -584,20 +601,75 @@ export default function AdminPage() {
         </div>
       </div>
 
+      {/* MODAL POP-UP PIN KUSTOM */}
+      {pinModal.isOpen && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '16px'
+        }}>
+          <div style={{
+            width: '100%', maxWidth: '360px', backgroundColor: '#ffffff',
+            borderRadius: '16px', padding: '24px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)',
+            border: '1px solid #e2e8f0', textAlign: 'center'
+          }}>
+            <h3 style={{ margin: '0 0 6px 0', fontSize: '17px', fontWeight: '700', color: '#0f172a' }}>
+              {pinModal.actionType === 'deleteCard' ? 'Hapus Kartu NFC' : 'Konfirmasi Perubahan'}
+            </h3>
+
+            <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#64748b' }}>
+              Masukkan PIN Kartu (PIN: <strong>{pinModal.targetDevice?.pin}</strong>) untuk mengonfirmasi {pinModal.actionType === 'deleteCard' ? `penghapusan ${pinModal.targetDevice?.id}` : 'perubahan'}:
+            </p>
+
+            <form onSubmit={handleCardPinAction}>
+              <input
+                type="password"
+                required
+                autoFocus
+                placeholder="Masukkan PIN 6-digit"
+                value={pinModal.pinInput}
+                onChange={(e) => setPinModal(prev => ({ ...prev, pinInput: e.target.value }))}
+                style={{
+                  width: '100%', padding: '10px', fontSize: '16px', textAlign: 'center',
+                  letterSpacing: '4px', borderRadius: '8px', border: '1px solid #cbd5e1',
+                  boxSizing: 'border-box', marginBottom: '12px', outline: 'none'
+                }}
+              />
+
+              {pinModal.errorMsg && (
+                <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#ef4444', fontWeight: '600' }}>
+                  {pinModal.errorMsg}
+                </p>
+              )}
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setPinModal({ isOpen: false, actionType: null, targetDevice: null, pinInput: '', errorMsg: '', isSubmitting: false })}
+                  style={{ flex: 1, padding: '10px', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={pinModal.isSubmitting}
+                  style={{ flex: 1, padding: '10px', backgroundColor: pinModal.actionType === 'deleteCard' ? '#ef4444' : '#2563eb', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: pinModal.isSubmitting ? 'not-allowed' : 'pointer' }}
+                >
+                  {pinModal.isSubmitting ? 'Memeriksa...' : 'Konfirmasi'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* FLOATING TOAST NOTIFICATION */}
       {toast.show && (
         <div style={{
-          position: 'fixed',
-          bottom: '24px',
-          right: '24px',
+          position: 'fixed', bottom: '24px', right: '24px',
           backgroundColor: toast.type === 'error' ? '#ef4444' : '#16a34a',
-          color: '#ffffff',
-          padding: '12px 20px',
-          borderRadius: '10px',
-          boxShadow: '0 4px 14px rgba(0,0,0,0.2)',
-          fontSize: '13px',
-          fontWeight: '600',
-          zIndex: 10000
+          color: '#ffffff', padding: '12px 20px', borderRadius: '10px',
+          boxShadow: '0 4px 14px rgba(0,0,0,0.2)', fontSize: '13px', fontWeight: '600', zIndex: 10000
         }}>
           {toast.message}
         </div>
