@@ -54,21 +54,26 @@ export default function SalesPage() {
     setLoading(false);
   };
 
-  // Simpan Penjualan & Kurangi Stok Akrilik Otomatis
+  // Simpan Penjualan & Kurangi Stok Akrilik Otomatis (Dengan Proteksi Stok)
   const handleAddSale = async (e) => {
     e.preventDefault();
-    setSubmitStatus('Menyimpan transaksi...');
+    setSubmitStatus('');
 
     const priceNumber = parseFloat(totalPrice) || 0;
     const qtyNumber = parseInt(quantity) || 1;
 
-    // Cek ketersediaan stok
-    if (acrylicStock < qtyNumber) {
-      if (!confirm(`⚠️ Stok Akrilik saat ini (${acrylicStock} pcs) kurang dari jumlah pesanan (${qtyNumber} pcs). Tetap lanjutkan?`)) {
-        setSubmitStatus('');
-        return;
-      }
+    // VALIDASI STRICT: Mencegah Transaksi Jika Stok Tidak Cukup
+    if (acrylicStock <= 0) {
+      setSubmitStatus('❌ Transaksi gagal! Stok Papan Akrilik sudah HABIS (0 pcs). Silakan update stok terlebih dahulu.');
+      return;
     }
+
+    if (qtyNumber > acrylicStock) {
+      setSubmitStatus(`❌ Transaksi dibatalkan! Jumlah pesanan (${qtyNumber} pcs) melebihi sisa stok yang ada (${acrylicStock} pcs).`);
+      return;
+    }
+
+    setSubmitStatus('Menyimpan transaksi...');
 
     // 1. Simpan Transaksi Penjualan
     const { error: saleError } = await supabase.from('sales').insert([
@@ -87,9 +92,9 @@ export default function SalesPage() {
       return;
     }
 
-    // 2. Kurangi Stok Akrilik Otomatis
+    // 2. Kurangi Stok Akrilik Secara Akurat di Database
     if (stockItemId) {
-      const newStock = Math.max(0, acrylicStock - qtyNumber);
+      const newStock = acrylicStock - qtyNumber;
       await supabase.from('inventory').update({ stock_quantity: newStock }).eq('id', stockItemId);
     }
 
@@ -110,6 +115,7 @@ export default function SalesPage() {
     const newStock = parseInt(inputStock) || 0;
     if (stockItemId) {
       await supabase.from('inventory').update({ stock_quantity: newStock }).eq('id', stockItemId);
+      setSubmitStatus('');
       fetchData();
     }
   };
@@ -158,8 +164,10 @@ export default function SalesPage() {
 
           <div style={{ display: 'flex', gap: '10px' }}>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: '12px', fontWeight: '600', color: '#334155', display: 'block', marginBottom: '4px' }}>Jumlah (Pcs)</label>
-              <input type="number" min="1" required value={quantity} onChange={(e) => setQuantity(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+              <label style={{ fontSize: '12px', fontWeight: '600', color: '#334155', display: 'block', marginBottom: '4px' }}>
+                Jumlah (Pcs) <span style={{ color: '#dc2626' }}>(Maks: {acrylicStock})</span>
+              </label>
+              <input type="number" min="1" max={acrylicStock} required value={quantity} onChange={(e) => setQuantity(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
             </div>
 
             <div style={{ flex: 2 }}>
@@ -189,12 +197,26 @@ export default function SalesPage() {
             <input type="text" placeholder="Contoh: Termasuk dudukan kayu / Ongkir COD" value={notes} onChange={(e) => setNotes(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
           </div>
 
-          <button type="submit" style={{ padding: '12px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '700', fontSize: '14px', cursor: 'pointer', marginTop: '6px' }}>
-            💾 Simpan Penjualan
+          <button
+            type="submit"
+            disabled={acrylicStock <= 0}
+            style={{
+              padding: '12px',
+              backgroundColor: acrylicStock <= 0 ? '#94a3b8' : '#16a34a',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '8px',
+              fontWeight: '700',
+              fontSize: '14px',
+              cursor: acrylicStock <= 0 ? 'not-allowed' : 'pointer',
+              marginTop: '6px'
+            }}
+          >
+            {acrylicStock <= 0 ? '❌ Stok Akrilik Habis' : '💾 Simpan Penjualan'}
           </button>
         </form>
 
-        {submitStatus && <p style={{ marginTop: '12px', fontSize: '12px', color: '#2563eb', textAlign: 'center', fontWeight: '600' }}>{submitStatus}</p>}
+        {submitStatus && <p style={{ marginTop: '12px', fontSize: '12px', color: submitStatus.startsWith('❌') ? '#dc2626' : '#2563eb', textAlign: 'center', fontWeight: '600' }}>{submitStatus}</p>}
       </div>
 
       {/* 3. LAPORAN & RIWAYAT PENJUALAN */}
