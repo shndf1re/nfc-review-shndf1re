@@ -11,9 +11,8 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 );
 
-const TIMEOUT_DURATION = 30 * 60 * 1000; // 30 Menit
+const TIMEOUT_DURATION = 30 * 60 * 1000;
 
-// FUNGSI UTAMA DRAW QR + LOGO GOOGLE KE CANVAS (UNTUK ZIP & PREVIEW)
 function drawQrWithLogoToCanvas(text, logoUrl) {
   return new Promise((resolve) => {
     const renderSize = 1000;
@@ -173,7 +172,6 @@ export default function AdminPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('newest');
 
-  // State Selection Bulk
   const [selectedDeviceIds, setSelectedDeviceIds] = useState([]);
   const [bulkEditLabel, setBulkEditLabel] = useState('');
   const [bulkEditUrl, setBulkEditUrl] = useState('');
@@ -182,10 +180,9 @@ export default function AdminPage() {
 
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
-  // Modal State PIN
   const [pinModal, setPinModal] = useState({
     isOpen: false,
-    actionType: null, // 'saveEdit', 'deleteCard', 'bulkGenerate', atau 'bulkEditSave'
+    actionType: null,
     targetDevice: null,
     bulkQty: 10,
     pinInput: '',
@@ -202,7 +199,6 @@ export default function AdminPage() {
     }, 3000);
   };
 
-  // LOGIKA SESSION TIMEOUT PRESISI (Hanya reset jika ada klik/ketik nyata)
   const resetSessionTimer = () => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     timeoutRef.current = setTimeout(() => {
@@ -218,13 +214,12 @@ export default function AdminPage() {
       resetSessionTimer();
     }
 
-    // Hanya dengarkan aksi interaksi langsung (tanpa mousemove agar tidak sensitif)
     const events = ['keydown', 'click', 'touchstart'];
     let lastActivityTime = Date.now();
     
     const handleUserActivity = () => {
       const now = Date.now();
-      if (now - lastActivityTime > 10000) { // Throttle 10 detik
+      if (now - lastActivityTime > 10000) {
         lastActivityTime = now;
         if (localStorage.getItem('nfc_admin_session') === 'true') {
           resetSessionTimer();
@@ -234,19 +229,10 @@ export default function AdminPage() {
 
     events.forEach(event => window.addEventListener(event, handleUserActivity));
 
-    // REALTIME LISTENER SUPABASE
     const channel = supabase
       .channel('schema-db-changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'devices' },
-        () => { fetchDashboardData(); }
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'sales' },
-        () => { fetchDashboardData(); }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'devices' }, () => { fetchDashboardData(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, () => { fetchDashboardData(); })
       .subscribe();
 
     return () => {
@@ -270,29 +256,46 @@ export default function AdminPage() {
     }
   };
 
+  // HANDLER LOGIN AMAN (SUPPORT USERNAME/PASSWORD DAN SAFE RPC PIN)
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoginLoading(true);
     setLoginError('');
 
     try {
-      const { data: user, error } = await supabase
+      // 1. Coba verifikasi via tabel admin_users
+      const { data: users, error } = await supabase
         .from('admin_users')
         .select('*')
-        .eq('username', usernameInput)
-        .eq('password', passwordInput)
-        .single();
+        .eq('username', usernameInput.trim());
 
-      if (error || !user) {
-        setLoginError('Username atau Password salah!');
-      } else {
+      let isSuccess = false;
+
+      if (!error && users && users.length > 0) {
+        const matchedUser = users.find(
+          u => String(u.password).trim() === passwordInput.trim() || String(u.pin).trim() === passwordInput.trim()
+        );
+        if (matchedUser) isSuccess = true;
+      }
+
+      // 2. Fallback verifikasi via RPC PIN Admin jika metode pertama gagal
+      if (!isSuccess) {
+        const { data: isValidPin } = await supabase.rpc('verify_sales_pin', {
+          input_pin: passwordInput.trim()
+        });
+        if (isValidPin) isSuccess = true;
+      }
+
+      if (isSuccess) {
         setIsAuthenticated(true);
         localStorage.setItem('nfc_admin_session', 'true');
         resetSessionTimer();
         fetchDashboardData();
+      } else {
+        setLoginError('❌ Username atau Password/PIN Salah!');
       }
     } catch (err) {
-      setLoginError('Terjadi kesalahan koneksi.');
+      setLoginError('❌ Terjadi kesalahan koneksi.');
     } finally {
       setLoginLoading(false);
     }
@@ -377,7 +380,6 @@ export default function AdminPage() {
     return cleanUrl;
   };
 
-  // CHECKBOX SELECTION HANDLERS
   const handleSelectAll = (e) => {
     if (e.target.checked) {
       setSelectedDeviceIds(sortedDevices.map(d => d.id));
@@ -394,7 +396,6 @@ export default function AdminPage() {
     }
   };
 
-  // BULK DOWNLOAD DENGAN LOGO GOOGLE KE FILE .ZIP (JSZIP)
   const handleDownloadSelectedQrCodesZip = async () => {
     if (selectedDeviceIds.length === 0 || isDownloadingBulk) return;
     setIsDownloadingBulk(true);
@@ -426,7 +427,6 @@ export default function AdminPage() {
     showToast(`✅ Berhasil mendownload file ZIP berisi ${selectedDeviceIds.length} QR Code!`);
   };
 
-  // EKSEKUSI MODAL PIN ADMIN & BULK ACTIONS
   const handleModalAction = async (e) => {
     e.preventDefault();
     setPinModal(prev => ({ ...prev, isSubmitting: true, errorMsg: '' }));
@@ -580,7 +580,7 @@ export default function AdminPage() {
               <input type="text" required placeholder="Username" value={usernameInput} onChange={(e) => setUsernameInput(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '14px', boxSizing: 'border-box', backgroundColor: '#f8fafc' }} />
             </div>
             <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>Password</label>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>Password / PIN</label>
               <input type="password" required placeholder="••••••••" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '14px', boxSizing: 'border-box', backgroundColor: '#f8fafc' }} />
             </div>
             <button type="submit" disabled={loginLoading} style={{ width: '100%', padding: '12px', backgroundColor: loginLoading ? '#94a3b8' : '#2563eb', color: '#ffffff', border: 'none', borderRadius: '10px', fontWeight: '600', fontSize: '15px', cursor: loginLoading ? 'not-allowed' : 'pointer' }}>
