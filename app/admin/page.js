@@ -117,17 +117,22 @@ export default function AdminPage() {
   const [editingDeviceId, setEditingDeviceId] = useState(null);
   const [editTargetUrl, setEditTargetUrl] = useState('');
   const [editLabelName, setEditLabelName] = useState('');
-  const [activeQrDeviceId, setActiveQrDeviceId] = useState(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('newest');
 
+  // STATE UNTUK FITUR SELECT BULK (SELECTION)
+  const [selectedDeviceIds, setSelectedDeviceIds] = useState([]);
+  const [bulkEditLabel, setBulkEditLabel] = useState('');
+  const [bulkEditUrl, setBulkEditUrl] = useState('');
+  const [showBulkEditForm, setShowBulkEditForm] = useState(false);
+
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
-  // State Modal PIN Kustom (Edit, Delete, & Bulk Generate)
+  // Modal State
   const [pinModal, setPinModal] = useState({
     isOpen: false,
-    actionType: null, // 'saveEdit', 'deleteCard', atau 'bulkGenerate'
+    actionType: null, // 'saveEdit', 'deleteCard', 'bulkGenerate', atau 'bulkEditSave'
     targetDevice: null,
     bulkQty: 10,
     pinInput: '',
@@ -232,7 +237,6 @@ export default function AdminPage() {
     return 'NFC-' + result;
   };
 
-  // 1. GENERATE KARTU TUNGGAL
   const handleGenerateNew = async () => {
     setLoading(true);
     setStatus('Membuat Unique Code & PIN baru...');
@@ -257,7 +261,6 @@ export default function AdminPage() {
     setLoading(false);
   };
 
-  // 2. OPEN MODAL BULK GENERATE
   const openBulkGenerateModal = () => {
     setPinModal({
       isOpen: true,
@@ -297,18 +300,52 @@ export default function AdminPage() {
     return cleanUrl;
   };
 
-  // EKSUSI MODAL PIN ADMIN & BULK GENERATE
+  // CHECKBOX SELECTION HANDLERS
+  const handleSelectAll = (e) => {
+    if (e.target.checked) {
+      setSelectedDeviceIds(sortedDevices.map(d => d.id));
+    } else {
+      setSelectedDeviceIds([]);
+    }
+  };
+
+  const handleToggleSelectCard = (id) => {
+    if (selectedDeviceIds.includes(id)) {
+      setSelectedDeviceIds(selectedDeviceIds.filter(item => item !== id));
+    } else {
+      setSelectedDeviceIds([...selectedDeviceIds, id]);
+    }
+  };
+
+  // DOWNLOAD ALL SELECTED QR CODES
+  const handleDownloadSelectedQrCodes = () => {
+    if (selectedDeviceIds.length === 0) return;
+    showToast(`Mengunduh ${selectedDeviceIds.length} QR Code...`);
+    
+    selectedDeviceIds.forEach((id, index) => {
+      setTimeout(() => {
+        const qrUrl = `${window.location.origin}/r/${id}?src=qr`;
+        const apiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=1000x1000&data=${encodeURIComponent(qrUrl)}`;
+        
+        const link = document.createElement('a');
+        link.href = apiUrl;
+        link.download = `qrcode-${id}.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }, index * 400); // Stagger download delay
+    });
+  };
+
+  // EKSEKUSI MODAL PIN ADMIN & BULK ACTIONS
   const handleModalAction = async (e) => {
     e.preventDefault();
     setPinModal(prev => ({ ...prev, isSubmitting: true, errorMsg: '' }));
 
-    // A. EKSEKUSI BULK GENERATE DENGAN PIN ADMIN TERENKRIPSI DATABASE
+    // A. BULK GENERATE
     if (pinModal.actionType === 'bulkGenerate') {
-      const { data: isValidPin, error: pinErr } = await supabase.rpc('verify_sales_pin', {
-        input_pin: pinModal.pinInput.trim()
-      });
-
-      if (pinErr || !isValidPin) {
+      const { data: isValidPin } = await supabase.rpc('verify_sales_pin', { input_pin: pinModal.pinInput.trim() });
+      if (!isValidPin) {
         setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: '❌ PIN Admin Salah!' }));
         return;
       }
@@ -325,19 +362,50 @@ export default function AdminPage() {
       }
 
       const { error: insertError } = await supabase.from('devices').insert(newDevices);
-
       if (insertError) {
-        setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: 'Gagal Bulk Generate: ' + insertError.message }));
+        setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: insertError.message }));
         return;
       }
 
-      showToast(`⚡ Berhasil membuat ${count} kartu NFC & QR baru!`);
+      showToast(`⚡ Berhasil membuat ${count} kartu baru!`);
       fetchDashboardData();
       setPinModal({ isOpen: false, actionType: null, targetDevice: null, bulkQty: 10, pinInput: '', errorMsg: '', isSubmitting: false });
       return;
     }
 
-    // B. EKSEKUSI HAPUS & EDIT DENGAN PIN KARTU
+    // B. BULK EDIT TERPILIH (SEKALIGUS UPDATE TERPILIH)
+    if (pinModal.actionType === 'bulkEditSave') {
+      const { data: isValidPin } = await supabase.rpc('verify_sales_pin', { input_pin: pinModal.pinInput.trim() });
+      if (!isValidPin) {
+        setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: '❌ PIN Admin Salah!' }));
+        return;
+      }
+
+      const formattedUrl = formatReviewUrl(bulkEditUrl);
+      const updatePayload = {};
+      if (bulkEditLabel.trim()) updatePayload.label_name = bulkEditLabel.trim();
+      if (formattedUrl) {
+        updatePayload.target_url = formattedUrl;
+        updatePayload.is_active = true;
+      }
+
+      const { error } = await supabase.from('devices').update(updatePayload).in('id', selectedDeviceIds);
+      if (error) {
+        setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: error.message }));
+        return;
+      }
+
+      showToast(`✅ ${selectedDeviceIds.length} Kartu berhasil di-update!`);
+      setShowBulkEditForm(false);
+      setBulkEditLabel('');
+      setBulkEditUrl('');
+      setSelectedDeviceIds([]);
+      fetchDashboardData();
+      setPinModal({ isOpen: false, actionType: null, targetDevice: null, bulkQty: 10, pinInput: '', errorMsg: '', isSubmitting: false });
+      return;
+    }
+
+    // C. SINGLE EDIT & DELETE BY PIN KARTU
     const device = pinModal.targetDevice;
     const inputPinClean = String(pinModal.pinInput).trim();
     const devicePinClean = String(device.pin).trim();
@@ -357,9 +425,8 @@ export default function AdminPage() {
       }
 
       const { error } = await supabase.from('devices').update(updatePayload).eq('id', device.id);
-      
       if (error) {
-        setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: 'Gagal update: ' + error.message }));
+        setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: error.message }));
         return;
       }
 
@@ -371,9 +438,8 @@ export default function AdminPage() {
 
     } else if (pinModal.actionType === 'deleteCard') {
       const { error } = await supabase.from('devices').delete().eq('id', device.id);
-
       if (error) {
-        setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: 'Gagal menghapus: ' + error.message }));
+        setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: error.message }));
         return;
       }
 
@@ -479,27 +545,25 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* TOMBOL GENERATE SINGLE & BULK */}
+      {/* GENERATE BUTTONS */}
       <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-        <button onClick={handleGenerateNew} disabled={loading} style={{ flex: 1, padding: '14px', backgroundColor: loading ? '#94a3b8' : '#2563eb', color: '#ffffff', border: 'none', borderRadius: '12px', fontWeight: '600', fontSize: '13px', cursor: loading ? 'not-allowed' : 'pointer', boxShadow: '0 4px 12px rgba(37, 99, 235, 0.2)' }}>
+        <button onClick={handleGenerateNew} disabled={loading} style={{ flex: 1, padding: '14px', backgroundColor: loading ? '#94a3b8' : '#2563eb', color: '#ffffff', border: 'none', borderRadius: '12px', fontWeight: '600', fontSize: '13px', cursor: loading ? 'not-allowed' : 'pointer' }}>
           + Generate 1 ID
         </button>
-        <button onClick={openBulkGenerateModal} style={{ flex: 1, padding: '14px', backgroundColor: '#059669', color: '#ffffff', border: 'none', borderRadius: '12px', fontWeight: '700', fontSize: '13px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(5, 150, 105, 0.2)' }}>
+        <button onClick={openBulkGenerateModal} style={{ flex: 1, padding: '14px', backgroundColor: '#059669', color: '#ffffff', border: 'none', borderRadius: '12px', fontWeight: '700', fontSize: '13px', cursor: 'pointer' }}>
           ⚡ Bulk Generate (Custom)
         </button>
       </div>
 
+      {/* MODAL / POPUP SHOW & PREVIEW QR CODE ANYTIME */}
       {(currentDevice || previewDeviceModal) && (
         <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '2px solid #2563eb', marginBottom: '24px', position: 'relative' }}>
-          <button
-            onClick={() => { setCurrentDevice(null); setPreviewDeviceModal(null); }}
-            style={{ position: 'absolute', top: '12px', right: '12px', background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', color: '#64748b' }}
-          >
+          <button onClick={() => { setCurrentDevice(null); setPreviewDeviceModal(null); }} style={{ position: 'absolute', top: '12px', right: '12px', background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', color: '#64748b' }}>
             ✖
           </button>
           
           <h4 style={{ margin: '0 0 12px 0', color: '#2563eb' }}>
-            ✨ {currentDevice ? 'Kartu Baru dibuat:' : 'Preview Detail Kartu:'}
+            ✨ {currentDevice ? 'Kartu Baru Dibuat:' : `Detail QR Code (${(currentDevice || previewDeviceModal).id}):`}
           </h4>
           
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
@@ -537,7 +601,40 @@ export default function AdminPage() {
         </div>
       )}
 
-      {status && <div style={{ padding: '12px', backgroundColor: '#ffffff', borderRadius: '10px', borderLeft: '4px solid #2563eb', fontSize: '13px', marginBottom: '20px' }}>{status}</div>}
+      {/* FITUR BARU: BAR KONTROL BULK ACTION & SELECTION */}
+      {selectedDeviceIds.length > 0 && (
+        <div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', padding: '14px', borderRadius: '14px', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <span style={{ fontSize: '13px', fontWeight: '700', color: '#1e40af' }}>
+              ☑️ Terpilih: {selectedDeviceIds.length} Kartu
+            </span>
+            <button onClick={() => setSelectedDeviceIds([])} style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}>
+              Batal Pilih
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button onClick={handleDownloadSelectedQrCodes} style={{ flex: 1, padding: '8px 12px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+              📥 Download Selected QR Codes
+            </button>
+            <button onClick={() => setShowBulkEditForm(!showBulkEditForm)} style={{ flex: 1, padding: '8px 12px', backgroundColor: '#059669', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+              ✏️ Bulk Edit Terpilih
+            </button>
+          </div>
+
+          {/* FORM BULK EDIT */}
+          {showBulkEditForm && (
+            <div style={{ marginTop: '12px', backgroundColor: '#ffffff', padding: '12px', borderRadius: '10px', border: '1px solid #cbd5e1' }}>
+              <h5 style={{ margin: '0 0 8px 0', fontSize: '12px', color: '#0f172a' }}>Edit Massal Untuk {selectedDeviceIds.length} Kartu:</h5>
+              <input type="text" placeholder="Nama Toko Massal (Opsional)" value={bulkEditLabel} onChange={(e) => setBulkEditLabel(e.target.value)} style={{ width: '100%', padding: '8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', marginBottom: '8px', boxSizing: 'border-box' }} />
+              <input type="text" placeholder="Link Google Review Massal (Opsional)" value={bulkEditUrl} onChange={(e) => setBulkEditUrl(e.target.value)} style={{ width: '100%', padding: '8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', marginBottom: '8px', boxSizing: 'border-box' }} />
+              <button onClick={() => setPinModal({ isOpen: true, actionType: 'bulkEditSave', targetDevice: null, bulkQty: 10, pinInput: '', errorMsg: '', isSubmitting: false })} style={{ width: '100%', padding: '8px', backgroundColor: '#059669', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
+                Simpan Edit Massal (PIN)
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ backgroundColor: '#ffffff', padding: '18px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
         <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
@@ -548,11 +645,11 @@ export default function AdminPage() {
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{ flex: 1, padding: '10px 12px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }}
           />
-          {searchQuery && (
-            <button onClick={() => setSearchQuery('')} style={{ padding: '0 12px', backgroundColor: '#e2e8f0', border: 'none', borderRadius: '8px', fontSize: '12px', cursor: 'pointer' }}>
-              Reset
-            </button>
-          )}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#64748b' }}>
+          <input type="checkbox" id="selectAll" checked={selectedDeviceIds.length === sortedDevices.length && sortedDevices.length > 0} onChange={handleSelectAll} style={{ cursor: 'pointer' }} />
+          <label htmlFor="selectAll" style={{ cursor: 'pointer', fontWeight: '600' }}>Pilih Semua Kartu ({sortedDevices.length})</label>
         </div>
       </div>
 
@@ -565,14 +662,15 @@ export default function AdminPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {sortedDevices.map((device) => {
             const isCardActive = Boolean(device.is_active);
-            const isQrShown = activeQrDeviceId === device.id;
+            const isSelected = selectedDeviceIds.includes(device.id);
 
             return (
-              <div key={device.id} style={{ padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', backgroundColor: isCardActive ? '#f8fafc' : '#ffffff' }}>
+              <div key={device.id} style={{ padding: '14px', borderRadius: '12px', border: isSelected ? '2px solid #2563eb' : '1px solid #e2e8f0', backgroundColor: isSelected ? '#eff6ff' : isCardActive ? '#f8fafc' : '#ffffff' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                  <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input type="checkbox" checked={isSelected} onChange={() => handleToggleSelectCard(device.id)} style={{ cursor: 'pointer' }} />
                     <strong style={{ fontSize: '15px' }}>{device.id}</strong>
-                    <span style={{ marginLeft: '8px', fontSize: '11px', padding: '2px 8px', borderRadius: '12px', backgroundColor: isCardActive ? '#dcfce7' : '#fef3c7', color: isCardActive ? '#15803d' : '#b45309', fontWeight: '600' }}>
+                    <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '12px', backgroundColor: isCardActive ? '#dcfce7' : '#fef3c7', color: isCardActive ? '#15803d' : '#b45309', fontWeight: '600' }}>
                       {isCardActive ? 'Aktif' : 'Belum Dipakai'}
                     </span>
                   </div>
@@ -591,32 +689,11 @@ export default function AdminPage() {
                   </div>
                 )}
 
-                {isQrShown && (
-                  <div style={{ textAlign: 'center', padding: '16px', backgroundColor: '#ffffff', borderRadius: '10px', border: '1px solid #cbd5e1', margin: '10px 0' }}>
-                    <QrCodeWithLogo
-                      text={typeof window !== 'undefined' ? `${window.location.origin}/r/${device.id}` : ''}
-                      deviceId={device.id}
-                    />
-                  </div>
-                )}
-
                 <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   {editingDeviceId === device.id ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px', backgroundColor: '#f1f5f9', padding: '10px', borderRadius: '8px' }}>
-                      <input
-                        type="text"
-                        placeholder="Nama Toko / Catatan"
-                        value={editLabelName}
-                        onChange={(e) => setEditLabelName(e.target.value)}
-                        style={{ width: '100%', padding: '8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                      />
-                      <input
-                        type="text"
-                        placeholder="Link Direct Review atau Place ID (ChIJ...)"
-                        value={editTargetUrl}
-                        onChange={(e) => setEditTargetUrl(e.target.value)}
-                        style={{ width: '100%', padding: '8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-                      />
+                      <input type="text" placeholder="Nama Toko" value={editLabelName} onChange={(e) => setEditLabelName(e.target.value)} style={{ width: '100%', padding: '8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+                      <input type="text" placeholder="Link Direct Review" value={editTargetUrl} onChange={(e) => setEditTargetUrl(e.target.value)} style={{ width: '100%', padding: '8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
                       <div style={{ display: 'flex', gap: '6px' }}>
                         <button onClick={() => setPinModal({ isOpen: true, actionType: 'saveEdit', targetDevice: device, bulkQty: 10, pinInput: '', errorMsg: '', isSubmitting: false })} style={{ flex: 1, padding: '8px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
                           Simpan (PIN)
@@ -628,19 +705,21 @@ export default function AdminPage() {
                     </div>
                   ) : (
                     <>
-                      <button onClick={() => handleSendWaCustomer(device)} style={{ width: '100%', padding: '6px 10px', backgroundColor: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '6px', fontSize: '11px', fontWeight: '700', cursor: 'pointer', textAlign: 'center' }}>
-                        💬 Send Format Setup WA
-                      </button>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button onClick={() => setPreviewDeviceModal(device)} style={{ flex: 1, padding: '6px 10px', backgroundColor: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: '6px', fontSize: '11px', fontWeight: '700', cursor: 'pointer', textAlign: 'center' }}>
+                          👁️ Lihat & Download QR
+                        </button>
+                        <button onClick={() => handleSendWaCustomer(device)} style={{ flex: 1, padding: '6px 10px', backgroundColor: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '6px', fontSize: '11px', fontWeight: '700', cursor: 'pointer', textAlign: 'center' }}>
+                          💬 Send Format WA
+                        </button>
+                      </div>
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
                         <button onClick={() => { setEditingDeviceId(device.id); setEditTargetUrl(device.target_url || ''); setEditLabelName(device.label_name || ''); }} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', padding: 0, fontWeight: '600', cursor: 'pointer' }}>
                           ✏️ Edit Nama & Link (PIN)
                         </button>
                         
-                        <button
-                          onClick={() => setPinModal({ isOpen: true, actionType: 'deleteCard', targetDevice: device, bulkQty: 10, pinInput: '', errorMsg: '', isSubmitting: false })}
-                          style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}
-                        >
+                        <button onClick={() => setPinModal({ isOpen: true, actionType: 'deleteCard', targetDevice: device, bulkQty: 10, pinInput: '', errorMsg: '', isSubmitting: false })} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
                           🗑️ Hapus Kartu (PIN)
                         </button>
                       </div>
@@ -653,85 +732,38 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* MODAL POP-UP PIN KUSTOM (SEKaligus Untuk BULK GENERATE) */}
+      {/* MODAL PIN CONFIRMATION */}
       {pinModal.isOpen && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '16px'
-        }}>
-          <div style={{
-            width: '100%', maxWidth: '360px', backgroundColor: '#ffffff',
-            borderRadius: '16px', padding: '24px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)',
-            border: '1px solid #e2e8f0', textAlign: 'center'
-          }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '16px' }}>
+          <div style={{ width: '100%', maxWidth: '360px', backgroundColor: '#ffffff', borderRadius: '16px', padding: '24px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)', border: '1px solid #e2e8f0', textAlign: 'center' }}>
             <h3 style={{ margin: '0 0 6px 0', fontSize: '17px', fontWeight: '700', color: '#0f172a' }}>
-              {pinModal.actionType === 'bulkGenerate' ? '⚡ Bulk Generate ID' : pinModal.actionType === 'deleteCard' ? 'Hapus Kartu NFC' : 'Konfirmasi Perubahan'}
+              {pinModal.actionType === 'bulkGenerate' ? '⚡ Bulk Generate ID' : pinModal.actionType === 'bulkEditSave' ? '✏️ Edit Massal Terpilih' : pinModal.actionType === 'deleteCard' ? 'Hapus Kartu NFC' : 'Konfirmasi Perubahan'}
             </h3>
 
             <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#64748b' }}>
-              {pinModal.actionType === 'bulkGenerate'
-                ? 'Masukkan jumlah ID yang ingin dibuat dan PIN Admin Anda:'
-                : `Masukkan PIN Kartu (PIN: ${pinModal.targetDevice?.pin}):`}
+              {pinModal.actionType === 'bulkGenerate' ? 'Masukkan jumlah ID dan PIN Admin:' : pinModal.actionType === 'bulkEditSave' ? `Konfirmasi edit massal untuk ${selectedDeviceIds.length} kartu terpilih:` : `Masukkan PIN Kartu (${pinModal.targetDevice?.pin}):`}
             </p>
 
             <form onSubmit={handleModalAction}>
               {pinModal.actionType === 'bulkGenerate' && (
                 <div style={{ marginBottom: '12px', textAlign: 'left' }}>
                   <label style={{ fontSize: '11px', fontWeight: '600', color: '#475569', display: 'block', marginBottom: '4px' }}>Jumlah Kartu (Qty)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="100"
-                    required
-                    value={pinModal.bulkQty}
-                    onChange={(e) => setPinModal(prev => ({ ...prev, bulkQty: e.target.value }))}
-                    style={{
-                      width: '100%', padding: '10px', fontSize: '14px', borderRadius: '8px',
-                      border: '1px solid #cbd5e1', boxSizing: 'border-box', outline: 'none'
-                    }}
-                  />
+                  <input type="number" min="1" max="100" required value={pinModal.bulkQty} onChange={(e) => setPinModal(prev => ({ ...prev, bulkQty: e.target.value }))} style={{ width: '100%', padding: '10px', fontSize: '14px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
                 </div>
               )}
 
               <div style={{ marginBottom: '16px', textAlign: 'left' }}>
                 <label style={{ fontSize: '11px', fontWeight: '600', color: '#475569', display: 'block', marginBottom: '4px' }}>
-                  {pinModal.actionType === 'bulkGenerate' ? 'PIN Admin Konfirmasi' : 'PIN Kartu Konfirmasi'}
+                  {pinModal.actionType === 'bulkGenerate' || pinModal.actionType === 'bulkEditSave' ? 'PIN Admin Konfirmasi' : 'PIN Kartu Konfirmasi'}
                 </label>
-                <input
-                  type="password"
-                  required
-                  autoFocus
-                  placeholder="Masukkan PIN 6-digit"
-                  value={pinModal.pinInput}
-                  onChange={(e) => setPinModal(prev => ({ ...prev, pinInput: e.target.value }))}
-                  style={{
-                    width: '100%', padding: '10px', fontSize: '15px', textAlign: 'center',
-                    letterSpacing: '4px', borderRadius: '8px', border: '1px solid #cbd5e1',
-                    boxSizing: 'border-box', outline: 'none', backgroundColor: '#f8fafc'
-                  }}
-                />
+                <input type="password" required autoFocus placeholder="Masukkan PIN 6-digit" value={pinModal.pinInput} onChange={(e) => setPinModal(prev => ({ ...prev, pinInput: e.target.value }))} style={{ width: '100%', padding: '10px', fontSize: '15px', textAlign: 'center', letterSpacing: '4px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box', backgroundColor: '#f8fafc' }} />
               </div>
 
-              {pinModal.errorMsg && (
-                <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#ef4444', fontWeight: '600' }}>
-                  {pinModal.errorMsg}
-                </p>
-              )}
+              {pinModal.errorMsg && <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#ef4444', fontWeight: '600' }}>{pinModal.errorMsg}</p>}
 
               <div style={{ display: 'flex', gap: '8px' }}>
-                <button
-                  type="button"
-                  onClick={() => setPinModal({ isOpen: false, actionType: null, targetDevice: null, bulkQty: 10, pinInput: '', errorMsg: '', isSubmitting: false })}
-                  style={{ flex: 1, padding: '10px', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={pinModal.isSubmitting}
-                  style={{ flex: 1, padding: '10px', backgroundColor: pinModal.actionType === 'deleteCard' ? '#ef4444' : '#059669', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: pinModal.isSubmitting ? 'not-allowed' : 'pointer' }}
-                >
+                <button type="button" onClick={() => setPinModal({ isOpen: false, actionType: null, targetDevice: null, bulkQty: 10, pinInput: '', errorMsg: '', isSubmitting: false })} style={{ flex: 1, padding: '10px', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>Batal</button>
+                <button type="submit" disabled={pinModal.isSubmitting} style={{ flex: 1, padding: '10px', backgroundColor: pinModal.actionType === 'deleteCard' ? '#ef4444' : '#059669', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: pinModal.isSubmitting ? 'not-allowed' : 'pointer' }}>
                   {pinModal.isSubmitting ? 'Memproses...' : 'Konfirmasi'}
                 </button>
               </div>
@@ -740,14 +772,9 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* FLOATING TOAST NOTIFICATION */}
+      {/* TOAST */}
       {toast.show && (
-        <div style={{
-          position: 'fixed', bottom: '24px', right: '24px',
-          backgroundColor: toast.type === 'error' ? '#ef4444' : '#16a34a',
-          color: '#ffffff', padding: '12px 20px', borderRadius: '10px',
-          boxShadow: '0 4px 14px rgba(0,0,0,0.2)', fontSize: '13px', fontWeight: '600', zIndex: 10000
-        }}>
+        <div style={{ position: 'fixed', bottom: '24px', right: '24px', backgroundColor: toast.type === 'error' ? '#ef4444' : '#16a34a', color: '#ffffff', padding: '12px 20px', borderRadius: '10px', boxShadow: '0 4px 14px rgba(0,0,0,0.2)', fontSize: '13px', fontWeight: '600', zIndex: 10000 }}>
           {toast.message}
         </div>
       )}
