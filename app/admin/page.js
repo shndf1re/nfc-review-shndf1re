@@ -359,8 +359,16 @@ export default function AdminPage() {
 
   if (!isAuthenticated) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', boxSizing: 'border-box' }}>
-        <div style={{ width: '100%', maxWidth: '380px', backgroundColor: '#ffffff', borderRadius: '16px', padding: '32px 24px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.05)', border: '1px solid #e2e8f0' }}>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', boxSizing: 'border-box', backgroundColor: '#f8fafc' }}>
+        <div style={{ width: '100%', maxWidth: '380px', backgroundColor: '#ffffff', borderRadius: '16px', padding: '32px 24px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.05)', border: '1px solid #e2e8f0', position: 'relative' }}>
+          
+          {/* TOMBOL KEMBALI KE HOME / LANDING PAGE */}
+          <div style={{ marginBottom: '16px' }}>
+            <Link href="/" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: '600', color: '#64748b', textDecoration: 'none', padding: '6px 10px', borderRadius: '8px', backgroundColor: '#f1f5f9' }}>
+              ⬅️ Kembali ke Home
+            </Link>
+          </div>
+
           <div style={{ textAlign: 'center', marginBottom: '24px' }}>
             <div style={{ width: '48px', height: '48px', backgroundColor: '#eff6ff', color: '#2563eb', borderRadius: '12px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', marginBottom: '12px' }}>🔒</div>
             <h2 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: '700', color: '#0f172a' }}>{SITE_CONFIG?.brandName || 'Admin'} Portal</h2>
