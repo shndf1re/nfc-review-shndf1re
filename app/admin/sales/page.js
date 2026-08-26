@@ -24,6 +24,17 @@ export default function SalesPage() {
   const [notes, setNotes] = useState('');
   const [submitStatus, setSubmitStatus] = useState('');
 
+  // State Modal Pop-Up PIN & Input Kustom
+  const [modalState, setModalState] = useState({
+    isOpen: false,
+    actionType: null, // 'delete' atau 'updateStock'
+    targetData: null,
+    stockInput: '',
+    pinInput: '',
+    errorMsg: '',
+    isVerifying: false
+  });
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -54,7 +65,7 @@ export default function SalesPage() {
     setLoading(false);
   };
 
-  // Simpan Penjualan & Kurangi Stok
+  // Simpan Penjualan Baru
   const handleAddSale = async (e) => {
     e.preventDefault();
     setSubmitStatus('');
@@ -104,73 +115,78 @@ export default function SalesPage() {
     fetchData();
   };
 
-  // UPDATE STOK AKRILIK MANUAL DENGAN VERIFIKASI PIN
-  const handleUpdateStockWithPin = async () => {
-    const inputStock = prompt('Masukkan jumlah stok Papan Akrilik baru:', acrylicStock);
-    if (inputStock === null) return;
+  // Buka Modal Update Stok
+  const openUpdateStockModal = () => {
+    setModalState({
+      isOpen: true,
+      actionType: 'updateStock',
+      targetData: null,
+      stockInput: acrylicStock.toString(),
+      pinInput: '',
+      errorMsg: '',
+      isVerifying: false
+    });
+  };
 
-    const newStock = parseInt(inputStock);
-    if (isNaN(newStock) || newStock < 0) {
-      alert('❌ Jumlah stok tidak valid!');
-      return;
+  // Buka Modal Hapus Penjualan
+  const openDeleteSaleModal = (sale) => {
+    setModalState({
+      isOpen: true,
+      actionType: 'delete',
+      targetData: sale,
+      stockInput: '',
+      pinInput: '',
+      errorMsg: '',
+      isVerifying: false
+    });
+  };
+
+  // Eksekusi Konfirmasi Modal
+  const handleModalSubmit = async (e) => {
+    e.preventDefault();
+    setModalState(prev => ({ ...prev, isVerifying: true, errorMsg: '' }));
+
+    // Validasi Angka jika Update Stok
+    let newStockVal = 0;
+    if (modalState.actionType === 'updateStock') {
+      newStockVal = parseInt(modalState.stockInput);
+      if (isNaN(newStockVal) || newStockVal < 0) {
+        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Jumlah stok tidak valid!' }));
+        return;
+      }
     }
-
-    const inputPin = prompt('🔒 Masukkan PIN Admin untuk mengubah stok:');
-    if (!inputPin) return;
 
     // Verifikasi PIN via Supabase RPC
     const { data: isValidPin, error: pinError } = await supabase.rpc('verify_sales_pin', {
-      input_pin: inputPin.trim()
+      input_pin: modalState.pinInput.trim()
     });
 
     if (pinError || !isValidPin) {
-      alert('❌ PIN Konfirmasi Salah!');
+      setModalState(prev => ({
+        ...prev,
+        isVerifying: false,
+        errorMsg: '❌ PIN Admin Salah! Transaksi dibatalkan.'
+      }));
       return;
     }
 
-    // Jika PIN benar, update stok di database
-    if (stockItemId) {
-      const { error } = await supabase.from('inventory').update({ stock_quantity: newStock }).eq('id', stockItemId);
-      if (error) {
-        alert('Gagal mengupdate stok: ' + error.message);
-      } else {
-        alert(`✅ Stok Papan Akrilik berhasil diubah dari ${acrylicStock} pcs menjadi ${newStock} pcs.`);
-        setSubmitStatus('');
-        fetchData();
+    // Eksekusi Berdasarkan Jenis Aksi
+    if (modalState.actionType === 'updateStock') {
+      if (stockItemId) {
+        await supabase.from('inventory').update({ stock_quantity: newStockVal }).eq('id', stockItemId);
       }
-    }
-  };
+    } else if (modalState.actionType === 'delete') {
+      const sale = modalState.targetData;
+      await supabase.from('sales').delete().eq('id', sale.id);
 
-  // HAPUS TRANSAKSI DENGAN VERIFIKASI PIN TERENKRIPSI DATABASE
-  const handleDeleteSaleWithPin = async (sale) => {
-    const inputPin = prompt(`⚠️ PERINGATAN: Menghapus catatan penjualan ${sale.customer_name}.\nMasukkan PIN Admin untuk konfirmasi:`);
-    if (!inputPin) return;
-
-    // Verifikasi PIN terenkripsi via Supabase RPC
-    const { data: isValidPin, error: pinError } = await supabase.rpc('verify_sales_pin', {
-      input_pin: inputPin.trim()
-    });
-
-    if (pinError || !isValidPin) {
-      alert('❌ PIN Konfirmasi Salah!');
-      return;
-    }
-
-    // Jika PIN Benar, Hapus Catatan Penjualan
-    const { error } = await supabase.from('sales').delete().eq('id', sale.id);
-
-    if (error) {
-      alert('Gagal menghapus transaksi: ' + error.message);
-    } else {
-      // Kembalikan Stok Akrilik Otomatis
       if (stockItemId) {
         const restoredStock = acrylicStock + (parseInt(sale.quantity) || 1);
         await supabase.from('inventory').update({ stock_quantity: restoredStock }).eq('id', stockItemId);
       }
-
-      alert(`🗑️ Catatan penjualan ${sale.customer_name} berhasil dihapus & ${sale.quantity} pcs stok akrilik telah dikembalikan.`);
-      fetchData();
     }
+
+    setModalState({ isOpen: false, actionType: null, targetData: null, stockInput: '', pinInput: '', errorMsg: '', isVerifying: false });
+    fetchData();
   };
 
   const totalOmzet = salesHistory.reduce((acc, curr) => acc + (parseFloat(curr.total_price) || 0), 0);
@@ -198,7 +214,7 @@ export default function SalesPage() {
           </strong>
         </div>
         <button
-          onClick={handleUpdateStockWithPin}
+          onClick={openUpdateStockModal}
           style={{ padding: '10px 16px', fontSize: '12px', backgroundColor: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '10px', cursor: 'pointer', fontWeight: '600' }}
         >
           🔒 Update Stok Akrilik
@@ -304,9 +320,8 @@ export default function SalesPage() {
                       {sale.payment_status}
                     </span>
                     
-                    {/* TOMBOL HAPUS CATATAN DENGAN VERIFIKASI PIN */}
                     <button
-                      onClick={() => handleDeleteSaleWithPin(sale)}
+                      onClick={() => openDeleteSaleModal(sale)}
                       style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '11px', fontWeight: '600', cursor: 'pointer', padding: 0 }}
                     >
                       🗑️ Hapus
@@ -322,6 +337,112 @@ export default function SalesPage() {
           </div>
         )}
       </div>
+
+      {/* 4. MODAL POP-UP KUSTOM */}
+      {modalState.isOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 9999, padding: '16px'
+        }}>
+          <div style={{
+            width: '100%', maxWidth: '360px',
+            backgroundColor: '#ffffff', borderRadius: '16px', padding: '24px',
+            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)', border: '1px solid #e2e8f0', textAlign: 'center'
+          }}>
+            <div style={{
+              width: '44px', height: '44px',
+              backgroundColor: modalState.actionType === 'delete' ? '#fef2f2' : '#eff6ff',
+              color: modalState.actionType === 'delete' ? '#ef4444' : '#2563eb',
+              borderRadius: '12px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '22px', marginBottom: '12px'
+            }}>
+              {modalState.actionType === 'delete' ? '🗑️' : '📦'}
+            </div>
+
+            <h3 style={{ margin: '0 0 6px 0', fontSize: '17px', fontWeight: '700', color: '#0f172a' }}>
+              {modalState.actionType === 'delete' ? 'Hapus Penjualan' : 'Update Stok Akrilik'}
+            </h3>
+
+            <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#64748b', lineHeight: '1.4' }}>
+              {modalState.actionType === 'delete'
+                ? `Menghapus catatan penjualan "${modalState.targetData?.customer_name}".`
+                : 'Ubah jumlah total stok Papan Akrilik yang tersedia saat ini.'}
+            </p>
+
+            <form onSubmit={handleModalSubmit}>
+              {modalState.actionType === 'updateStock' && (
+                <div style={{ marginBottom: '12px', textAlign: 'left' }}>
+                  <label style={{ fontSize: '11px', fontWeight: '600', color: '#475569', display: 'block', marginBottom: '4px' }}>Stok Akrilik Baru (Pcs)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    placeholder="Jumlah stok"
+                    value={modalState.stockInput}
+                    onChange={(e) => setModalState(prev => ({ ...prev, stockInput: e.target.value }))}
+                    style={{
+                      width: '100%', padding: '10px', fontSize: '14px', borderRadius: '8px',
+                      border: '1px solid #cbd5e1', boxSizing: 'border-box', outline: 'none'
+                    }}
+                  />
+                </div>
+              )}
+
+              <div style={{ marginBottom: '16px', textAlign: 'left' }}>
+                <label style={{ fontSize: '11px', fontWeight: '600', color: '#475569', display: 'block', marginBottom: '4px' }}>PIN Admin Konfirmasi</label>
+                <input
+                  type="password"
+                  required
+                  placeholder="Masukkan PIN 6-digit"
+                  value={modalState.pinInput}
+                  onChange={(e) => setModalState(prev => ({ ...prev, pinInput: e.target.value }))}
+                  style={{
+                    width: '100%', padding: '10px', fontSize: '15px', textAlign: 'center',
+                    letterSpacing: '3px', borderRadius: '8px', border: '1px solid #cbd5e1',
+                    boxSizing: 'border-box', outline: 'none', backgroundColor: '#f8fafc'
+                  }}
+                />
+              </div>
+
+              {modalState.errorMsg && (
+                <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#ef4444', fontWeight: '600' }}>
+                  {modalState.errorMsg}
+                </p>
+              )}
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setModalState({ isOpen: false, actionType: null, targetData: null, stockInput: '', pinInput: '', errorMsg: '', isVerifying: false })}
+                  style={{
+                    flex: 1, padding: '10px', backgroundColor: '#f1f5f9', color: '#475569',
+                    border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer'
+                  }}
+                >
+                  Batal
+                </button>
+                
+                <button
+                  type="submit"
+                  disabled={modalState.isVerifying}
+                  style={{
+                    flex: 1, padding: '10px',
+                    backgroundColor: modalState.actionType === 'delete' ? '#ef4444' : '#2563eb',
+                    color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '13px',
+                    fontWeight: '600', cursor: modalState.isVerifying ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {modalState.isVerifying ? 'Memeriksa...' : 'Konfirmasi'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );
