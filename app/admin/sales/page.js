@@ -24,10 +24,14 @@ export default function SalesPage() {
   const [notes, setNotes] = useState('');
   const [submitStatus, setSubmitStatus] = useState('');
 
+  // State Edit Status Transaksi yang Sedang Dipilih
+  const [editingSaleId, setEditingSaleId] = useState(null);
+  const [selectedNewStatus, setSelectedNewStatus] = useState('');
+
   // State Modal Pop-Up PIN & Input Kustom
   const [modalState, setModalState] = useState({
     isOpen: false,
-    actionType: null, // 'delete' atau 'updateStock'
+    actionType: null, // 'delete', 'updateStock', atau 'updateStatus'
     targetData: null,
     stockInput: '',
     pinInput: '',
@@ -115,18 +119,6 @@ export default function SalesPage() {
     fetchData();
   };
 
-  // UBHA STATUS PEMBAYARAN INSTAN (TANPA REFRESH)
-  const handleChangePaymentStatus = async (saleId, newStatus) => {
-    const { error } = await supabase
-      .from('sales')
-      .update({ payment_status: newStatus })
-      .eq('id', saleId);
-
-    if (!error) {
-      fetchData();
-    }
-  };
-
   // Buka Modal Update Stok
   const openUpdateStockModal = () => {
     setModalState({
@@ -153,6 +145,19 @@ export default function SalesPage() {
     });
   };
 
+  // Buka Modal Konfirmasi PIN Perubahan Status Bayar
+  const openUpdateStatusModal = (sale) => {
+    setModalState({
+      isOpen: true,
+      actionType: 'updateStatus',
+      targetData: sale,
+      stockInput: '',
+      pinInput: '',
+      errorMsg: '',
+      isVerifying: false
+    });
+  };
+
   // Eksekusi Konfirmasi Modal via RPC Supabase
   const handleModalSubmit = async (e) => {
     e.preventDefault();
@@ -167,6 +172,7 @@ export default function SalesPage() {
       }
     }
 
+    // Verifikasi PIN via RPC Supabase
     const { data: isValidPin, error: pinError } = await supabase.rpc('verify_sales_pin', {
       input_pin: modalState.pinInput.trim()
     });
@@ -180,6 +186,7 @@ export default function SalesPage() {
       return;
     }
 
+    // Eksekusi Berdasarkan Jenis Aksi
     if (modalState.actionType === 'updateStock') {
       if (stockItemId) {
         await supabase.from('inventory').update({ stock_quantity: newStockVal }).eq('id', stockItemId);
@@ -192,6 +199,14 @@ export default function SalesPage() {
         const restoredStock = acrylicStock + (parseInt(sale.quantity) || 1);
         await supabase.from('inventory').update({ stock_quantity: restoredStock }).eq('id', stockItemId);
       }
+    } else if (modalState.actionType === 'updateStatus') {
+      const sale = modalState.targetData;
+      await supabase
+        .from('sales')
+        .update({ payment_status: selectedNewStatus })
+        .eq('id', sale.id);
+      
+      setEditingSaleId(null);
     }
 
     setModalState({ isOpen: false, actionType: null, targetData: null, stockInput: '', pinInput: '', errorMsg: '', isVerifying: false });
@@ -326,26 +341,52 @@ export default function SalesPage() {
                   <span>Qty: <strong>{sale.quantity} Pcs Akrilik</strong> {sale.device_id && `(${sale.device_id})`}</span>
                   
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    {/* DROPDOWN INTERAKTIF PENGUBAHAN STATUS BAYAR */}
-                    <select
-                      value={sale.payment_status}
-                      onChange={(e) => handleChangePaymentStatus(sale.id, e.target.value)}
-                      style={{
-                        fontSize: '11px',
-                        fontWeight: '700',
-                        padding: '2px 6px',
-                        borderRadius: '6px',
-                        border: '1px solid #cbd5e1',
-                        backgroundColor: sale.payment_status === 'Lunas' ? '#dcfce7' : sale.payment_status === 'DP 50%' ? '#fef3c7' : '#fee2e2',
-                        color: sale.payment_status === 'Lunas' ? '#15803d' : sale.payment_status === 'DP 50%' ? '#b45309' : '#dc2626',
-                        cursor: 'pointer',
-                        outline: 'none'
-                      }}
-                    >
-                      <option value="Lunas">✅ Lunas</option>
-                      <option value="DP 50%">⏳ DP 50%</option>
-                      <option value="Belum Bayar">❌ Belum Bayar</option>
-                    </select>
+                    
+                    {/* EDIT STATUS SECTION */}
+                    {editingSaleId === sale.id ? (
+                      <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                        <select
+                          value={selectedNewStatus}
+                          onChange={(e) => setSelectedNewStatus(e.target.value)}
+                          style={{ fontSize: '11px', padding: '2px 4px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                        >
+                          <option value="Lunas">✅ Lunas</option>
+                          <option value="DP 50%">⏳ DP 50%</option>
+                          <option value="Belum Bayar">❌ Belum Bayar</option>
+                        </select>
+                        <button
+                          onClick={() => openUpdateStatusModal(sale)}
+                          style={{ padding: '2px 6px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '10px', fontWeight: '600', cursor: 'pointer' }}
+                        >
+                          Simpan (PIN)
+                        </button>
+                        <button
+                          onClick={() => setEditingSaleId(null)}
+                          style={{ padding: '2px 6px', backgroundColor: '#cbd5e1', color: '#334155', border: 'none', borderRadius: '4px', fontSize: '10px', cursor: 'pointer' }}
+                        >
+                          X
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        <span style={{
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          backgroundColor: sale.payment_status === 'Lunas' ? '#dcfce7' : sale.payment_status === 'DP 50%' ? '#fef3c7' : '#fee2e2',
+                          color: sale.payment_status === 'Lunas' ? '#15803d' : sale.payment_status === 'DP 50%' ? '#b45309' : '#dc2626',
+                          fontWeight: '700'
+                        }}>
+                          {sale.payment_status}
+                        </span>
+                        
+                        <button
+                          onClick={() => { setEditingSaleId(sale.id); setSelectedNewStatus(sale.payment_status); }}
+                          style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '11px', fontWeight: '600', cursor: 'pointer', padding: 0 }}
+                        >
+                          ✏️ Edit Status
+                        </button>
+                      </div>
+                    )}
 
                     <button
                       onClick={() => openDeleteSaleModal(sale)}
@@ -353,6 +394,7 @@ export default function SalesPage() {
                     >
                       🗑️ Hapus
                     </button>
+
                   </div>
                 </div>
 
@@ -387,16 +429,18 @@ export default function SalesPage() {
               borderRadius: '12px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               fontSize: '22px', marginBottom: '12px'
             }}>
-              {modalState.actionType === 'delete' ? '🗑️' : '📦'}
+              {modalState.actionType === 'delete' ? '🗑️' : modalState.actionType === 'updateStatus' ? '📝' : '📦'}
             </div>
 
             <h3 style={{ margin: '0 0 6px 0', fontSize: '17px', fontWeight: '700', color: '#0f172a' }}>
-              {modalState.actionType === 'delete' ? 'Hapus Penjualan' : 'Update Stok Akrilik'}
+              {modalState.actionType === 'delete' ? 'Hapus Penjualan' : modalState.actionType === 'updateStatus' ? 'Ubah Status Bayar' : 'Update Stok Akrilik'}
             </h3>
 
             <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#64748b', lineHeight: '1.4' }}>
               {modalState.actionType === 'delete'
                 ? `Menghapus catatan penjualan "${modalState.targetData?.customer_name}".`
+                : modalState.actionType === 'updateStatus'
+                ? `Mengubah status bayar "${modalState.targetData?.customer_name}" menjadi "${selectedNewStatus}".`
                 : 'Ubah jumlah total stok Papan Akrilik yang tersedia saat ini.'}
             </p>
 
