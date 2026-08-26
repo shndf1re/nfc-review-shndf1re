@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import Link from 'next/link';
-import { SITE_CONFIG } from '@/lib/config';
+import { SITE_CONFIG } from '../../lib/config';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -42,8 +42,7 @@ function QrCodeWithLogo({ text, deviceId }) {
 
       const customLogo = new Image();
       customLogo.crossOrigin = 'Anonymous';
-      // Mengambil Logo Tengah dari Config File
-      customLogo.src = SITE_CONFIG.qrLogoUrl;
+      customLogo.src = SITE_CONFIG?.qrLogoUrl || 'https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg';
 
       customLogo.onload = () => {
         ctx.drawImage(
@@ -119,11 +118,9 @@ export default function AdminPage() {
   const [editLabelName, setEditLabelName] = useState('');
   const [activeQrDeviceId, setActiveQrDeviceId] = useState(null);
 
-  // State Search & Sort
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('newest');
 
-  // Manager Session Timeout
   const timeoutRef = useRef(null);
 
   const resetSessionTimer = () => {
@@ -326,7 +323,6 @@ export default function AdminPage() {
     }
   };
 
-  // Filter & Sorting
   const filteredDevices = devices.filter((device) => {
     const query = searchQuery.toLowerCase();
     const idMatch = device.id.toLowerCase().includes(query);
@@ -367,7 +363,7 @@ export default function AdminPage() {
         <div style={{ width: '100%', maxWidth: '380px', backgroundColor: '#ffffff', borderRadius: '16px', padding: '32px 24px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.05)', border: '1px solid #e2e8f0' }}>
           <div style={{ textAlign: 'center', marginBottom: '24px' }}>
             <div style={{ width: '48px', height: '48px', backgroundColor: '#eff6ff', color: '#2563eb', borderRadius: '12px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', marginBottom: '12px' }}>🔒</div>
-            <h2 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: '700', color: '#0f172a' }}>{SITE_CONFIG.brandName} Portal</h2>
+            <h2 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: '700', color: '#0f172a' }}>{SITE_CONFIG?.brandName || 'Admin'} Portal</h2>
             <p style={{ margin: 0, fontSize: '14px', color: '#64748b' }}>Masuk untuk mengelola chip NFC & QR</p>
           </div>
 
@@ -392,11 +388,10 @@ export default function AdminPage() {
 
   return (
     <div style={{ maxWidth: '520px', margin: '0 auto', padding: '24px 16px', boxSizing: 'border-box', fontFamily: '-apple-system, sans-serif' }}>
-      {/* HEADER UTAMA MENGAMBIL TEKS DARI SITE_CONFIG */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', backgroundColor: '#ffffff', padding: '16px 20px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700' }}>{SITE_CONFIG.adminTitle}</h2>
-          <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>{SITE_CONFIG.adminSubtitle}</p>
+          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700' }}>{SITE_CONFIG?.adminTitle || 'Dashboard NFC'}</h2>
+          <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>{SITE_CONFIG?.adminSubtitle || 'Sistem Manajemen Perangkat'}</p>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <Link href="/admin/stats" style={{ padding: '8px 12px', backgroundColor: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: '8px', fontSize: '12px', fontWeight: '600', textDecoration: 'none' }}>
@@ -410,7 +405,6 @@ export default function AdminPage() {
         + Generate Unique Code & QR Baru
       </button>
 
-      {/* PREVIEW KARTU BARU DIGENERATE ATAU TOMBOL PREVIEW DITEKAN */}
       {(currentDevice || previewDeviceModal) && (
         <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '2px solid #2563eb', marginBottom: '24px', position: 'relative' }}>
           <button
@@ -461,7 +455,6 @@ export default function AdminPage() {
 
       {status && <div style={{ padding: '12px', backgroundColor: '#ffffff', borderRadius: '10px', borderLeft: '4px solid #2563eb', fontSize: '13px', marginBottom: '20px' }}>{status}</div>}
 
-      {/* SEARCH & SORT CONTROL BAR */}
       <div style={{ backgroundColor: '#ffffff', padding: '18px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
         <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
           <input
