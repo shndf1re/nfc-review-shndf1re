@@ -29,14 +29,14 @@ export default function SalesPage() {
   const [selectedNewStatus, setSelectedNewStatus] = useState('');
 
   // State Filter Tanggal & Bulan
-  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().substring(0, 7)); // YYYY-MM
+  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().substring(0, 7));
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
   // State Modal PIN Kustom
   const [modalState, setModalState] = useState({
     isOpen: false,
-    actionType: null, // 'delete', 'updateStock', atau 'updateStatus'
+    actionType: null,
     targetData: null,
     stockInput: '',
     pinInput: '',
@@ -44,14 +44,30 @@ export default function SalesPage() {
     isVerifying: false
   });
 
+  // REALTIME LISTENER SUPABASE
   useEffect(() => {
     fetchData();
+
+    // Dengarkan perubahan pada tabel sales dan inventory secara REALTIME
+    const channel = supabase
+      .channel('sales-page-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, () => {
+        fetchData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => {
+        fetchData();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [selectedMonth]);
 
   const fetchData = async () => {
     setLoading(true);
     
-    // 1. Fetch Stok Papan Akrilik
+    // Fetch Stok Papan Akrilik
     const { data: invData } = await supabase
       .from('inventory')
       .select('*')
@@ -63,14 +79,12 @@ export default function SalesPage() {
       setStockItemId(invData.id);
     }
 
-    // 2. Fetch Riwayat Penjualan dari Database
+    // Fetch Riwayat Penjualan
     let query = supabase.from('sales').select('*').order('created_at', { ascending: false });
 
     if (startDate && endDate) {
-      // Filter Rentang Tanggal Kustom
       query = query.gte('created_at', `${startDate}T00:00:00`).lte('created_at', `${endDate}T23:59:59`);
     } else if (selectedMonth) {
-      // Filter Bulanan
       const year = selectedMonth.split('-')[0];
       const month = selectedMonth.split('-')[1];
       const startOfMonth = `${year}-${month}-01T00:00:00`;
@@ -97,7 +111,6 @@ export default function SalesPage() {
     setSelectedMonth(new Date().toISOString().substring(0, 7));
   };
 
-  // Simpan Penjualan Baru ke Database
   const handleAddSale = async (e) => {
     e.preventDefault();
     setSubmitStatus('');
@@ -105,13 +118,8 @@ export default function SalesPage() {
     const priceNumber = parseFloat(totalPrice) || 0;
     const qtyNumber = parseInt(quantity) || 1;
 
-    if (acrylicStock <= 0) {
-      setSubmitStatus('❌ Transaksi gagal! Stok Papan Akrilik HABIS.');
-      return;
-    }
-
-    if (qtyNumber > acrylicStock) {
-      setSubmitStatus(`❌ Stok tidak mencukupi! Sisa stok: ${acrylicStock} pcs.`);
+    if (acrylicStock <= 0 || qtyNumber > acrylicStock) {
+      setSubmitStatus('❌ Stok Akrilik tidak mencukupi!');
       return;
     }
 
@@ -133,13 +141,12 @@ export default function SalesPage() {
       return;
     }
 
-    // Otomatis kurangi stok
     if (stockItemId) {
       const newStock = acrylicStock - qtyNumber;
       await supabase.from('inventory').update({ stock_quantity: newStock }).eq('id', stockItemId);
     }
 
-    setSubmitStatus('✅ Penjualan berhasil dicatat ke database!');
+    setSubmitStatus('✅ Penjualan berhasil dicatat!');
     setCustomerName('');
     setQuantity(1);
     setTotalPrice('');
@@ -148,7 +155,6 @@ export default function SalesPage() {
     fetchData();
   };
 
-  // Trigger Modal Popup PIN
   const openUpdateStockModal = () => {
     setModalState({ isOpen: true, actionType: 'updateStock', targetData: null, stockInput: acrylicStock.toString(), pinInput: '', errorMsg: '', isVerifying: false });
   };
@@ -161,7 +167,6 @@ export default function SalesPage() {
     setModalState({ isOpen: true, actionType: 'updateStatus', targetData: sale, stockInput: '', pinInput: '', errorMsg: '', isVerifying: false });
   };
 
-  // Eksekusi Modal Setelah Verifikasi PIN Admin
   const handleModalSubmit = async (e) => {
     e.preventDefault();
     setModalState(prev => ({ ...prev, isVerifying: true, errorMsg: '' }));
@@ -175,7 +180,6 @@ export default function SalesPage() {
       }
     }
 
-    // Verifikasi PIN via Supabase RPC
     const { data: isValidPin, error: pinError } = await supabase.rpc('verify_sales_pin', {
       input_pin: modalState.pinInput.trim()
     });
@@ -185,7 +189,6 @@ export default function SalesPage() {
       return;
     }
 
-    // Eksekusi Aksi
     if (modalState.actionType === 'updateStock') {
       if (stockItemId) {
         await supabase.from('inventory').update({ stock_quantity: newStockVal }).eq('id', stockItemId);
@@ -207,31 +210,25 @@ export default function SalesPage() {
     fetchData();
   };
 
-  // Perhitungan Ringkasan Omzet
   const totalOmzetTotal = salesHistory.reduce((acc, curr) => acc + (parseFloat(curr.total_price) || 0), 0);
-  const totalOmzetLunas = salesHistory
-    .filter(s => s.payment_status === 'Lunas')
-    .reduce((acc, curr) => acc + (parseFloat(curr.total_price) || 0), 0);
+  const totalOmzetLunas = salesHistory.filter(s => s.payment_status === 'Lunas').reduce((acc, curr) => acc + (parseFloat(curr.total_price) || 0), 0);
   const totalPiutang = totalOmzetTotal - totalOmzetLunas;
 
   return (
     <div style={{ maxWidth: '600px', margin: '0 auto', padding: '24px 16px', fontFamily: '-apple-system, sans-serif' }}>
-      
-      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <div>
           <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '700' }}>💰 Laporan Penjualan & Income</h2>
-          <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Kelola Transaksi, Filter & Stok Akrilik</p>
+          <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Realtime Data Transaksi & Stok</p>
         </div>
         <Link href="/admin" style={{ padding: '8px 14px', backgroundColor: '#2563eb', color: '#fff', textDecoration: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '600' }}>
           ⬅️ Dashboard
         </Link>
       </div>
 
-      {/* 1. KOTAK STOK AKRILIK */}
       <div style={{ backgroundColor: '#ffffff', padding: '18px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '600', display: 'block' }}>📦 Stok Papan Akrilik Saat Ini</span>
+          <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '600', display: 'block' }}>📦 Stok Papan Akrilik</span>
           <strong style={{ fontSize: '26px', color: acrylicStock <= 5 ? '#dc2626' : '#0f172a' }}>
             {acrylicStock} <span style={{ fontSize: '14px', fontWeight: '500', color: '#64748b' }}>pcs</span>
           </strong>
@@ -241,68 +238,38 @@ export default function SalesPage() {
         </button>
       </div>
 
-      {/* 2. FORM INPUT PENJUALAN BARU */}
       <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
         <h3 style={{ margin: '0 0 16px 0', fontSize: '15px', fontWeight: '700' }}>➕ Input Penjualan Baru</h3>
-        
         <form onSubmit={handleAddSale} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div>
-            <label style={{ fontSize: '12px', fontWeight: '600', color: '#334155', display: 'block', marginBottom: '4px' }}>Nama Pembeli / Toko</label>
-            <input type="text" required placeholder="Contoh: Kedai Kopi Samarinda" value={customerName} onChange={(e) => setCustomerName(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
-          </div>
-
+          <input type="text" required placeholder="Nama Pembeli / Toko" value={customerName} onChange={(e) => setCustomerName(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
           <div style={{ display: 'flex', gap: '10px' }}>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: '12px', fontWeight: '600', color: '#334155', display: 'block', marginBottom: '4px' }}>Jumlah (Pcs)</label>
-              <input type="number" min="1" max={acrylicStock} required value={quantity} onChange={(e) => setQuantity(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
-            </div>
-
-            <div style={{ flex: 2 }}>
-              <label style={{ fontSize: '12px', fontWeight: '600', color: '#334155', display: 'block', marginBottom: '4px' }}>Total Harga Jual (Rp)</label>
-              <input type="number" required placeholder="150000" value={totalPrice} onChange={(e) => setTotalPrice(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
-            </div>
+            <input type="number" min="1" max={acrylicStock} required value={quantity} onChange={(e) => setQuantity(e.target.value)} style={{ flex: 1, padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+            <input type="number" required placeholder="Total Harga Jual (Rp)" value={totalPrice} onChange={(e) => setTotalPrice(e.target.value)} style={{ flex: 2, padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
           </div>
-
           <div style={{ display: 'flex', gap: '10px' }}>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: '12px', fontWeight: '600', color: '#334155', display: 'block', marginBottom: '4px' }}>ID Akrilik / NFC (Opsional)</label>
-              <input type="text" placeholder="NFC-xxxxx" value={deviceId} onChange={(e) => setDeviceId(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
-            </div>
-
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: '12px', fontWeight: '600', color: '#334155', display: 'block', marginBottom: '4px' }}>Status Bayar</label>
-              <select value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#fff', boxSizing: 'border-box' }}>
-                <option value="Lunas">✅ Lunas</option>
-                <option value="DP 50%">⏳ DP 50%</option>
-                <option value="Belum Bayar">❌ Belum Bayar</option>
-              </select>
-            </div>
+            <input type="text" placeholder="ID Akrilik / NFC (Opsional)" value={deviceId} onChange={(e) => setDeviceId(e.target.value)} style={{ flex: 1, padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+            <select value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)} style={{ flex: 1, padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#fff', boxSizing: 'border-box' }}>
+              <option value="Lunas">✅ Lunas</option>
+              <option value="DP 50%">⏳ DP 50%</option>
+              <option value="Belum Bayar">❌ Belum Bayar</option>
+            </select>
           </div>
-
-          <div>
-            <label style={{ fontSize: '12px', fontWeight: '600', color: '#334155', display: 'block', marginBottom: '4px' }}>Catatan Transaksi</label>
-            <input type="text" placeholder="Contoh: Dudukan kayu / COD" value={notes} onChange={(e) => setNotes(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
-          </div>
-
-          <button type="submit" disabled={acrylicStock <= 0} style={{ padding: '12px', backgroundColor: acrylicStock <= 0 ? '#94a3b8' : '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '700', fontSize: '14px', cursor: acrylicStock <= 0 ? 'not-allowed' : 'pointer', marginTop: '6px' }}>
+          <input type="text" placeholder="Catatan Transaksi" value={notes} onChange={(e) => setNotes(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+          <button type="submit" disabled={acrylicStock <= 0} style={{ padding: '12px', backgroundColor: acrylicStock <= 0 ? '#94a3b8' : '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '700', fontSize: '14px', cursor: acrylicStock <= 0 ? 'not-allowed' : 'pointer' }}>
             {acrylicStock <= 0 ? '❌ Stok Akrilik Habis' : '💾 Simpan Penjualan'}
           </button>
         </form>
-
         {submitStatus && <p style={{ marginTop: '12px', fontSize: '12px', color: submitStatus.startsWith('❌') ? '#dc2626' : '#2563eb', textAlign: 'center', fontWeight: '600' }}>{submitStatus}</p>}
       </div>
 
-      {/* 3. FILTER LAPORAN INCOME */}
       <div style={{ backgroundColor: '#ffffff', padding: '16px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
         <h3 style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: '700' }}>🔍 Filter Periode Income</h3>
-        
         <div style={{ marginBottom: '12px' }}>
           <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b', display: 'block', marginBottom: '4px' }}>Pilih Bulan & Tahun:</label>
           <input type="month" value={selectedMonth} onChange={(e) => { setSelectedMonth(e.target.value); setStartDate(''); setEndDate(''); }} style={{ width: '100%', padding: '8px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }} />
         </div>
-
         <form onSubmit={handleFilterCustomDate} style={{ borderTop: '1px dashed #e2e8f0', paddingTop: '10px' }}>
-          <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b', display: 'block', marginBottom: '4px' }}>Atau Cari Tanggal Spesifik (Mulai - Sampai):</label>
+          <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b', display: 'block', marginBottom: '4px' }}>Atau Cari Tanggal Spesifik:</label>
           <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
             <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12px' }} />
             <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12px' }} />
@@ -314,10 +281,7 @@ export default function SalesPage() {
         </form>
       </div>
 
-      {/* 4. SUMMARY OMBET & RIWAYAT PENJUALAN */}
       <div style={{ backgroundColor: '#ffffff', padding: '16px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
-        
-        {/* KOTAK SUMMARY FINANCIAL */}
         <div style={{ backgroundColor: '#f8fafc', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
           <div>
             <span style={{ fontSize: '10px', color: '#64748b', fontWeight: '600', display: 'block' }}>💵 Total Omzet Tercatat</span>
@@ -341,7 +305,7 @@ export default function SalesPage() {
         </div>
 
         {loading ? (
-          <p style={{ textAlign: 'center', color: '#64748b', fontSize: '13px' }}>Memuat data dari database...</p>
+          <p style={{ textAlign: 'center', color: '#64748b', fontSize: '13px' }}>Memuat data...</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {salesHistory.map((sale) => (
@@ -359,7 +323,6 @@ export default function SalesPage() {
                   </span>
                   
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    {/* EDIT STATUS BAYAR INTERAKTIF */}
                     {editingSaleId === sale.id ? (
                       <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                         <select value={selectedNewStatus} onChange={(e) => setSelectedNewStatus(e.target.value)} style={{ fontSize: '11px', padding: '2px 4px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
@@ -396,44 +359,24 @@ export default function SalesPage() {
         )}
       </div>
 
-      {/* 5. MODAL POPUP PIN ADMIN */}
       {modalState.isOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '16px' }}>
-          <div style={{ width: '100%', maxWidth: '360px', backgroundColor: '#ffffff', borderRadius: '16px', padding: '24px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)', border: '1px solid #e2e8f0', textAlign: 'center' }}>
-            <h3 style={{ margin: '0 0 6px 0', fontSize: '17px', fontWeight: '700', color: '#0f172a' }}>
-              {modalState.actionType === 'delete' ? 'Hapus Penjualan' : modalState.actionType === 'updateStatus' ? 'Ubah Status Bayar' : 'Update Stok Akrilik'}
-            </h3>
-
-            <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#64748b' }}>
-              {modalState.actionType === 'delete' ? `Hapus catatan "${modalState.targetData?.customer_name}".` : modalState.actionType === 'updateStatus' ? `Ubah status "${modalState.targetData?.customer_name}" menjadi "${selectedNewStatus}".` : 'Ubah total stok Papan Akrilik.'}
-            </p>
-
+          <div style={{ width: '100%', maxWidth: '360px', backgroundColor: '#ffffff', borderRadius: '16px', padding: '24px', textAlign: 'center' }}>
+            <h3 style={{ margin: '0 0 6px 0', fontSize: '17px', fontWeight: '700' }}>Konfirmasi PIN Admin</h3>
             <form onSubmit={handleModalSubmit}>
               {modalState.actionType === 'updateStock' && (
-                <div style={{ marginBottom: '12px', textAlign: 'left' }}>
-                  <label style={{ fontSize: '11px', fontWeight: '600', color: '#475569', display: 'block', marginBottom: '4px' }}>Stok Baru (Pcs)</label>
-                  <input type="number" min="0" required value={modalState.stockInput} onChange={(e) => setModalState(prev => ({ ...prev, stockInput: e.target.value }))} style={{ width: '100%', padding: '10px', fontSize: '14px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
-                </div>
+                <input type="number" min="0" required value={modalState.stockInput} onChange={(e) => setModalState(prev => ({ ...prev, stockInput: e.target.value }))} style={{ width: '100%', padding: '10px', fontSize: '14px', borderRadius: '8px', border: '1px solid #cbd5e1', marginBottom: '12px', boxSizing: 'border-box' }} />
               )}
-
-              <div style={{ marginBottom: '16px', textAlign: 'left' }}>
-                <label style={{ fontSize: '11px', fontWeight: '600', color: '#475569', display: 'block', marginBottom: '4px' }}>PIN Admin Konfirmasi</label>
-                <input type="password" required placeholder="PIN 6-digit" value={modalState.pinInput} onChange={(e) => setModalState(prev => ({ ...prev, pinInput: e.target.value }))} style={{ width: '100%', padding: '10px', fontSize: '15px', textAlign: 'center', letterSpacing: '3px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box', backgroundColor: '#f8fafc' }} />
-              </div>
-
-              {modalState.errorMsg && <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#ef4444', fontWeight: '600' }}>{modalState.errorMsg}</p>}
-
+              <input type="password" required placeholder="PIN 6-digit" value={modalState.pinInput} onChange={(e) => setModalState(prev => ({ ...prev, pinInput: e.target.value }))} style={{ width: '100%', padding: '10px', fontSize: '15px', textAlign: 'center', letterSpacing: '3px', borderRadius: '8px', border: '1px solid #cbd5e1', marginBottom: '16px', boxSizing: 'border-box' }} />
+              {modalState.errorMsg && <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#ef4444' }}>{modalState.errorMsg}</p>}
               <div style={{ display: 'flex', gap: '8px' }}>
-                <button type="button" onClick={() => setModalState({ isOpen: false, actionType: null, targetData: null, stockInput: '', pinInput: '', errorMsg: '', isVerifying: false })} style={{ flex: 1, padding: '10px', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>Batal</button>
-                <button type="submit" disabled={modalState.isVerifying} style={{ flex: 1, padding: '10px', backgroundColor: modalState.actionType === 'delete' ? '#ef4444' : '#2563eb', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: modalState.isVerifying ? 'not-allowed' : 'pointer' }}>
-                  {modalState.isVerifying ? 'Memeriksa...' : 'Konfirmasi'}
-                </button>
+                <button type="button" onClick={() => setModalState({ isOpen: false })} style={{ flex: 1, padding: '10px', backgroundColor: '#f1f5f9', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Batal</button>
+                <button type="submit" disabled={modalState.isVerifying} style={{ flex: 1, padding: '10px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Konfirmasi</button>
               </div>
             </form>
           </div>
         </div>
       )}
-
     </div>
   );
 }
