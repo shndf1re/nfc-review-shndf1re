@@ -121,6 +121,15 @@ export default function AdminPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('newest');
 
+  // Modal State untuk Konfirmasi PIN Kustom
+  const [pinModal, setPinModal] = useState({
+    isOpen: false,
+    actionType: null, // 'saveEdit' atau 'deleteCard'
+    targetDevice: null,
+    pinInput: '',
+    errorMsg: ''
+  });
+
   const timeoutRef = useRef(null);
 
   const resetSessionTimer = () => {
@@ -267,60 +276,42 @@ export default function AdminPage() {
     return cleanUrl;
   };
 
-  const handleSaveEditWithPin = async (device) => {
-    const inputPin = prompt(`Masukkan PIN untuk mengonfirmasi perubahan pada ${device.id}:`);
-    if (!inputPin) return;
+  // Verifikasi PIN Kartu & Eksekusi Simpan/Hapus
+  const handleCardPinAction = async (e) => {
+    e.preventDefault();
+    const device = pinModal.targetDevice;
 
-    if (inputPin.trim() !== String(device.pin).trim()) {
-      alert('❌ PIN Konfirmasi Salah! Perubahan dibatalkan.');
+    if (pinModal.pinInput.trim() !== String(device.pin).trim()) {
+      setPinModal(prev => ({ ...prev, errorMsg: '❌ PIN Kartu Salah!' }));
       return;
     }
 
-    const formattedUrl = formatReviewUrl(editTargetUrl);
+    if (pinModal.actionType === 'saveEdit') {
+      const formattedUrl = formatReviewUrl(editTargetUrl);
+      const updatePayload = { label_name: editLabelName.trim() || null };
 
-    const updatePayload = {
-      label_name: editLabelName.trim() || null
-    };
+      if (formattedUrl) {
+        updatePayload.target_url = formattedUrl;
+        updatePayload.is_active = true;
+      }
 
-    if (formattedUrl) {
-      updatePayload.target_url = formattedUrl;
-      updatePayload.is_active = true;
+      const { error } = await supabase.from('devices').update(updatePayload).eq('id', device.id);
+      if (!error) {
+        setEditingDeviceId(null);
+        setEditTargetUrl('');
+        setEditLabelName('');
+        fetchDevices();
+      }
+    } else if (pinModal.actionType === 'deleteCard') {
+      const { error } = await supabase.from('devices').delete().eq('id', device.id);
+      if (!error) {
+        fetchDevices();
+        if (currentDevice?.id === device.id) setCurrentDevice(null);
+        if (previewDeviceModal?.id === device.id) setPreviewDeviceModal(null);
+      }
     }
 
-    const { error } = await supabase
-      .from('devices')
-      .update(updatePayload)
-      .eq('id', device.id);
-
-    if (error) {
-      alert('Gagal memperbarui data: ' + error.message);
-    } else {
-      alert(`✅ Berhasil memperbarui data ${device.id}!`);
-      setEditingDeviceId(null);
-      setEditTargetUrl('');
-      setEditLabelName('');
-      fetchDevices();
-    }
-  };
-
-  const handleDeleteDeviceWithPin = async (device) => {
-    const inputPin = prompt(`⚠️ PERINGATAN: Menghapus kartu ${device.id}.\nMasukkan PIN kartu untuk mengonfirmasi penghapusan:`);
-    if (!inputPin) return;
-
-    if (inputPin.trim() !== String(device.pin).trim()) {
-      alert('❌ PIN Konfirmasi Salah! Penghapusan dibatalkan.');
-      return;
-    }
-
-    const { error } = await supabase.from('devices').delete().eq('id', device.id);
-    if (error) {
-      alert('Gagal menghapus kartu!');
-    } else {
-      alert(`🗑️ Kartu ${device.id} berhasil dihapus.`);
-      fetchDevices();
-      if (currentDevice?.id === device.id) setCurrentDevice(null);
-      if (previewDeviceModal?.id === device.id) setPreviewDeviceModal(null);
-    }
+    setPinModal({ isOpen: false, actionType: null, targetDevice: null, pinInput: '', errorMsg: '' });
   };
 
   const filteredDevices = devices.filter((device) => {
@@ -396,7 +387,6 @@ export default function AdminPage() {
   return (
     <div style={{ maxWidth: '520px', margin: '0 auto', padding: '24px 16px', boxSizing: 'border-box', fontFamily: '-apple-system, sans-serif' }}>
       
-      {/* HEADER UTAMA: MENAMPILKAN TOMBOL PENJUALAN & STATISTIK */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', backgroundColor: '#ffffff', padding: '16px 20px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
         <div>
           <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700' }}>{SITE_CONFIG?.adminTitle || 'Dashboard NFC'}</h2>
@@ -565,7 +555,7 @@ export default function AdminPage() {
                         style={{ width: '100%', padding: '8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
                       />
                       <div style={{ display: 'flex', gap: '6px' }}>
-                        <button onClick={() => handleSaveEditWithPin(device)} style={{ flex: 1, padding: '8px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                        <button onClick={() => setPinModal({ isOpen: true, actionType: 'saveEdit', targetDevice: device, pinInput: '', errorMsg: '' })} style={{ flex: 1, padding: '8px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
                           Simpan (PIN)
                         </button>
                         <button onClick={() => setEditingDeviceId(null)} style={{ padding: '8px 12px', backgroundColor: '#cbd5e1', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>
@@ -580,7 +570,7 @@ export default function AdminPage() {
                           ✏️ Edit Nama & Link (PIN)
                         </button>
                         
-                        <button onClick={() => handleDeleteDeviceWithPin(device)} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                        <button onClick={() => setPinModal({ isOpen: true, actionType: 'deleteCard', targetDevice: device, pinInput: '', errorMsg: '' })} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
                           🗑️ Hapus Kartu (PIN)
                         </button>
                       </div>
@@ -608,6 +598,68 @@ export default function AdminPage() {
           {sortedDevices.length === 0 && <p style={{ textAlign: 'center', fontSize: '13px', color: '#94a3b8' }}>Tidak ada kartu yang cocok dengan pencarian.</p>}
         </div>
       </div>
+
+      {/* MODAL VERIFIKASI PIN KARTU */}
+      {pinModal.isOpen && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '16px'
+        }}>
+          <div style={{
+            width: '100%', maxWidth: '360px', backgroundColor: '#ffffff',
+            borderRadius: '16px', padding: '24px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)',
+            border: '1px solid #e2e8f0', textAlign: 'center'
+          }}>
+            <h3 style={{ margin: '0 0 6px 0', fontSize: '17px', fontWeight: '700', color: '#0f172a' }}>
+              {pinModal.actionType === 'deleteCard' ? 'Hapus Kartu' : 'Konfirmasi Perubahan'}
+            </h3>
+
+            <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#64748b' }}>
+              Masukkan PIN Kartu untuk <strong>{pinModal.targetDevice?.id}</strong>
+            </p>
+
+            <form onSubmit={handleCardPinAction}>
+              <input
+                type="password"
+                required
+                autoFocus
+                placeholder="Masukkan PIN 6-digit"
+                value={pinModal.pinInput}
+                onChange={(e) => setPinModal(prev => ({ ...prev, pinInput: e.target.value }))}
+                style={{
+                  width: '100%', padding: '10px', fontSize: '16px', textAlign: 'center',
+                  letterSpacing: '4px', borderRadius: '8px', border: '1px solid #cbd5e1',
+                  boxSizing: 'border-box', marginBottom: '12px', outline: 'none'
+                }}
+              />
+
+              {pinModal.errorMsg && (
+                <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#ef4444', fontWeight: '600' }}>
+                  {pinModal.errorMsg}
+                </p>
+              )}
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setPinModal({ isOpen: false, actionType: null, targetDevice: null, pinInput: '', errorMsg: '' })}
+                  style={{ flex: 1, padding: '10px', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  style={{ flex: 1, padding: '10px', backgroundColor: pinModal.actionType === 'deleteCard' ? '#ef4444' : '#2563eb', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}
+                >
+                  Konfirmasi
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
