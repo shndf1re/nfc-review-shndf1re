@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import Link from 'next/link';
+import JSZip from 'jszip';
 import { SITE_CONFIG } from '../../lib/config';
 
 const supabase = createClient(
@@ -11,6 +12,57 @@ const supabase = createClient(
 );
 
 const TIMEOUT_DURATION = 30 * 60 * 1000;
+
+// FUNGSI UTAMA DRAW QR + LOGO GOOGLE KE CANVAS
+function drawQrWithLogoToCanvas(text, logoUrl) {
+  return new Promise((resolve) => {
+    const renderSize = 1000;
+    const canvas = document.createElement('canvas');
+    canvas.width = renderSize;
+    canvas.height = renderSize;
+    const ctx = canvas.getContext('2d');
+
+    const qrUrl = text.includes('?') ? `${text}&src=qr` : `${text}?src=qr`;
+
+    const qrImage = new Image();
+    qrImage.crossOrigin = 'Anonymous';
+    qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=${renderSize}x${renderSize}&data=${encodeURIComponent(qrUrl)}`;
+
+    qrImage.onload = () => {
+      ctx.drawImage(qrImage, 0, 0, renderSize, renderSize);
+
+      const logoSize = renderSize * 0.22;
+      const center = renderSize / 2;
+      const radius = logoSize / 2 + 15;
+
+      ctx.beginPath();
+      ctx.arc(center, center, radius, 0, 2 * Math.PI, false);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+
+      const customLogo = new Image();
+      customLogo.crossOrigin = 'Anonymous';
+      customLogo.src = logoUrl || 'https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg';
+
+      customLogo.onload = () => {
+        ctx.drawImage(
+          customLogo,
+          center - logoSize / 2,
+          center - logoSize / 2,
+          logoSize,
+          logoSize
+        );
+        resolve(canvas.toDataURL('image/png', 1.0));
+      };
+
+      customLogo.onerror = () => {
+        resolve(canvas.toDataURL('image/png', 1.0));
+      };
+    };
+
+    qrImage.onerror = () => resolve(null);
+  });
+}
 
 function QrCodeWithLogo({ text, deviceId }) {
   const canvasRef = useRef(null);
@@ -318,38 +370,38 @@ export default function AdminPage() {
     }
   };
 
-  // BULK DOWNLOAD DENGAN BLOB & ANTI-BLOCK BROWSER
-  const handleDownloadSelectedQrCodes = async () => {
+  // BULK DOWNLOAD DENGAN LOGO GOOGLE KE FILE .ZIP (JSZIP)
+  const handleDownloadSelectedQrCodesZip = async () => {
     if (selectedDeviceIds.length === 0 || isDownloadingBulk) return;
     setIsDownloadingBulk(true);
-    showToast(`Memproses ${selectedDeviceIds.length} QR Code...`);
+    showToast(`Membuat file ZIP (${selectedDeviceIds.length} QR Code)...`);
+
+    const zip = new JSZip();
+    const logoUrl = SITE_CONFIG?.qrLogoUrl || 'https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg';
 
     for (let i = 0; i < selectedDeviceIds.length; i++) {
       const deviceId = selectedDeviceIds[i];
-      const qrUrl = `${window.location.origin}/r/${deviceId}?src=qr`;
-      const apiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=1000x1000&data=${encodeURIComponent(qrUrl)}`;
-
-      try {
-        const response = await fetch(apiUrl);
-        const blob = await response.blob();
-        const blobUrl = window.URL.createObjectURL(blob);
-
-        const link = document.createElement('a');
-        link.href = blobUrl;
-        link.download = `qrcode-${deviceId}.png`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-
-        window.URL.revokeObjectURL(blobUrl);
-        await new Promise((resolve) => setTimeout(resolve, 600));
-      } catch (err) {
-        console.error(`Gagal unduh QR ${deviceId}:`, err);
+      const targetUrl = `${window.location.origin}/r/${deviceId}`;
+      
+      // Draw QR + Logo Google ke Data URL
+      const dataUrl = await drawQrWithLogoToCanvas(targetUrl, logoUrl);
+      if (dataUrl) {
+        const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
+        zip.file(`qrcode-${deviceId}.png`, base64Data, { base64: true });
       }
     }
 
+    // Generate File ZIP & Download Automatic
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(zipBlob);
+    link.download = `QR-Codes-Batch-${new Date().toISOString().substring(0, 10)}.zip`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
     setIsDownloadingBulk(false);
-    showToast(`✅ Selesai mengunduh ${selectedDeviceIds.length} QR Code!`);
+    showToast(`✅ Berhasil mendownload file ZIP berisi ${selectedDeviceIds.length} QR Code!`);
   };
 
   // EKSEKUSI MODAL PIN ADMIN & BULK ACTIONS
@@ -626,8 +678,8 @@ export default function AdminPage() {
           </div>
 
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <button onClick={handleDownloadSelectedQrCodes} disabled={isDownloadingBulk} style={{ flex: 1, padding: '8px 12px', backgroundColor: isDownloadingBulk ? '#94a3b8' : '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '600', cursor: isDownloadingBulk ? 'not-allowed' : 'pointer' }}>
-              {isDownloadingBulk ? '⏳ Mengunduh...' : '📥 Download Selected QR Codes'}
+            <button onClick={handleDownloadSelectedQrCodesZip} disabled={isDownloadingBulk} style={{ flex: 1, padding: '8px 12px', backgroundColor: isDownloadingBulk ? '#94a3b8' : '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '600', cursor: isDownloadingBulk ? 'not-allowed' : 'pointer' }}>
+              {isDownloadingBulk ? '⏳ Membuat ZIP...' : '📦 Download Selected QR (.ZIP)'}
             </button>
             <button onClick={() => setShowBulkEditForm(!showBulkEditForm)} style={{ flex: 1, padding: '8px 12px', backgroundColor: '#059669', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
               ✏️ Bulk Edit Terpilih
