@@ -11,9 +11,9 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 );
 
-const TIMEOUT_DURATION = 30 * 60 * 1000;
+const TIMEOUT_DURATION = 30 * 60 * 1000; // 30 Menit
 
-// FUNGSI UTAMA DRAW QR + LOGO GOOGLE KE CANVAS
+// FUNGSI UTAMA DRAW QR + LOGO GOOGLE KE CANVAS (UNTUK ZIP & PREVIEW)
 function drawQrWithLogoToCanvas(text, logoUrl) {
   return new Promise((resolve) => {
     const renderSize = 1000;
@@ -182,10 +182,10 @@ export default function AdminPage() {
 
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
-  // Modal State
+  // Modal State PIN
   const [pinModal, setPinModal] = useState({
     isOpen: false,
-    actionType: null,
+    actionType: null, // 'saveEdit', 'deleteCard', 'bulkGenerate', atau 'bulkEditSave'
     targetDevice: null,
     bulkQty: 10,
     pinInput: '',
@@ -202,6 +202,7 @@ export default function AdminPage() {
     }, 3000);
   };
 
+  // LOGIKA SESSION TIMEOUT PRESISI (Hanya reset jika ada klik/ketik nyata)
   const resetSessionTimer = () => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     timeoutRef.current = setTimeout(() => {
@@ -209,7 +210,6 @@ export default function AdminPage() {
     }, TIMEOUT_DURATION);
   };
 
-  // REALTIME & SESSION LISTENER
   useEffect(() => {
     const savedSession = localStorage.getItem('nfc_admin_session');
     if (savedSession === 'true') {
@@ -218,42 +218,36 @@ export default function AdminPage() {
       resetSessionTimer();
     }
 
-    // LISTENER REALTIME SUPABASE
-    const channel = supabase
-      .channel('schema-db-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*', // Mendengar semua aksi (INSERT, UPDATE, DELETE)
-          schema: 'public',
-          table: 'devices'
-        },
-        () => {
-          // Otomatis sinkronkan data saat ada perubahan dari device lain
-          fetchDashboardData();
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'sales'
-        },
-        () => {
-          fetchDashboardData();
-        }
-      )
-      .subscribe();
-
-    const events = ['mousemove', 'keydown', 'click', 'touchstart', 'scroll'];
+    // Hanya dengarkan aksi interaksi langsung (tanpa mousemove agar tidak sensitif)
+    const events = ['keydown', 'click', 'touchstart'];
+    let lastActivityTime = Date.now();
+    
     const handleUserActivity = () => {
-      if (localStorage.getItem('nfc_admin_session') === 'true') {
-        resetSessionTimer();
+      const now = Date.now();
+      if (now - lastActivityTime > 10000) { // Throttle 10 detik
+        lastActivityTime = now;
+        if (localStorage.getItem('nfc_admin_session') === 'true') {
+          resetSessionTimer();
+        }
       }
     };
 
     events.forEach(event => window.addEventListener(event, handleUserActivity));
+
+    // REALTIME LISTENER SUPABASE
+    const channel = supabase
+      .channel('schema-db-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'devices' },
+        () => { fetchDashboardData(); }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'sales' },
+        () => { fetchDashboardData(); }
+      )
+      .subscribe();
 
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -413,7 +407,6 @@ export default function AdminPage() {
       const deviceId = selectedDeviceIds[i];
       const targetUrl = `${window.location.origin}/r/${deviceId}`;
       
-      // Draw QR + Logo Google ke Data URL
       const dataUrl = await drawQrWithLogoToCanvas(targetUrl, logoUrl);
       if (dataUrl) {
         const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
@@ -421,7 +414,6 @@ export default function AdminPage() {
       }
     }
 
-    // Generate File ZIP & Download Automatic
     const zipBlob = await zip.generateAsync({ type: 'blob' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(zipBlob);
