@@ -141,12 +141,11 @@ export default function SalesPage() {
     });
   };
 
-  // Eksekusi Konfirmasi Modal
+  // Eksekusi Konfirmasi Modal via RPC Supabase
   const handleModalSubmit = async (e) => {
     e.preventDefault();
     setModalState(prev => ({ ...prev, isVerifying: true, errorMsg: '' }));
 
-    // Validasi Angka jika Update Stok
     let newStockVal = 0;
     if (modalState.actionType === 'updateStock') {
       newStockVal = parseInt(modalState.stockInput);
@@ -156,7 +155,7 @@ export default function SalesPage() {
       }
     }
 
-    // Verifikasi PIN via Supabase RPC
+    // Verifikasi PIN Terenkripsi Database via RPC Supabase
     const { data: isValidPin, error: pinError } = await supabase.rpc('verify_sales_pin', {
       input_pin: modalState.pinInput.trim()
     });
@@ -170,7 +169,6 @@ export default function SalesPage() {
       return;
     }
 
-    // Eksekusi Berdasarkan Jenis Aksi
     if (modalState.actionType === 'updateStock') {
       if (stockItemId) {
         await supabase.from('inventory').update({ stock_quantity: newStockVal }).eq('id', stockItemId);
