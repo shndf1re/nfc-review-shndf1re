@@ -115,6 +115,18 @@ export default function SalesPage() {
     fetchData();
   };
 
+  // UBHA STATUS PEMBAYARAN INSTAN (TANPA REFRESH)
+  const handleChangePaymentStatus = async (saleId, newStatus) => {
+    const { error } = await supabase
+      .from('sales')
+      .update({ payment_status: newStatus })
+      .eq('id', saleId);
+
+    if (!error) {
+      fetchData();
+    }
+  };
+
   // Buka Modal Update Stok
   const openUpdateStockModal = () => {
     setModalState({
@@ -155,7 +167,6 @@ export default function SalesPage() {
       }
     }
 
-    // Verifikasi PIN Terenkripsi Database via RPC Supabase
     const { data: isValidPin, error: pinError } = await supabase.rpc('verify_sales_pin', {
       input_pin: modalState.pinInput.trim()
     });
@@ -304,7 +315,7 @@ export default function SalesPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {salesHistory.map((sale) => (
               <div key={sale.id} style={{ padding: '12px', borderRadius: '10px', border: '1px solid #f1f5f9', backgroundColor: '#f8fafc' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                   <strong style={{ fontSize: '14px' }}>{sale.customer_name}</strong>
                   <span style={{ fontSize: '13px', fontWeight: '700', color: '#2563eb' }}>
                     Rp {parseFloat(sale.total_price).toLocaleString('id-ID')}
@@ -313,11 +324,29 @@ export default function SalesPage() {
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: '#64748b' }}>
                   <span>Qty: <strong>{sale.quantity} Pcs Akrilik</strong> {sale.device_id && `(${sale.device_id})`}</span>
+                  
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <span style={{ padding: '2px 6px', borderRadius: '4px', backgroundColor: sale.payment_status === 'Lunas' ? '#dcfce7' : '#fef3c7', color: sale.payment_status === 'Lunas' ? '#15803d' : '#b45309', fontWeight: '700' }}>
-                      {sale.payment_status}
-                    </span>
-                    
+                    {/* DROPDOWN INTERAKTIF PENGUBAHAN STATUS BAYAR */}
+                    <select
+                      value={sale.payment_status}
+                      onChange={(e) => handleChangePaymentStatus(sale.id, e.target.value)}
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: '700',
+                        padding: '2px 6px',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        backgroundColor: sale.payment_status === 'Lunas' ? '#dcfce7' : sale.payment_status === 'DP 50%' ? '#fef3c7' : '#fee2e2',
+                        color: sale.payment_status === 'Lunas' ? '#15803d' : sale.payment_status === 'DP 50%' ? '#b45309' : '#dc2626',
+                        cursor: 'pointer',
+                        outline: 'none'
+                      }}
+                    >
+                      <option value="Lunas">✅ Lunas</option>
+                      <option value="DP 50%">⏳ DP 50%</option>
+                      <option value="Belum Bayar">❌ Belum Bayar</option>
+                    </select>
+
                     <button
                       onClick={() => openDeleteSaleModal(sale)}
                       style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '11px', fontWeight: '600', cursor: 'pointer', padding: 0 }}
