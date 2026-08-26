@@ -104,12 +104,21 @@ export default function SalesPage() {
     fetchData();
   };
 
-  // HAPUS TRANSAKSI DENGAN VERIFIKASI PIN TERENKRIPSI DATABASE
-  const handleDeleteSaleWithPin = async (sale) => {
-    const inputPin = prompt(`⚠️ PERINGATAN: Menghapus catatan penjualan ${sale.customer_name}.\nMasukkan PIN Admin untuk konfirmasi:`);
+  // UPDATE STOK AKRILIK MANUAL DENGAN VERIFIKASI PIN
+  const handleUpdateStockWithPin = async () => {
+    const inputStock = prompt('Masukkan jumlah stok Papan Akrilik baru:', acrylicStock);
+    if (inputStock === null) return;
+
+    const newStock = parseInt(inputStock);
+    if (isNaN(newStock) || newStock < 0) {
+      alert('❌ Jumlah stok tidak valid!');
+      return;
+    }
+
+    const inputPin = prompt('🔒 Masukkan PIN Admin untuk mengubah stok:');
     if (!inputPin) return;
 
-    // 1. Verifikasi PIN terenkripsi via Supabase RPC
+    // Verifikasi PIN via Supabase RPC
     const { data: isValidPin, error: pinError } = await supabase.rpc('verify_sales_pin', {
       input_pin: inputPin.trim()
     });
@@ -119,32 +128,47 @@ export default function SalesPage() {
       return;
     }
 
-    // 2. Jika PIN Benar, Hapus Catatan Penjualan
+    // Jika PIN benar, update stok di database
+    if (stockItemId) {
+      const { error } = await supabase.from('inventory').update({ stock_quantity: newStock }).eq('id', stockItemId);
+      if (error) {
+        alert('Gagal mengupdate stok: ' + error.message);
+      } else {
+        alert(`✅ Stok Papan Akrilik berhasil diubah dari ${acrylicStock} pcs menjadi ${newStock} pcs.`);
+        setSubmitStatus('');
+        fetchData();
+      }
+    }
+  };
+
+  // HAPUS TRANSAKSI DENGAN VERIFIKASI PIN TERENKRIPSI DATABASE
+  const handleDeleteSaleWithPin = async (sale) => {
+    const inputPin = prompt(`⚠️ PERINGATAN: Menghapus catatan penjualan ${sale.customer_name}.\nMasukkan PIN Admin untuk konfirmasi:`);
+    if (!inputPin) return;
+
+    // Verifikasi PIN terenkripsi via Supabase RPC
+    const { data: isValidPin, error: pinError } = await supabase.rpc('verify_sales_pin', {
+      input_pin: inputPin.trim()
+    });
+
+    if (pinError || !isValidPin) {
+      alert('❌ PIN Konfirmasi Salah!');
+      return;
+    }
+
+    // Jika PIN Benar, Hapus Catatan Penjualan
     const { error } = await supabase.from('sales').delete().eq('id', sale.id);
 
     if (error) {
       alert('Gagal menghapus transaksi: ' + error.message);
     } else {
-      // 3. Kembalikan Stok Akrilik Otomatis
+      // Kembalikan Stok Akrilik Otomatis
       if (stockItemId) {
         const restoredStock = acrylicStock + (parseInt(sale.quantity) || 1);
         await supabase.from('inventory').update({ stock_quantity: restoredStock }).eq('id', stockItemId);
       }
 
       alert(`🗑️ Catatan penjualan ${sale.customer_name} berhasil dihapus & ${sale.quantity} pcs stok akrilik telah dikembalikan.`);
-      fetchData();
-    }
-  };
-
-  // Update Stok Akrilik Manual
-  const handleUpdateStock = async () => {
-    const inputStock = prompt('Masukkan jumlah stok Papan Akrilik baru:', acrylicStock);
-    if (inputStock === null) return;
-
-    const newStock = parseInt(inputStock) || 0;
-    if (stockItemId) {
-      await supabase.from('inventory').update({ stock_quantity: newStock }).eq('id', stockItemId);
-      setSubmitStatus('');
       fetchData();
     }
   };
@@ -174,10 +198,10 @@ export default function SalesPage() {
           </strong>
         </div>
         <button
-          onClick={handleUpdateStock}
+          onClick={handleUpdateStockWithPin}
           style={{ padding: '10px 16px', fontSize: '12px', backgroundColor: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '10px', cursor: 'pointer', fontWeight: '600' }}
         >
-          ✏️ Update Stok Akrilik
+          🔒 Update Stok Akrilik
         </button>
       </div>
 
@@ -280,7 +304,7 @@ export default function SalesPage() {
                       {sale.payment_status}
                     </span>
                     
-                    {/* TOMBOL HAPUS CATATAN DENGAN VERIFIKASI PIN DATABASE */}
+                    {/* TOMBOL HAPUS CATATAN DENGAN VERIFIKASI PIN */}
                     <button
                       onClick={() => handleDeleteSaleWithPin(sale)}
                       style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '11px', fontWeight: '600', cursor: 'pointer', padding: 0 }}
