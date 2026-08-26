@@ -31,7 +31,7 @@ export default function SalesPage() {
   const fetchData = async () => {
     setLoading(true);
     
-    // 1. Fetch Stok Papan Akrilik Only
+    // 1. Fetch Stok Papan Akrilik
     const { data: invData } = await supabase
       .from('inventory')
       .select('*')
@@ -54,7 +54,7 @@ export default function SalesPage() {
     setLoading(false);
   };
 
-  // Simpan Penjualan & Kurangi Stok Akrilik Otomatis (Dengan Proteksi Stok)
+  // Simpan Penjualan & Kurangi Stok
   const handleAddSale = async (e) => {
     e.preventDefault();
     setSubmitStatus('');
@@ -62,20 +62,18 @@ export default function SalesPage() {
     const priceNumber = parseFloat(totalPrice) || 0;
     const qtyNumber = parseInt(quantity) || 1;
 
-    // VALIDASI STRICT: Mencegah Transaksi Jika Stok Tidak Cukup
     if (acrylicStock <= 0) {
       setSubmitStatus('❌ Transaksi gagal! Stok Papan Akrilik sudah HABIS (0 pcs). Silakan update stok terlebih dahulu.');
       return;
     }
 
     if (qtyNumber > acrylicStock) {
-      setSubmitStatus(`❌ Transaksi dibatalkan! Jumlah pesanan (${qtyNumber} pcs) melebihi sisa stok yang ada (${acrylicStock} pcs).`);
+      setSubmitStatus(`❌ Transaksi dibatalkan! Jumlah pesanan (${qtyNumber} pcs) melebihi sisa stok (${acrylicStock} pcs).`);
       return;
     }
 
     setSubmitStatus('Menyimpan transaksi...');
 
-    // 1. Simpan Transaksi Penjualan
     const { error: saleError } = await supabase.from('sales').insert([
       {
         customer_name: customerName,
@@ -92,7 +90,6 @@ export default function SalesPage() {
       return;
     }
 
-    // 2. Kurangi Stok Akrilik Secara Akurat di Database
     if (stockItemId) {
       const newStock = acrylicStock - qtyNumber;
       await supabase.from('inventory').update({ stock_quantity: newStock }).eq('id', stockItemId);
@@ -105,6 +102,38 @@ export default function SalesPage() {
     setDeviceId('');
     setNotes('');
     fetchData();
+  };
+
+  // HAPUS TRANSAKSI DENGAN VERIFIKASI PIN TERENKRIPSI DATABASE
+  const handleDeleteSaleWithPin = async (sale) => {
+    const inputPin = prompt(`⚠️ PERINGATAN: Menghapus catatan penjualan ${sale.customer_name}.\nMasukkan PIN Admin untuk konfirmasi:`);
+    if (!inputPin) return;
+
+    // 1. Verifikasi PIN terenkripsi via Supabase RPC
+    const { data: isValidPin, error: pinError } = await supabase.rpc('verify_sales_pin', {
+      input_pin: inputPin.trim()
+    });
+
+    if (pinError || !isValidPin) {
+      alert('❌ PIN Konfirmasi Salah!');
+      return;
+    }
+
+    // 2. Jika PIN Benar, Hapus Catatan Penjualan
+    const { error } = await supabase.from('sales').delete().eq('id', sale.id);
+
+    if (error) {
+      alert('Gagal menghapus transaksi: ' + error.message);
+    } else {
+      // 3. Kembalikan Stok Akrilik Otomatis
+      if (stockItemId) {
+        const restoredStock = acrylicStock + (parseInt(sale.quantity) || 1);
+        await supabase.from('inventory').update({ stock_quantity: restoredStock }).eq('id', stockItemId);
+      }
+
+      alert(`🗑️ Catatan penjualan ${sale.customer_name} berhasil dihapus & ${sale.quantity} pcs stok akrilik telah dikembalikan.`);
+      fetchData();
+    }
   };
 
   // Update Stok Akrilik Manual
@@ -128,7 +157,7 @@ export default function SalesPage() {
       {/* Header Navigasi */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '700' }}>💰 Pencatatan Penjualan</h2>
+          <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '700' }}>💰 Kelola Hasil Penjualan</h2>
           <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Kelola Transaksi & Stok Akrilik</p>
         </div>
         <Link href="/admin" style={{ padding: '8px 14px', backgroundColor: '#2563eb', color: '#fff', textDecoration: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '600' }}>
@@ -244,14 +273,24 @@ export default function SalesPage() {
                   </span>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#64748b' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: '#64748b' }}>
                   <span>Qty: <strong>{sale.quantity} Pcs Akrilik</strong> {sale.device_id && `(${sale.device_id})`}</span>
-                  <span style={{ padding: '2px 6px', borderRadius: '4px', backgroundColor: sale.payment_status === 'Lunas' ? '#dcfce7' : '#fef3c7', color: sale.payment_status === 'Lunas' ? '#15803d' : '#b45309', fontWeight: '700' }}>
-                    {sale.payment_status}
-                  </span>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <span style={{ padding: '2px 6px', borderRadius: '4px', backgroundColor: sale.payment_status === 'Lunas' ? '#dcfce7' : '#fef3c7', color: sale.payment_status === 'Lunas' ? '#15803d' : '#b45309', fontWeight: '700' }}>
+                      {sale.payment_status}
+                    </span>
+                    
+                    {/* TOMBOL HAPUS CATATAN DENGAN VERIFIKASI PIN DATABASE */}
+                    <button
+                      onClick={() => handleDeleteSaleWithPin(sale)}
+                      style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '11px', fontWeight: '600', cursor: 'pointer', padding: 0 }}
+                    >
+                      🗑️ Hapus
+                    </button>
+                  </div>
                 </div>
 
-                {sale.notes && <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#475569', fontStyle: 'italic' }}>📝 {sale.notes}</p>}
+                {sale.notes && <p style={{ margin: '6px 0 0 0', fontSize: '11px', color: '#475569', fontStyle: 'italic' }}>📝 {sale.notes}</p>}
               </div>
             ))}
 
