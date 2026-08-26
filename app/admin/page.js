@@ -61,7 +61,7 @@ function QrCodeWithLogo({ text, deviceId }) {
     const image = canvas.toDataURL('image/png', 1.0);
     const link = document.createElement('a');
     link.href = image;
-    link.download = `qrcode-HD-${deviceId}.png`;
+    link.download = `qrcode-${deviceId}.png`;
     link.click();
   };
 
@@ -121,18 +121,19 @@ export default function AdminPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('newest');
 
-  // STATE UNTUK FITUR SELECT BULK (SELECTION)
+  // State Selection Bulk
   const [selectedDeviceIds, setSelectedDeviceIds] = useState([]);
   const [bulkEditLabel, setBulkEditLabel] = useState('');
   const [bulkEditUrl, setBulkEditUrl] = useState('');
   const [showBulkEditForm, setShowBulkEditForm] = useState(false);
+  const [isDownloadingBulk, setIsDownloadingBulk] = useState(false);
 
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
   // Modal State
   const [pinModal, setPinModal] = useState({
     isOpen: false,
-    actionType: null, // 'saveEdit', 'deleteCard', 'bulkGenerate', atau 'bulkEditSave'
+    actionType: null,
     targetDevice: null,
     bulkQty: 10,
     pinInput: '',
@@ -317,24 +318,38 @@ export default function AdminPage() {
     }
   };
 
-  // DOWNLOAD ALL SELECTED QR CODES
-  const handleDownloadSelectedQrCodes = () => {
-    if (selectedDeviceIds.length === 0) return;
-    showToast(`Mengunduh ${selectedDeviceIds.length} QR Code...`);
-    
-    selectedDeviceIds.forEach((id, index) => {
-      setTimeout(() => {
-        const qrUrl = `${window.location.origin}/r/${id}?src=qr`;
-        const apiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=1000x1000&data=${encodeURIComponent(qrUrl)}`;
-        
+  // BULK DOWNLOAD DENGAN BLOB & ANTI-BLOCK BROWSER
+  const handleDownloadSelectedQrCodes = async () => {
+    if (selectedDeviceIds.length === 0 || isDownloadingBulk) return;
+    setIsDownloadingBulk(true);
+    showToast(`Memproses ${selectedDeviceIds.length} QR Code...`);
+
+    for (let i = 0; i < selectedDeviceIds.length; i++) {
+      const deviceId = selectedDeviceIds[i];
+      const qrUrl = `${window.location.origin}/r/${deviceId}?src=qr`;
+      const apiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=1000x1000&data=${encodeURIComponent(qrUrl)}`;
+
+      try {
+        const response = await fetch(apiUrl);
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+
         const link = document.createElement('a');
-        link.href = apiUrl;
-        link.download = `qrcode-${id}.png`;
+        link.href = blobUrl;
+        link.download = `qrcode-${deviceId}.png`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-      }, index * 400); // Stagger download delay
-    });
+
+        window.URL.revokeObjectURL(blobUrl);
+        await new Promise((resolve) => setTimeout(resolve, 600));
+      } catch (err) {
+        console.error(`Gagal unduh QR ${deviceId}:`, err);
+      }
+    }
+
+    setIsDownloadingBulk(false);
+    showToast(`✅ Selesai mengunduh ${selectedDeviceIds.length} QR Code!`);
   };
 
   // EKSEKUSI MODAL PIN ADMIN & BULK ACTIONS
@@ -342,7 +357,6 @@ export default function AdminPage() {
     e.preventDefault();
     setPinModal(prev => ({ ...prev, isSubmitting: true, errorMsg: '' }));
 
-    // A. BULK GENERATE
     if (pinModal.actionType === 'bulkGenerate') {
       const { data: isValidPin } = await supabase.rpc('verify_sales_pin', { input_pin: pinModal.pinInput.trim() });
       if (!isValidPin) {
@@ -373,7 +387,6 @@ export default function AdminPage() {
       return;
     }
 
-    // B. BULK EDIT TERPILIH (SEKALIGUS UPDATE TERPILIH)
     if (pinModal.actionType === 'bulkEditSave') {
       const { data: isValidPin } = await supabase.rpc('verify_sales_pin', { input_pin: pinModal.pinInput.trim() });
       if (!isValidPin) {
@@ -405,7 +418,6 @@ export default function AdminPage() {
       return;
     }
 
-    // C. SINGLE EDIT & DELETE BY PIN KARTU
     const device = pinModal.targetDevice;
     const inputPinClean = String(pinModal.pinInput).trim();
     const devicePinClean = String(device.pin).trim();
@@ -555,7 +567,7 @@ export default function AdminPage() {
         </button>
       </div>
 
-      {/* MODAL / POPUP SHOW & PREVIEW QR CODE ANYTIME */}
+      {/* PREVIEW SINGLE QR CODE */}
       {(currentDevice || previewDeviceModal) && (
         <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '2px solid #2563eb', marginBottom: '24px', position: 'relative' }}>
           <button onClick={() => { setCurrentDevice(null); setPreviewDeviceModal(null); }} style={{ position: 'absolute', top: '12px', right: '12px', background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', color: '#64748b' }}>
@@ -601,7 +613,7 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* FITUR BARU: BAR KONTROL BULK ACTION & SELECTION */}
+      {/* BAR KONTROL SELECTION & BULK ACTION */}
       {selectedDeviceIds.length > 0 && (
         <div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', padding: '14px', borderRadius: '14px', marginBottom: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
@@ -614,8 +626,8 @@ export default function AdminPage() {
           </div>
 
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <button onClick={handleDownloadSelectedQrCodes} style={{ flex: 1, padding: '8px 12px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
-              📥 Download Selected QR Codes
+            <button onClick={handleDownloadSelectedQrCodes} disabled={isDownloadingBulk} style={{ flex: 1, padding: '8px 12px', backgroundColor: isDownloadingBulk ? '#94a3b8' : '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '600', cursor: isDownloadingBulk ? 'not-allowed' : 'pointer' }}>
+              {isDownloadingBulk ? '⏳ Mengunduh...' : '📥 Download Selected QR Codes'}
             </button>
             <button onClick={() => setShowBulkEditForm(!showBulkEditForm)} style={{ flex: 1, padding: '8px 12px', backgroundColor: '#059669', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
               ✏️ Bulk Edit Terpilih
@@ -772,7 +784,7 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* TOAST */}
+      {/* TOAST NOTIFICATION */}
       {toast.show && (
         <div style={{ position: 'fixed', bottom: '24px', right: '24px', backgroundColor: toast.type === 'error' ? '#ef4444' : '#16a34a', color: '#ffffff', padding: '12px 20px', borderRadius: '10px', boxShadow: '0 4px 14px rgba(0,0,0,0.2)', fontSize: '13px', fontWeight: '600', zIndex: 10000 }}>
           {toast.message}
