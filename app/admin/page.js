@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import Link from 'next/link';
+import { SITE_CONFIG } from '@/lib/config';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -11,7 +12,7 @@ const supabase = createClient(
 
 const TIMEOUT_DURATION = 30 * 60 * 1000; // 30 Menit Auto Logout
 
-// Komponen Canvas QR Code High-Resolution (1000px HD) dengan Parameter src=qr
+// Komponen Canvas QR Code High-Resolution (1000px HD)
 function QrCodeWithLogo({ text, deviceId }) {
   const canvasRef = useRef(null);
   const renderSize = 1000;
@@ -21,7 +22,6 @@ function QrCodeWithLogo({ text, deviceId }) {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
 
-    // Tambahkan parameter ?src=qr ke URL agar terbaca sebagai scan QR di statistik
     const qrUrl = text.includes('?') ? `${text}&src=qr` : `${text}?src=qr`;
 
     const qrImage = new Image();
@@ -40,13 +40,14 @@ function QrCodeWithLogo({ text, deviceId }) {
       ctx.fillStyle = '#ffffff';
       ctx.fill();
 
-      const googleLogo = new Image();
-      googleLogo.crossOrigin = 'Anonymous';
-      googleLogo.src = 'https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg';
+      const customLogo = new Image();
+      customLogo.crossOrigin = 'Anonymous';
+      // Mengambil Logo Tengah dari Config File
+      customLogo.src = SITE_CONFIG.qrLogoUrl;
 
-      googleLogo.onload = () => {
+      customLogo.onload = () => {
         ctx.drawImage(
-          googleLogo,
+          customLogo,
           center - logoSize / 2,
           center - logoSize / 2,
           logoSize,
@@ -366,7 +367,7 @@ export default function AdminPage() {
         <div style={{ width: '100%', maxWidth: '380px', backgroundColor: '#ffffff', borderRadius: '16px', padding: '32px 24px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.05)', border: '1px solid #e2e8f0' }}>
           <div style={{ textAlign: 'center', marginBottom: '24px' }}>
             <div style={{ width: '48px', height: '48px', backgroundColor: '#eff6ff', color: '#2563eb', borderRadius: '12px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', marginBottom: '12px' }}>🔒</div>
-            <h2 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: '700', color: '#0f172a' }}>Admin Portal</h2>
+            <h2 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: '700', color: '#0f172a' }}>{SITE_CONFIG.brandName} Portal</h2>
             <p style={{ margin: 0, fontSize: '14px', color: '#64748b' }}>Masuk untuk mengelola chip NFC & QR</p>
           </div>
 
@@ -391,11 +392,11 @@ export default function AdminPage() {
 
   return (
     <div style={{ maxWidth: '520px', margin: '0 auto', padding: '24px 16px', boxSizing: 'border-box', fontFamily: '-apple-system, sans-serif' }}>
-      {/* HEADER UTAMA: ADA TOMBOL DOKUMEN / STATISTIK */}
+      {/* HEADER UTAMA MENGAMBIL TEKS DARI SITE_CONFIG */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', backgroundColor: '#ffffff', padding: '16px 20px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700' }}>Dashboard NFC</h2>
-          <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Sistem Manajemen Perangkat</p>
+          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700' }}>{SITE_CONFIG.adminTitle}</h2>
+          <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>{SITE_CONFIG.adminSubtitle}</p>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <Link href="/admin/stats" style={{ padding: '8px 12px', backgroundColor: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: '8px', fontSize: '12px', fontWeight: '600', textDecoration: 'none' }}>
