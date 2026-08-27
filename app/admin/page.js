@@ -16,9 +16,20 @@ const TIMEOUT_DURATION = 30 * 60 * 1000;
 // FUNGSI KONVERSI CM KE PIXEL (300 DPI CETAK TAJAM)
 const cmToPx = (cm) => Math.round((cm / 2.54) * 300);
 
-// FUNGSI UTAMA DRAW STIKER + QR CODE KE CANVAS HD
-function drawCustomStickerToCanvas(qrText, stickerBgUrl, configCm) {
-  return new Promise((resolve) => {
+// HELPER LOAD IMAGE DENGAN PROMISE UNTUK MENCEGAH ZIP KOSONG
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+    img.src = src;
+    img.onload = () => resolve(img);
+    img.onerror = (err) => reject(err);
+  });
+}
+
+// FUNGSI UTAMA DRAW STIKER + QR CODE KE CANVAS HD (SAFE LOAD)
+async function drawCustomStickerToCanvas(qrText, stickerBgUrl, configCm) {
+  try {
     const canvasWidth = cmToPx(configCm.stikerWidthCm);   // 10.3 cm -> 1217 px
     const canvasHeight = cmToPx(configCm.stikerHeightCm); // 10.3 cm -> 1217 px
 
@@ -27,121 +38,27 @@ function drawCustomStickerToCanvas(qrText, stickerBgUrl, configCm) {
     canvas.height = canvasHeight;
     const ctx = canvas.getContext('2d');
 
-    const bgImage = new Image();
-    bgImage.crossOrigin = 'Anonymous';
-    bgImage.src = stickerBgUrl || '/stiker-template.png';
+    // 1. Load Background Template
+    const bgUrl = stickerBgUrl.startsWith('/') ? `${window.location.origin}${stickerBgUrl}` : stickerBgUrl;
+    const bgImage = await loadImage(bgUrl);
+    ctx.drawImage(bgImage, 0, 0, canvasWidth, canvasHeight);
 
-    bgImage.onload = () => {
-      // 1. Gambar Template Background Stiker
-      ctx.drawImage(bgImage, 0, 0, canvasWidth, canvasHeight);
+    // 2. Load & Render QR Code
+    const qrRenderSize = cmToPx(configCm.qrSizeCm); // 2.5 cm -> 295 px
+    const qrPosX = cmToPx(configCm.xCm);             // 6.1 cm -> 720 px
+    const qrPosY = cmToPx(configCm.yCm);             // 5.4 cm -> 638 px
 
-      // 2. Konversi Koordinat CM Penggaris ke Pixel
-      const qrRenderSize = cmToPx(configCm.qrSizeCm); // 2.5 cm -> 295 px
-      const qrPosX = cmToPx(configCm.xCm);             // 6.1 cm -> 720 px
-      const qrPosY = cmToPx(configCm.yCm);             // 5.4 cm -> 638 px
+    const qrUrl = qrText.includes('?') ? `${qrText}&src=qr` : `${qrText}?src=qr`;
+    const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=${qrRenderSize}x${qrRenderSize}&data=${encodeURIComponent(qrUrl)}`;
+    const qrImage = await loadImage(qrApiUrl);
 
-      const qrUrl = qrText.includes('?') ? `${qrText}&src=qr` : `${qrText}?src=qr`;
-      const qrImage = new Image();
-      qrImage.crossOrigin = 'Anonymous';
-      qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=${qrRenderSize}x${qrRenderSize}&data=${encodeURIComponent(qrUrl)}`;
-
-      qrImage.onload = () => {
-        // 3. Tempelkan QR Code ke Atas Stiker
-        ctx.drawImage(qrImage, qrPosX, qrPosY, qrRenderSize, qrRenderSize);
-        resolve(canvas.toDataURL('image/png', 1.0));
-      };
-
-      qrImage.onerror = () => resolve(null);
-    };
-
-    bgImage.onerror = () => resolve(null);
-  });
-}
-
-function QrCodeWithLogo({ text, deviceId }) {
-  const canvasRef = useRef(null);
-  const renderSize = 1000;
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-
-    const qrUrl = text.includes('?') ? `${text}&src=qr` : `${text}?src=qr`;
-
-    const qrImage = new Image();
-    qrImage.crossOrigin = 'Anonymous';
-    qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=${renderSize}x${renderSize}&data=${encodeURIComponent(qrUrl)}`;
-
-    qrImage.onload = () => {
-      ctx.drawImage(qrImage, 0, 0, renderSize, renderSize);
-
-      const logoSize = renderSize * 0.22;
-      const center = renderSize / 2;
-      const radius = logoSize / 2 + 15;
-
-      ctx.beginPath();
-      ctx.arc(center, center, radius, 0, 2 * Math.PI, false);
-      ctx.fillStyle = '#ffffff';
-      ctx.fill();
-
-      const customLogo = new Image();
-      customLogo.crossOrigin = 'Anonymous';
-      customLogo.src = SITE_CONFIG?.qrLogoUrl || 'https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg';
-
-      customLogo.onload = () => {
-        ctx.drawImage(
-          customLogo,
-          center - logoSize / 2,
-          center - logoSize / 2,
-          logoSize,
-          logoSize
-        );
-      };
-    };
-  }, [text]);
-
-  const handleDownload = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const image = canvas.toDataURL('image/png', 1.0);
-    const link = document.createElement('a');
-    link.href = image;
-    link.download = `qrcode-${deviceId}.png`;
-    link.click();
-  };
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
-      <canvas
-        ref={canvasRef}
-        width={renderSize}
-        height={renderSize}
-        style={{
-          width: '180px',
-          height: '180px',
-          borderRadius: '12px',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-          backgroundColor: '#ffffff'
-        }}
-      />
-      <button
-        onClick={handleDownload}
-        style={{
-          padding: '8px 16px',
-          backgroundColor: '#2563eb',
-          color: '#ffffff',
-          border: 'none',
-          borderRadius: '8px',
-          fontSize: '12px',
-          fontWeight: '600',
-          cursor: 'pointer'
-        }}
-      >
-        📥 Download QR Code Ultra HD (PNG)
-      </button>
-    </div>
-  );
+    // Tempelkan QR Code ke Atas Stiker
+    ctx.drawImage(qrImage, qrPosX, qrPosY, qrRenderSize, qrRenderSize);
+    return canvas.toDataURL('image/png', 1.0);
+  } catch (err) {
+    console.error('Gagal generate stiker canvas:', err);
+    return null;
+  }
 }
 
 export default function AdminPage() {
@@ -175,7 +92,7 @@ export default function AdminPage() {
 
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
-  // PENGATURAN PENGGARIS STIKER DALAM CM (MUDAN DIREVISI)
+  // PENGATURAN PENGGARIS STIKER CM
   const [stickerCmConfig, setStickerCmConfig] = useState({
     stikerWidthCm: 10.3,
     stikerHeightCm: 10.3,
@@ -397,20 +314,38 @@ export default function AdminPage() {
     }
   };
 
-  // FITUR UTAMA: DOWNLOAD ZIP BERISI STIKER SIAP CETAK (HASIL COMBINE TEMPLATE + QR)
+  // DOWNLOAD STIKER SINGLE (TERMASUK TEMPLATE)
+  const handleDownloadSingleSticker = async (deviceId) => {
+    showToast(`Membuat stiker untuk ${deviceId}...`);
+    const targetUrl = `${window.location.origin}/r/${deviceId}`;
+    const dataUrl = await drawCustomStickerToCanvas(targetUrl, '/stiker-template.png', stickerCmConfig);
+    
+    if (dataUrl) {
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = `stiker-${deviceId}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showToast(`✅ Stiker ${deviceId} berhasil terunduh!`);
+    } else {
+      showToast(`❌ Gagal mendownload stiker! Pastikan file /public/stiker-template.png tersedia.`, 'error');
+    }
+  };
+
+  // DOWNLOAD STIKER BULK ZIP (TERMASUK TEMPLATE)
   const handleDownloadSelectedStickersZip = async () => {
     if (selectedDeviceIds.length === 0 || isDownloadingBulk) return;
     setIsDownloadingBulk(true);
     showToast(`Membuat file ZIP (${selectedDeviceIds.length} Stiker HD)...`);
 
     const zip = new JSZip();
-    const stickerBgUrl = '/stiker-template.png';
 
     for (let i = 0; i < selectedDeviceIds.length; i++) {
       const deviceId = selectedDeviceIds[i];
       const targetUrl = `${window.location.origin}/r/${deviceId}`;
       
-      const dataUrl = await drawCustomStickerToCanvas(targetUrl, stickerBgUrl, stickerCmConfig);
+      const dataUrl = await drawCustomStickerToCanvas(targetUrl, '/stiker-template.png', stickerCmConfig);
       if (dataUrl) {
         const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
         zip.file(`stiker-${deviceId}.png`, base64Data, { base64: true });
@@ -418,15 +353,19 @@ export default function AdminPage() {
     }
 
     const zipBlob = await zip.generateAsync({ type: 'blob' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(zipBlob);
-    link.download = `Stiker-Cetak-Batch-${new Date().toISOString().substring(0, 10)}.zip`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    if (zipBlob.size > 0) {
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(zipBlob);
+      link.download = `Stiker-Cetak-Batch-${new Date().toISOString().substring(0, 10)}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showToast(`✅ Berhasil mendownload ${selectedDeviceIds.length} stiker siap cetak!`);
+    } else {
+      showToast(`❌ Gagal membuat ZIP! Pastikan file /public/stiker-template.png sudah di-upload.`, 'error');
+    }
 
     setIsDownloadingBulk(false);
-    showToast(`✅ Berhasil mendownload ${selectedDeviceIds.length} file stiker siap cetak!`);
   };
 
   const handleModalAction = async (e) => {
@@ -650,7 +589,7 @@ export default function AdminPage() {
         </a>
       </div>
 
-      {/* PREVIEW SINGLE QR CODE */}
+      {/* PREVIEW SINGLE STICKER CODE */}
       {(currentDevice || previewDeviceModal) && (
         <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '2px solid #2563eb', marginBottom: '24px', position: 'relative' }}>
           <button onClick={() => { setCurrentDevice(null); setPreviewDeviceModal(null); }} style={{ position: 'absolute', top: '12px', right: '12px', background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', color: '#64748b' }}>
@@ -658,7 +597,7 @@ export default function AdminPage() {
           </button>
           
           <h4 style={{ margin: '0 0 12px 0', color: '#2563eb' }}>
-            ✨ {currentDevice ? 'Kartu Baru Dibuat:' : `Detail QR Code (${(currentDevice || previewDeviceModal).id}):`}
+            ✨ {currentDevice ? 'Kartu Baru Dibuat:' : `Detail Stiker (${(currentDevice || previewDeviceModal).id}):`}
           </h4>
           
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
@@ -678,15 +617,14 @@ export default function AdminPage() {
             </div>
           )}
 
-          <div style={{ textAlign: 'center', padding: '12px', backgroundColor: '#f8fafc', borderRadius: '12px', marginBottom: '12px' }}>
-            <QrCodeWithLogo
-              text={typeof window !== 'undefined' ? `${window.location.origin}/r/${(currentDevice || previewDeviceModal).id}` : ''}
-              deviceId={(currentDevice || previewDeviceModal).id}
-            />
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <button onClick={() => handleSendWaCustomer(currentDevice || previewDeviceModal)} style={{ width: '100%', padding: '12px', backgroundColor: '#25d366', color: '#ffffff', border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
+            <button 
+              onClick={() => handleDownloadSingleSticker((currentDevice || previewDeviceModal).id)} 
+              style={{ width: '100%', padding: '12px', backgroundColor: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '13px', cursor: 'pointer' }}
+            >
+              🖨️ Download Stiker Siap Cetak (PNG HD)
+            </button>
+            <button onClick={() => handleSendWaCustomer(currentDevice || previewDeviceModal)} style={{ width: '100%', padding: '12px', backgroundColor: '#25d366', color: '#ffffff', border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
               💬 Kirim Format WA Setup ke Pembeli
             </button>
             <button onClick={() => handleCopyNfcUrl((currentDevice || previewDeviceModal).id)} style={{ width: '100%', padding: '10px', backgroundColor: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: '10px', fontWeight: '600', fontSize: '12px', cursor: 'pointer' }}>
@@ -821,7 +759,7 @@ export default function AdminPage() {
                     <>
                       <div style={{ display: 'flex', gap: '6px' }}>
                         <button onClick={() => setPreviewDeviceModal(device)} style={{ flex: 1, padding: '6px 10px', backgroundColor: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: '6px', fontSize: '11px', fontWeight: '700', cursor: 'pointer', textAlign: 'center' }}>
-                          👁️ Lihat & Download QR
+                          👁️ Lihat & Download Stiker
                         </button>
                         <button onClick={() => handleSendWaCustomer(device)} style={{ flex: 1, padding: '6px 10px', backgroundColor: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '6px', fontSize: '11px', fontWeight: '700', cursor: 'pointer', textAlign: 'center' }}>
                           💬 Send Format WA
