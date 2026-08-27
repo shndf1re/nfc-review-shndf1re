@@ -16,7 +16,7 @@ const TIMEOUT_DURATION = 30 * 60 * 1000;
 // FUNGSI KONVERSI CM KE PIXEL (300 DPI CETAK TAJAM)
 const cmToPx = (cm) => Math.round((cm / 2.54) * 300);
 
-// HELPER LOAD IMAGE AMAN TERDAPAT FALLBACK FILE
+// HELPER LOAD IMAGE AMAN DENGAN FALLBACK FILE
 function loadImageSafe(primarySrc, fallbackSrc) {
   return new Promise((resolve) => {
     const img = new Image();
@@ -37,7 +37,7 @@ function loadImageSafe(primarySrc, fallbackSrc) {
   });
 }
 
-// FUNGSI DRAW STIKER SAFE ENGINE
+// FUNGSI UTAMA DRAW STIKER + QR CODE + LOGO GOOGLE "G"
 async function drawCustomStickerToCanvas(qrText, configCm) {
   try {
     const canvasWidth = cmToPx(configCm.stikerWidthCm);   
@@ -52,15 +52,15 @@ async function drawCustomStickerToCanvas(qrText, configCm) {
     const primaryUrl = `${origin}/stiker-template.png`;
     const fallbackUrl = `${origin}/stiker_template.png`;
 
+    // 1. Gambar Template Background Stiker
     const bgImage = await loadImageSafe(primaryUrl, fallbackUrl);
-
     if (!bgImage) {
       console.error('Template stiker tidak ditemukan di /public');
       return null;
     }
-
     ctx.drawImage(bgImage, 0, 0, canvasWidth, canvasHeight);
 
+    // 2. Hitung Ukuran & Posisi QR Code
     const qrRenderSize = cmToPx(configCm.qrSizeCm); 
     const qrPosX = cmToPx(configCm.xCm);             
     const qrPosY = cmToPx(configCm.yCm);             
@@ -68,14 +68,41 @@ async function drawCustomStickerToCanvas(qrText, configCm) {
     const qrUrl = qrText.includes('?') ? `${qrText}&src=qr` : `${qrText}?src=qr`;
     const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=${qrRenderSize}x${qrRenderSize}&data=${encodeURIComponent(qrUrl)}`;
     
+    // 3. Tempel QR Code Utama
     const qrImage = await loadImageSafe(qrApiUrl, null);
     if (qrImage) {
       ctx.drawImage(qrImage, qrPosX, qrPosY, qrRenderSize, qrRenderSize);
+
+      // 4. EMBED LOGO GOOGLE "G" DI TENGAH QR CODE
+      const logoSize = qrRenderSize * 0.22; // Ukuran logo 22% dari QR
+      const centerX = qrPosX + (qrRenderSize / 2);
+      const centerY = qrPosY + (qrRenderSize / 2);
+      const circleRadius = (logoSize / 2) + 3; // Lingkaran putih di belakang logo
+
+      // Draw Lingkaran Putih (Border Clean)
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, circleRadius, 0, 2 * Math.PI, false);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+
+      // Draw Logo Google "G"
+      const logoUrl = SITE_CONFIG?.qrLogoUrl || 'https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg';
+      const logoImage = await loadImageSafe(logoUrl, null);
+      
+      if (logoImage) {
+        ctx.drawImage(
+          logoImage,
+          centerX - (logoSize / 2),
+          centerY - (logoSize / 2),
+          logoSize,
+          logoSize
+        );
+      }
     }
 
     return canvas.toDataURL('image/png', 1.0);
   } catch (err) {
-    console.error('Gagal generate canvas:', err);
+    console.error('Gagal generate canvas stiker:', err);
     return null;
   }
 }
@@ -110,13 +137,13 @@ export default function AdminPage() {
 
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
-  // PENGATURAN PENGGARIS STIKER DEFAULT PRESISI DENGAN HASIL PAS
+  // PENGATURAN PENGGARIS STIKER DEFAULT PRESISI
   const [stickerCmConfig, setStickerCmConfig] = useState({
     stikerWidthCm: 10.3,
     stikerHeightCm: 10.3,
-    xCm: 6.1,       // Jarak X presisi
-    yCm: 5.3,       // Jarak Y presisi
-    qrSizeCm: 2.6   // Ukuran QR presisi
+    xCm: 6.1,       
+    yCm: 5.3,       
+    qrSizeCm: 2.6   
   });
 
   const [pinModal, setPinModal] = useState({
