@@ -16,47 +16,66 @@ const TIMEOUT_DURATION = 30 * 60 * 1000;
 // FUNGSI KONVERSI CM KE PIXEL (300 DPI CETAK TAJAM)
 const cmToPx = (cm) => Math.round((cm / 2.54) * 300);
 
-// HELPER LOAD IMAGE DENGAN PROMISE UNTUK MENCEGAH ZIP KOSONG
-function loadImage(src) {
-  return new Promise((resolve, reject) => {
+// HELPER LOAD IMAGE AMAN TERDAPAT FALLBACK FILE
+function loadImageSafe(primarySrc, fallbackSrc) {
+  return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = 'Anonymous';
-    img.src = src;
+    img.src = primarySrc;
     img.onload = () => resolve(img);
-    img.onerror = (err) => reject(err);
+    img.onerror = () => {
+      if (fallbackSrc) {
+        const fallbackImg = new Image();
+        fallbackImg.crossOrigin = 'Anonymous';
+        fallbackImg.src = fallbackSrc;
+        fallbackImg.onload = () => resolve(fallbackImg);
+        fallbackImg.onerror = () => resolve(null);
+      } else {
+        resolve(null);
+      }
+    };
   });
 }
 
-// FUNGSI UTAMA DRAW STIKER + QR CODE KE CANVAS HD (SAFE LOAD)
-async function drawCustomStickerToCanvas(qrText, stickerBgUrl, configCm) {
+// FUNGSI DRAW STIKER SAFE ENGINE
+async function drawCustomStickerToCanvas(qrText, configCm) {
   try {
-    const canvasWidth = cmToPx(configCm.stikerWidthCm);   // 10.3 cm -> 1217 px
-    const canvasHeight = cmToPx(configCm.stikerHeightCm); // 10.3 cm -> 1217 px
+    const canvasWidth = cmToPx(configCm.stikerWidthCm);   
+    const canvasHeight = cmToPx(configCm.stikerHeightCm); 
 
     const canvas = document.createElement('canvas');
     canvas.width = canvasWidth;
     canvas.height = canvasHeight;
     const ctx = canvas.getContext('2d');
 
-    // 1. Load Background Template
-    const bgUrl = stickerBgUrl.startsWith('/') ? `${window.location.origin}${stickerBgUrl}` : stickerBgUrl;
-    const bgImage = await loadImage(bgUrl);
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const primaryUrl = `${origin}/stiker-template.png`;
+    const fallbackUrl = `${origin}/stiker_template.png`;
+
+    const bgImage = await loadImageSafe(primaryUrl, fallbackUrl);
+
+    if (!bgImage) {
+      console.error('Template stiker tidak ditemukan di /public');
+      return null;
+    }
+
     ctx.drawImage(bgImage, 0, 0, canvasWidth, canvasHeight);
 
-    // 2. Load & Render QR Code
-    const qrRenderSize = cmToPx(configCm.qrSizeCm); // 2.5 cm -> 295 px
-    const qrPosX = cmToPx(configCm.xCm);             // 6.1 cm -> 720 px
-    const qrPosY = cmToPx(configCm.yCm);             // 5.4 cm -> 638 px
+    const qrRenderSize = cmToPx(configCm.qrSizeCm); 
+    const qrPosX = cmToPx(configCm.xCm);             
+    const qrPosY = cmToPx(configCm.yCm);             
 
     const qrUrl = qrText.includes('?') ? `${qrText}&src=qr` : `${qrText}?src=qr`;
     const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=${qrRenderSize}x${qrRenderSize}&data=${encodeURIComponent(qrUrl)}`;
-    const qrImage = await loadImage(qrApiUrl);
+    
+    const qrImage = await loadImageSafe(qrApiUrl, null);
+    if (qrImage) {
+      ctx.drawImage(qrImage, qrPosX, qrPosY, qrRenderSize, qrRenderSize);
+    }
 
-    // Tempelkan QR Code ke Atas Stiker
-    ctx.drawImage(qrImage, qrPosX, qrPosY, qrRenderSize, qrRenderSize);
     return canvas.toDataURL('image/png', 1.0);
   } catch (err) {
-    console.error('Gagal generate stiker canvas:', err);
+    console.error('Gagal generate canvas:', err);
     return null;
   }
 }
@@ -75,7 +94,6 @@ export default function AdminPage() {
   const [acrylicStock, setAcrylicStock] = useState(0);
   const [totalOmzet, setTotalOmzet] = useState(0);
 
-  const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
   const [editingDeviceId, setEditingDeviceId] = useState(null);
   const [editTargetUrl, setEditTargetUrl] = useState('');
@@ -92,13 +110,13 @@ export default function AdminPage() {
 
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
-  // PENGATURAN PENGGARIS STIKER CM
+  // PENGATURAN PENGGARIS STIKER DEFAULT PRESISI DENGAN HASIL PAS
   const [stickerCmConfig, setStickerCmConfig] = useState({
     stikerWidthCm: 10.3,
     stikerHeightCm: 10.3,
-    xCm: 6.1,       // Jarak X dari kiri
-    yCm: 5.4,       // Jarak Y dari atas
-    qrSizeCm: 2.5   // Ukuran QR Code
+    xCm: 6.1,       // Jarak X presisi
+    yCm: 5.3,       // Jarak Y presisi
+    qrSizeCm: 2.6   // Ukuran QR presisi
   });
 
   const [pinModal, setPinModal] = useState({
@@ -237,7 +255,6 @@ export default function AdminPage() {
 
   const handleGenerateNew = async () => {
     setLoading(true);
-    setStatus('Membuat Unique Code & PIN baru...');
 
     const randomId = generateUniqueCode();
     const randomPin = Math.floor(100000 + Math.random() * 900000).toString();
@@ -249,10 +266,9 @@ export default function AdminPage() {
       .single();
 
     if (error) {
-      setStatus('❌ Gagal membuat ID baru: ' + error.message);
+      showToast('❌ Gagal membuat ID baru: ' + error.message, 'error');
     } else {
       setCurrentDevice(data);
-      setStatus(`✅ Unique Code Berhasil dibuat: ${data.id}`);
       showToast(`Kartu Baru ${data.id} Berhasil Dibuat!`);
       fetchDashboardData();
     }
@@ -314,11 +330,10 @@ export default function AdminPage() {
     }
   };
 
-  // DOWNLOAD STIKER SINGLE (TERMASUK TEMPLATE)
   const handleDownloadSingleSticker = async (deviceId) => {
     showToast(`Membuat stiker untuk ${deviceId}...`);
     const targetUrl = `${window.location.origin}/r/${deviceId}`;
-    const dataUrl = await drawCustomStickerToCanvas(targetUrl, '/stiker-template.png', stickerCmConfig);
+    const dataUrl = await drawCustomStickerToCanvas(targetUrl, stickerCmConfig);
     
     if (dataUrl) {
       const link = document.createElement('a');
@@ -329,11 +344,10 @@ export default function AdminPage() {
       document.body.removeChild(link);
       showToast(`✅ Stiker ${deviceId} berhasil terunduh!`);
     } else {
-      showToast(`❌ Gagal mendownload stiker! Pastikan file /public/stiker-template.png tersedia.`, 'error');
+      showToast(`❌ Gagal! Pastikan stiker-template.png ada di folder public/`, 'error');
     }
   };
 
-  // DOWNLOAD STIKER BULK ZIP (TERMASUK TEMPLATE)
   const handleDownloadSelectedStickersZip = async () => {
     if (selectedDeviceIds.length === 0 || isDownloadingBulk) return;
     setIsDownloadingBulk(true);
@@ -345,7 +359,7 @@ export default function AdminPage() {
       const deviceId = selectedDeviceIds[i];
       const targetUrl = `${window.location.origin}/r/${deviceId}`;
       
-      const dataUrl = await drawCustomStickerToCanvas(targetUrl, '/stiker-template.png', stickerCmConfig);
+      const dataUrl = await drawCustomStickerToCanvas(targetUrl, stickerCmConfig);
       if (dataUrl) {
         const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
         zip.file(`stiker-${deviceId}.png`, base64Data, { base64: true });
@@ -353,7 +367,7 @@ export default function AdminPage() {
     }
 
     const zipBlob = await zip.generateAsync({ type: 'blob' });
-    if (zipBlob.size > 0) {
+    if (zipBlob.size > 22) { 
       const link = document.createElement('a');
       link.href = URL.createObjectURL(zipBlob);
       link.download = `Stiker-Cetak-Batch-${new Date().toISOString().substring(0, 10)}.zip`;
@@ -362,7 +376,7 @@ export default function AdminPage() {
       document.body.removeChild(link);
       showToast(`✅ Berhasil mendownload ${selectedDeviceIds.length} stiker siap cetak!`);
     } else {
-      showToast(`❌ Gagal membuat ZIP! Pastikan file /public/stiker-template.png sudah di-upload.`, 'error');
+      showToast(`❌ Gagal membuat ZIP! Periksa file gambar di folder public/`, 'error');
     }
 
     setIsDownloadingBulk(false);
@@ -582,7 +596,7 @@ export default function AdminPage() {
         </button>
         <a 
           href="/stiker-template.png" 
-          download="stiker-template-master.png"
+          download="stiker-template.png"
           style={{ flex: 1, padding: '12px', backgroundColor: '#475569', color: '#ffffff', border: 'none', borderRadius: '12px', fontWeight: '600', fontSize: '12px', textDecoration: 'none', textAlign: 'center', boxSizing: 'border-box' }}
         >
           🖼️ Master Template
@@ -624,7 +638,7 @@ export default function AdminPage() {
             >
               🖨️ Download Stiker Siap Cetak (PNG HD)
             </button>
-            <button onClick={() => handleSendWaCustomer(currentDevice || previewDeviceModal)} style={{ width: '100%', padding: '12px', backgroundColor: '#25d366', color: '#ffffff', border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+            <button onClick={() => handleSendWaCustomer(currentDevice || previewDeviceModal)} style={{ width: '100%', padding: '12px', backgroundColor: '#25d366', color: '#ffffff', border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
               💬 Kirim Format WA Setup ke Pembeli
             </button>
             <button onClick={() => handleCopyNfcUrl((currentDevice || previewDeviceModal).id)} style={{ width: '100%', padding: '10px', backgroundColor: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: '10px', fontWeight: '600', fontSize: '12px', cursor: 'pointer' }}>
