@@ -633,14 +633,21 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* GENERATE BUTTONS */}
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-        <button onClick={handleGenerateNew} disabled={loading} style={{ flex: 1, padding: '14px', backgroundColor: loading ? '#94a3b8' : '#2563eb', color: '#ffffff', border: 'none', borderRadius: '12px', fontWeight: '600', fontSize: '13px', cursor: loading ? 'not-allowed' : 'pointer' }}>
+      {/* GENERATE & TEMPLATE BUTTONS */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
+        <button onClick={handleGenerateNew} disabled={loading} style={{ flex: 1, padding: '12px', backgroundColor: loading ? '#94a3b8' : '#2563eb', color: '#ffffff', border: 'none', borderRadius: '12px', fontWeight: '600', fontSize: '12px', cursor: loading ? 'not-allowed' : 'pointer' }}>
           + Generate 1 ID
         </button>
-        <button onClick={openBulkGenerateModal} style={{ flex: 1, padding: '14px', backgroundColor: '#059669', color: '#ffffff', border: 'none', borderRadius: '12px', fontWeight: '700', fontSize: '13px', cursor: 'pointer' }}>
-          ⚡ Bulk Generate (Custom)
+        <button onClick={openBulkGenerateModal} style={{ flex: 1, padding: '12px', backgroundColor: '#059669', color: '#ffffff', border: 'none', borderRadius: '12px', fontWeight: '700', fontSize: '12px', cursor: 'pointer' }}>
+          ⚡ Bulk Generate
         </button>
+        <a 
+          href="/stiker-template.png" 
+          download="stiker-template-master.png"
+          style={{ flex: 1, padding: '12px', backgroundColor: '#475569', color: '#ffffff', border: 'none', borderRadius: '12px', fontWeight: '600', fontSize: '12px', textDecoration: 'none', textAlign: 'center', boxSizing: 'border-box' }}
+        >
+          🖼️ Master Template
+        </a>
       </div>
 
       {/* PREVIEW SINGLE QR CODE */}
