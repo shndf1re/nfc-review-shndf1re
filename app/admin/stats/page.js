@@ -29,6 +29,13 @@ export default function StatsPage() {
           fetchStats();
         }
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'devices' },
+        () => {
+          fetchStats();
+        }
+      )
       .subscribe();
 
     return () => {
@@ -39,23 +46,44 @@ export default function StatsPage() {
   const fetchStats = async () => {
     setLoading(true);
 
-    // Ambil data dari tabel device_stats
-    const { data: statsData, error } = await supabase
+    // 1. Ambil data statistik & gabungkan (JOIN) dengan tabel devices untuk mendapat label_name
+    const { data: statsData, error: statsErr } = await supabase
       .from('device_stats')
       .select('device_id, type, created_at')
       .order('created_at', { ascending: false });
 
-    if (!error && statsData) {
+    const { data: devicesData } = await supabase
+      .from('devices')
+      .select('id, label_name');
+
+    // Buat peta ID Kartu ke Nama Toko
+    const deviceMap = {};
+    if (devicesData) {
+      devicesData.forEach(d => {
+        deviceMap[d.id] = d.label_name || null;
+      });
+    }
+
+    if (!statsErr && statsData) {
       setTotalScans(statsData.length);
 
       let totalNfc = 0;
       let totalQr = 0;
 
-      // Kelompokkan data berdasarkan Device ID
+      // 2. Kelompokkan data berdasarkan Device ID & Sertakan Nama Toko
       const grouped = statsData.reduce((acc, curr) => {
         const id = curr.device_id || 'Unknown';
+        const labelName = deviceMap[id] || null;
+
         if (!acc[id]) {
-          acc[id] = { id, nfc: 0, qr: 0, total: 0, lastScan: curr.created_at };
+          acc[id] = {
+            id,
+            labelName,
+            nfc: 0,
+            qr: 0,
+            total: 0,
+            lastScan: curr.created_at
+          };
         }
         if (curr.type === 'nfc') {
           acc[id].nfc += 1;
@@ -121,14 +149,26 @@ export default function StatsPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {stats.map((item) => (
               <div key={item.id} style={{ padding: '12px 14px', borderRadius: '12px', border: '1px solid #f1f5f9', backgroundColor: '#f8fafc' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                  <strong style={{ fontSize: '14px', color: '#0f172a' }}>{item.id}</strong>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+                  <div>
+                    <strong style={{ fontSize: '14px', color: '#0f172a', display: 'block' }}>{item.id}</strong>
+                    {item.labelName ? (
+                      <span style={{ fontSize: '12px', fontWeight: '600', color: '#2563eb' }}>
+                        🏪 {item.labelName}
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: '11px', color: '#94a3b8', fontStyle: 'italic' }}>
+                        Belum set nama toko
+                      </span>
+                    )}
+                  </div>
+
                   <span style={{ fontSize: '12px', fontWeight: '700', color: '#2563eb', backgroundColor: '#eff6ff', padding: '2px 8px', borderRadius: '6px' }}>
                     {item.total} Scan/Tap
                   </span>
                 </div>
                 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: '#64748b' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
                   <div style={{ display: 'flex', gap: '12px' }}>
                     <span>📱 NFC: <strong>{item.nfc}</strong></span>
                     <span>📷 QR: <strong>{item.qr}</strong></span>
