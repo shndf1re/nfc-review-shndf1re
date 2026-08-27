@@ -1,12 +1,17 @@
 import './globals.css';
 
+export const metadata = {
+  title: 'NFC Google Review Manager',
+  description: 'Aplikasi Manajemen Papan NFC & QR Code Google Review',
+  icons: {
+    icon: '/app-icon.png',
+    apple: '/app-icon.png',
+  },
+};
+
 export default function RootLayout({ children }) {
   return (
     <html lang="id">
-      <head>
-        <link rel="icon" href="/app-icon.png" />
-        <link rel="apple-touch-icon" href="/app-icon.png" />
-      </head>
       <body
         style={{
           margin: 0,
