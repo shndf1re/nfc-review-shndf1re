@@ -1,5 +1,9 @@
 import './globals.css';
 
+export const viewport = {
+  themeColor: '#2563eb',
+};
+
 export const metadata = {
   title: 'NFC Google Review Manager',
   description: 'Sistem Manajemen Papan Akrilik NFC & QR Code Google Review',
@@ -9,7 +13,6 @@ export const metadata = {
     shortcut: '/app-icon.png',
     apple: '/app-icon.png',
   },
-  themeColor: '#2563eb',
 };
 
 export default function RootLayout({ children }) {
@@ -18,7 +21,6 @@ export default function RootLayout({ children }) {
       <head>
         <link rel="icon" href="/app-icon.png" sizes="any" />
         <link rel="apple-touch-icon" href="/app-icon.png" />
-        <meta name="theme-color" content="#2563eb" />
       </head>
       <body
         style={{
