@@ -13,53 +13,48 @@ const supabase = createClient(
 
 const TIMEOUT_DURATION = 30 * 60 * 1000;
 
-function drawQrWithLogoToCanvas(text, logoUrl) {
+// FUNGSI KONVERSI CM KE PIXEL (300 DPI CETAK TAJAM)
+const cmToPx = (cm) => Math.round((cm / 2.54) * 300);
+
+// FUNGSI UTAMA DRAW STIKER + QR CODE KE CANVAS HD
+function drawCustomStickerToCanvas(qrText, stickerBgUrl, configCm) {
   return new Promise((resolve) => {
-    const renderSize = 1000;
+    const canvasWidth = cmToPx(configCm.stikerWidthCm);   // 10.3 cm -> 1217 px
+    const canvasHeight = cmToPx(configCm.stikerHeightCm); // 10.3 cm -> 1217 px
+
     const canvas = document.createElement('canvas');
-    canvas.width = renderSize;
-    canvas.height = renderSize;
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
     const ctx = canvas.getContext('2d');
 
-    const qrUrl = text.includes('?') ? `${text}&src=qr` : `${text}?src=qr`;
+    const bgImage = new Image();
+    bgImage.crossOrigin = 'Anonymous';
+    bgImage.src = stickerBgUrl || '/stiker-template.png';
 
-    const qrImage = new Image();
-    qrImage.crossOrigin = 'Anonymous';
-    qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=${renderSize}x${renderSize}&data=${encodeURIComponent(qrUrl)}`;
+    bgImage.onload = () => {
+      // 1. Gambar Template Background Stiker
+      ctx.drawImage(bgImage, 0, 0, canvasWidth, canvasHeight);
 
-    qrImage.onload = () => {
-      ctx.drawImage(qrImage, 0, 0, renderSize, renderSize);
+      // 2. Konversi Koordinat CM Penggaris ke Pixel
+      const qrRenderSize = cmToPx(configCm.qrSizeCm); // 2.5 cm -> 295 px
+      const qrPosX = cmToPx(configCm.xCm);             // 6.1 cm -> 720 px
+      const qrPosY = cmToPx(configCm.yCm);             // 5.4 cm -> 638 px
 
-      const logoSize = renderSize * 0.22;
-      const center = renderSize / 2;
-      const radius = logoSize / 2 + 15;
+      const qrUrl = qrText.includes('?') ? `${qrText}&src=qr` : `${qrText}?src=qr`;
+      const qrImage = new Image();
+      qrImage.crossOrigin = 'Anonymous';
+      qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=${qrRenderSize}x${qrRenderSize}&data=${encodeURIComponent(qrUrl)}`;
 
-      ctx.beginPath();
-      ctx.arc(center, center, radius, 0, 2 * Math.PI, false);
-      ctx.fillStyle = '#ffffff';
-      ctx.fill();
-
-      const customLogo = new Image();
-      customLogo.crossOrigin = 'Anonymous';
-      customLogo.src = logoUrl || 'https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg';
-
-      customLogo.onload = () => {
-        ctx.drawImage(
-          customLogo,
-          center - logoSize / 2,
-          center - logoSize / 2,
-          logoSize,
-          logoSize
-        );
+      qrImage.onload = () => {
+        // 3. Tempelkan QR Code ke Atas Stiker
+        ctx.drawImage(qrImage, qrPosX, qrPosY, qrRenderSize, qrRenderSize);
         resolve(canvas.toDataURL('image/png', 1.0));
       };
 
-      customLogo.onerror = () => {
-        resolve(canvas.toDataURL('image/png', 1.0));
-      };
+      qrImage.onerror = () => resolve(null);
     };
 
-    qrImage.onerror = () => resolve(null);
+    bgImage.onerror = () => resolve(null);
   });
 }
 
@@ -180,6 +175,15 @@ export default function AdminPage() {
 
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
+  // PENGATURAN PENGGARIS STIKER DALAM CM (MUDAN DIREVISI)
+  const [stickerCmConfig, setStickerCmConfig] = useState({
+    stikerWidthCm: 10.3,
+    stikerHeightCm: 10.3,
+    xCm: 6.1,       // Jarak X dari kiri
+    yCm: 5.4,       // Jarak Y dari atas
+    qrSizeCm: 2.5   // Ukuran QR Code
+  });
+
   const [pinModal, setPinModal] = useState({
     isOpen: false,
     actionType: null,
@@ -256,14 +260,12 @@ export default function AdminPage() {
     }
   };
 
-  // HANDLER LOGIN AMAN (SUPPORT USERNAME/PASSWORD DAN SAFE RPC PIN)
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoginLoading(true);
     setLoginError('');
 
     try {
-      // 1. Coba verifikasi via tabel admin_users
       const { data: users, error } = await supabase
         .from('admin_users')
         .select('*')
@@ -278,7 +280,6 @@ export default function AdminPage() {
         if (matchedUser) isSuccess = true;
       }
 
-      // 2. Fallback verifikasi via RPC PIN Admin jika metode pertama gagal
       if (!isSuccess) {
         const { data: isValidPin } = await supabase.rpc('verify_sales_pin', {
           input_pin: passwordInput.trim()
@@ -396,35 +397,36 @@ export default function AdminPage() {
     }
   };
 
-  const handleDownloadSelectedQrCodesZip = async () => {
+  // FITUR UTAMA: DOWNLOAD ZIP BERISI STIKER SIAP CETAK (HASIL COMBINE TEMPLATE + QR)
+  const handleDownloadSelectedStickersZip = async () => {
     if (selectedDeviceIds.length === 0 || isDownloadingBulk) return;
     setIsDownloadingBulk(true);
-    showToast(`Membuat file ZIP (${selectedDeviceIds.length} QR Code)...`);
+    showToast(`Membuat file ZIP (${selectedDeviceIds.length} Stiker HD)...`);
 
     const zip = new JSZip();
-    const logoUrl = SITE_CONFIG?.qrLogoUrl || 'https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg';
+    const stickerBgUrl = '/stiker-template.png';
 
     for (let i = 0; i < selectedDeviceIds.length; i++) {
       const deviceId = selectedDeviceIds[i];
       const targetUrl = `${window.location.origin}/r/${deviceId}`;
       
-      const dataUrl = await drawQrWithLogoToCanvas(targetUrl, logoUrl);
+      const dataUrl = await drawCustomStickerToCanvas(targetUrl, stickerBgUrl, stickerCmConfig);
       if (dataUrl) {
         const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
-        zip.file(`qrcode-${deviceId}.png`, base64Data, { base64: true });
+        zip.file(`stiker-${deviceId}.png`, base64Data, { base64: true });
       }
     }
 
     const zipBlob = await zip.generateAsync({ type: 'blob' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(zipBlob);
-    link.download = `QR-Codes-Batch-${new Date().toISOString().substring(0, 10)}.zip`;
+    link.download = `Stiker-Cetak-Batch-${new Date().toISOString().substring(0, 10)}.zip`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
 
     setIsDownloadingBulk(false);
-    showToast(`✅ Berhasil mendownload file ZIP berisi ${selectedDeviceIds.length} QR Code!`);
+    showToast(`✅ Berhasil mendownload ${selectedDeviceIds.length} file stiker siap cetak!`);
   };
 
   const handleModalAction = async (e) => {
@@ -687,7 +689,7 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* BAR KONTROL SELECTION & BULK ACTION */}
+      {/* BAR KONTROL SELECTION & BULK DOWNLOAD STIKER CETAK */}
       {selectedDeviceIds.length > 0 && (
         <div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', padding: '14px', borderRadius: '14px', marginBottom: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
@@ -700,12 +702,31 @@ export default function AdminPage() {
           </div>
 
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <button onClick={handleDownloadSelectedQrCodesZip} disabled={isDownloadingBulk} style={{ flex: 1, padding: '8px 12px', backgroundColor: isDownloadingBulk ? '#94a3b8' : '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '600', cursor: isDownloadingBulk ? 'not-allowed' : 'pointer' }}>
-              {isDownloadingBulk ? '⏳ Membuat ZIP...' : '📦 Download Selected QR (.ZIP)'}
+            <button onClick={handleDownloadSelectedStickersZip} disabled={isDownloadingBulk} style={{ flex: 1, padding: '10px 12px', backgroundColor: isDownloadingBulk ? '#94a3b8' : '#059669', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: isDownloadingBulk ? 'not-allowed' : 'pointer' }}>
+              {isDownloadingBulk ? '⏳ Membuat Stiker HD...' : '🖨️ Download Stiker Siap Cetak (.ZIP)'}
             </button>
-            <button onClick={() => setShowBulkEditForm(!showBulkEditForm)} style={{ flex: 1, padding: '8px 12px', backgroundColor: '#059669', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+            <button onClick={() => setShowBulkEditForm(!showBulkEditForm)} style={{ flex: 1, padding: '10px 12px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
               ✏️ Bulk Edit Terpilih
             </button>
+          </div>
+
+          {/* FORM SETUP KOORDINAT PENGGARIS CM */}
+          <div style={{ marginTop: '12px', backgroundColor: '#ffffff', padding: '12px', borderRadius: '10px', border: '1px solid #cbd5e1' }}>
+            <h5 style={{ margin: '0 0 8px 0', fontSize: '12px', color: '#0f172a' }}>📐 Setting Posisi Penggaris (cm):</h5>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginBottom: '8px' }}>
+              <div>
+                <label style={{ fontSize: '10px', color: '#64748b' }}>Jarak X (cm):</label>
+                <input type="number" step="0.1" value={stickerCmConfig.xCm} onChange={(e) => setStickerCmConfig({ ...stickerCmConfig, xCm: parseFloat(e.target.value) || 0 })} style={{ width: '100%', padding: '6px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '10px', color: '#64748b' }}>Jarak Y (cm):</label>
+                <input type="number" step="0.1" value={stickerCmConfig.yCm} onChange={(e) => setStickerCmConfig({ ...stickerCmConfig, yCm: parseFloat(e.target.value) || 0 })} style={{ width: '100%', padding: '6px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '10px', color: '#64748b' }}>Ukuran QR (cm):</label>
+                <input type="number" step="0.1" value={stickerCmConfig.qrSizeCm} onChange={(e) => setStickerCmConfig({ ...stickerCmConfig, qrSizeCm: parseFloat(e.target.value) || 0 })} style={{ width: '100%', padding: '6px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+              </div>
+            </div>
           </div>
 
           {/* FORM BULK EDIT */}
