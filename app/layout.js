@@ -1,5 +1,3 @@
-import './globals.css';
-
 export const metadata = {
   title: 'NFC Google Review Manager',
   description: 'Aplikasi Manajemen Papan NFC & QR Code Google Review',
