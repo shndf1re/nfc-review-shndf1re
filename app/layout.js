@@ -1,9 +1,10 @@
 export const metadata = {
-  title: 'NFC Google Review Manager',
-  description: 'Aplikasi Manajemen Papan NFC & QR Code Google Review',
-  manifest: '/manifest.json',
-  themeColor: '#2563eb',
-  viewport: 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no',
+  title: 'NFC Google Review',
+  description: 'Sistem NFC Google Review',
+  icons: {
+    icon: '/logo.png',
+    apple: '/logo.png',
+  },
 };
 
 export default function RootLayout({ children }) {
