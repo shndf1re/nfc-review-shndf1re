@@ -10,6 +10,8 @@ let SITE_CONFIG = {
   brandName: 'NFC Review',
   adminTitle: 'Dashboard NFC',
   adminSubtitle: 'Sistem Manajemen Perangkat',
+  domainUrl: 'https://tokonine.my.id',
+  nfcDomainUrl: 'https://reviewmaps.link',
   qrLogoUrl: 'https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg'
 };
 
@@ -28,6 +30,11 @@ const supabase = createClient(
 );
 
 const TIMEOUT_DURATION = 30 * 60 * 1000;
+
+// HELPER UNTUK MEMASTIKAN BASE URL NFC
+const getNfcBaseUrl = () => {
+  return SITE_CONFIG?.nfcDomainUrl || (typeof window !== 'undefined' ? window.location.origin : '');
+};
 
 // FUNGSI KONVERSI CM KE PIXEL (300 DPI CETAK TAJAM)
 const cmToPx = (cm) => Math.round((cm / 2.54) * 300);
@@ -56,7 +63,7 @@ function loadImageSafe(primarySrc, fallbackSrc) {
 // FUNGSI UTAMA DRAW STIKER + QR CODE + LOGO GOOGLE "G"
 async function drawCustomStickerToCanvas(qrText, configCm) {
   try {
-    const canvasWidth = cmToPx(configCm.stikerWidthCm);   
+    const canvasWidth = cmToPx(configCm.stikerWidthCm);    
     const canvasHeight = cmToPx(configCm.stikerHeightCm); 
 
     const canvas = document.createElement('canvas');
@@ -78,8 +85,8 @@ async function drawCustomStickerToCanvas(qrText, configCm) {
 
     // 2. Hitung Ukuran & Posisi QR Code
     const qrRenderSize = cmToPx(configCm.qrSizeCm); 
-    const qrPosX = cmToPx(configCm.xCm);             
-    const qrPosY = cmToPx(configCm.yCm);             
+    const qrPosX = cmToPx(configCm.xCm);              
+    const qrPosY = cmToPx(configCm.yCm);              
 
     const qrUrl = qrText.includes('?') ? `${qrText}&src=qr` : `${qrText}?src=qr`;
     const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=${qrRenderSize}x${qrRenderSize}&data=${encodeURIComponent(qrUrl)}`;
@@ -335,13 +342,15 @@ export default function AdminPage() {
   };
 
   const handleCopyNfcUrl = (deviceId) => {
-    const nfcUrl = `${window.location.origin}/r/${deviceId}?src=nfc`;
+    const baseUrl = getNfcBaseUrl();
+    const nfcUrl = `${baseUrl}/r/${deviceId}?src=nfc`;
     navigator.clipboard.writeText(nfcUrl);
     showToast('📋 Link NFC disalin ke clipboard!');
   };
 
   const handleSendWaCustomer = (device) => {
-    const setupUrl = `${window.location.origin}/setup/${device.id}`;
+    const baseUrl = getNfcBaseUrl();
+    const setupUrl = `${baseUrl}/setup/${device.id}`;
     const message = `Halo Kak! Terima kasih telah memesan Papan Akrilik Google Review (${SITE_CONFIG.brandName}).\n\nBerikut detail aktivasi papan Anda:\n- ID Kartu: ${device.id}\n- PIN Akses: ${device.pin}\n\nSilakan buka link aktivasi berikut untuk menghubungkan papan ke link Google Review toko Anda:\n🔗 ${setupUrl}`;
     
     const waUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
@@ -379,7 +388,8 @@ export default function AdminPage() {
 
   const handleDownloadSingleSticker = async (deviceId) => {
     showToast(`Membuat stiker untuk ${deviceId}...`);
-    const targetUrl = `${window.location.origin}/r/${deviceId}`;
+    const baseUrl = getNfcBaseUrl();
+    const targetUrl = `${baseUrl}/r/${deviceId}`;
     const dataUrl = await drawCustomStickerToCanvas(targetUrl, stickerCmConfig);
     
     if (dataUrl) {
@@ -401,10 +411,11 @@ export default function AdminPage() {
     showToast(`Membuat file ZIP (${selectedDeviceIds.length} Stiker HD)...`);
 
     const zip = new JSZip();
+    const baseUrl = getNfcBaseUrl();
 
     for (let i = 0; i < selectedDeviceIds.length; i++) {
       const deviceId = selectedDeviceIds[i];
-      const targetUrl = `${window.location.origin}/r/${deviceId}`;
+      const targetUrl = `${baseUrl}/r/${deviceId}`;
       
       const dataUrl = await drawCustomStickerToCanvas(targetUrl, stickerCmConfig);
       if (dataUrl) {
