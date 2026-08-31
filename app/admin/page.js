@@ -188,6 +188,7 @@ export default function AdminPage() {
     }, TIMEOUT_DURATION);
   };
 
+  // 1. UPDATE EVENT LISTENER SESI & IDLE TIMER
   useEffect(() => {
     const savedSession = localStorage.getItem('nfc_admin_session');
     if (savedSession === 'true') {
@@ -196,12 +197,14 @@ export default function AdminPage() {
       resetSessionTimer();
     }
 
-    const events = ['keydown', 'click', 'touchstart'];
+    // Tambahkan 'mousemove' dan 'scroll' agar pergerakan kursor/layar terdeteksi sebagai aktivitas
+    const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
     let lastActivityTime = Date.now();
     
     const handleUserActivity = () => {
       const now = Date.now();
-      if (now - lastActivityTime > 10000) {
+      // Throttling 5 detik agar tidak membebankan CPU saat mouse bergerak terus
+      if (now - lastActivityTime > 5000) { 
         lastActivityTime = now;
         if (localStorage.getItem('nfc_admin_session') === 'true') {
           resetSessionTimer();
@@ -211,6 +214,7 @@ export default function AdminPage() {
 
     events.forEach(event => window.addEventListener(event, handleUserActivity));
 
+    // Supabase Realtime Listener
     const channel = supabase
       .channel('schema-db-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'devices' }, () => { fetchDashboardData(); })
