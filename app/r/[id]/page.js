@@ -4,14 +4,13 @@ import { redirect } from 'next/navigation';
 export const dynamic = 'force-dynamic';
 
 export default async function RedirectPage({ params, searchParams }) {
-  // 1. Await params & searchParams agar kompatibel penuh dengan Next.js App Router
+  // 1. Await params & searchParams
   const resolvedParams = await params;
   const resolvedSearchParams = await searchParams;
 
   const id = resolvedParams?.id;
   const source = resolvedSearchParams?.src === 'nfc' ? 'nfc' : 'qr';
 
-  // Jika ID tidak ditemukan di URL, kembalikan ke landing page
   if (!id) {
     redirect('/');
   }
@@ -24,25 +23,34 @@ export default async function RedirectPage({ params, searchParams }) {
   let targetRedirectUrl = '/';
 
   try {
-    // 2. Cari data kartu di database Supabase
+    // 2. Cari data kartu dengan .ilike agar TAHAN terhadap beda huruf besar/kecil (Case-Insensitive)
     const { data: device, error } = await supabase
       .from('devices')
-      .select('target_url, is_active')
-      .eq('id', id)
+      .select('id, target_url, is_active')
+      .ilike('id', id)
       .maybeSingle();
 
-    if (!error && device && device.is_active && device.target_url) {
+    if (error) {
+      console.error('Supabase Query Error:', error.message);
+    }
+
+    // 3. Jika kartu ditemukan dan aktif serta ada target_url
+    if (device && device.is_active && device.target_url) {
       targetRedirectUrl = device.target_url;
 
-      // 3. REKAM LOG STATISTIK KE TABEL device_stats SEBELUM REDIRECT
+      // Rekam statistik tap/scan
       await supabase.from('device_stats').insert([
         {
-          device_id: id,
+          device_id: device.id,
           type: source
         }
       ]);
     } else if (device && !device.is_active) {
-      // Jika kartu terdaftar tapi belum aktif, arahkan ke halaman activation/setup
+      // Jika kartu terdaftar di DB tetapi is_active = false
+      targetRedirectUrl = `/setup/${device.id}`;
+    } else {
+      // Jika ID kartu sama sekali TIDAK ditemukan di database
+      console.log(`ID Kartu ${id} tidak ditemukan di database.`);
       targetRedirectUrl = `/setup/${id}`;
     }
   } catch (err) {
@@ -50,6 +58,6 @@ export default async function RedirectPage({ params, searchParams }) {
     targetRedirectUrl = '/';
   }
 
-  // 4. Eksekusi Redirect Langsung
+  // 4. Eksekusi Redirect
   redirect(targetRedirectUrl);
 }
