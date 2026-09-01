@@ -3,21 +3,27 @@
 import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 
-const TIMEOUT_30_MINS = 30 * 60 * 1000; // 30 Menit dalam milidetik
+const TIMEOUT_30_MINS = 30 * 60 * 1000; // 30 Menit
 
-export default function AutoLogout({ children }) {
+export default function AutoLogout({ children, onLogout }) {
   const router = useRouter();
   const timerRef = useRef(null);
 
   const handleLogout = () => {
-    // 1. Hapus session storage / local storage token admin
+    // 1. Hapus semua kunci session lokal
+    localStorage.removeItem('nfc_admin_session');
     localStorage.removeItem('admin_token');
     sessionStorage.clear();
 
-    // 2. Hapus cookie auth (jika memakai cookie)
+    // 2. Hapus cookie jika ada
     document.cookie = 'auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
 
-    // 3. Redirect ke halaman admin dengan parameter expired
+    // 3. Panggil callback logout dari parent jika ada
+    if (typeof onLogout === 'function') {
+      onLogout('Session expired karena tidak ada aktivitas selama 30 menit.');
+    }
+
+    // 4. Redirect ke login admin
     router.push('/admin?reason=expired');
   };
 
@@ -27,18 +33,27 @@ export default function AutoLogout({ children }) {
   };
 
   useEffect(() => {
+    // Cek apakah user sedang dalam posisi terautentikasi
+    const isAuth = localStorage.getItem('nfc_admin_session') === 'true';
+    if (!isAuth) return;
+
     const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
+    let lastActivityTime = Date.now();
 
     const handleActivity = () => {
-      resetTimer();
+      const now = Date.now();
+      // Throttle 1 detik agar hemat performa tapi tetap responsif
+      if (now - lastActivityTime > 1000) {
+        lastActivityTime = now;
+        resetTimer();
+      }
     };
 
-    // Pasang listener aktivitas pengguna
     events.forEach((evt) => {
       window.addEventListener(evt, handleActivity);
     });
 
-    // Jalankan timer awal
+    // Jalankan timer saat mount
     resetTimer();
 
     return () => {
