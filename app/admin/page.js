@@ -296,8 +296,15 @@ export default function AdminPage() {
       showToast('❌ Gagal membuat ID baru: ' + error.message, 'error');
     } else {
       setCurrentDevice(data);
+      setPreviewDeviceModal(data); // Otomatis buka preview di kartu baru
       showToast(`Kartu Baru ${data.id} Berhasil Dibuat!`);
       fetchDashboardData();
+      
+      // Auto Scroll ke kartu baru yang muncul di paling atas
+      setTimeout(() => {
+        const el = document.getElementById(`card-${data.id}`);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 200);
     }
     setLoading(false);
   };
@@ -356,6 +363,23 @@ export default function AdminPage() {
       setSelectedDeviceIds(selectedDeviceIds.filter(item => item !== id));
     } else {
       setSelectedDeviceIds([...selectedDeviceIds, id]);
+    }
+  };
+
+  const handleTogglePreview = (device) => {
+    if (previewDeviceModal?.id === device.id) {
+      // Jika kartu yang sama diklik lagi, tutup preview-nya
+      setPreviewDeviceModal(null);
+    } else {
+      // Buka preview kartu ini & tutup preview kartu lain
+      setPreviewDeviceModal(device);
+      setCurrentDevice(null);
+
+      // Auto Scroll halus ke kartu yang sedang di-preview
+      setTimeout(() => {
+        const el = document.getElementById(`card-${device.id}`);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
     }
   };
 
@@ -483,7 +507,6 @@ export default function AdminPage() {
     const inputPinClean = String(pinModal.pinInput).trim();
     const devicePinClean = String(device?.pin || '').trim();
 
-    // Verifikasi PIN (bisa pakai PIN Kartu atau PIN Admin)
     let isPinValid = inputPinClean === devicePinClean;
     if (!isPinValid) {
       const { data: isValidAdminPin } = await supabase.rpc('verify_sales_pin', { input_pin: inputPinClean });
@@ -684,51 +707,6 @@ export default function AdminPage() {
             </a>
           </div>
 
-          {/* PREVIEW SINGLE STICKER CODE */}
-          {(currentDevice || previewDeviceModal) && (
-            <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '2px solid #2563eb', marginBottom: '24px', position: 'relative' }}>
-              <button onClick={() => { setCurrentDevice(null); setPreviewDeviceModal(null); }} style={{ position: 'absolute', top: '12px', right: '12px', background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', color: '#64748b' }}>
-                ✖
-              </button>
-              
-              <h4 style={{ margin: '0 0 12px 0', color: '#2563eb' }}>
-                ✨ {currentDevice ? 'Kartu Baru Dibuat:' : `Detail Stiker (${(currentDevice || previewDeviceModal).id}):`}
-              </h4>
-              
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <span style={{ fontSize: '13px', color: '#64748b' }}>Unique ID:</span>
-                <strong style={{ letterSpacing: '0.5px' }}>{(currentDevice || previewDeviceModal).id}</strong>
-              </div>
-              
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <span style={{ fontSize: '13px', color: '#64748b' }}>PIN Pembeli:</span>
-                <strong style={{ color: '#dc2626' }}>{(currentDevice || previewDeviceModal).pin}</strong>
-              </div>
-
-              {(currentDevice || previewDeviceModal).label_name && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
-                  <span style={{ fontSize: '13px', color: '#64748b' }}>Nama Toko:</span>
-                  <strong style={{ color: '#2563eb' }}>{(currentDevice || previewDeviceModal).label_name}</strong>
-                </div>
-              )}
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
-                <button 
-                  onClick={() => handleDownloadSingleSticker((currentDevice || previewDeviceModal).id)} 
-                  style={{ width: '100%', padding: '12px', backgroundColor: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '13px', cursor: 'pointer' }}
-                >
-                  🖨️ Download Stiker Siap Cetak (PNG HD)
-                </button>
-                <button onClick={() => handleSendWaCustomer(currentDevice || previewDeviceModal)} style={{ width: '100%', padding: '12px', backgroundColor: '#25d366', color: '#ffffff', border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                  💬 Kirim Format WA Setup ke Pembeli
-                </button>
-                <button onClick={() => handleCopyNfcUrl((currentDevice || previewDeviceModal).id)} style={{ width: '100%', padding: '10px', backgroundColor: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: '10px', fontWeight: '600', fontSize: '12px', cursor: 'pointer' }}>
-                  📋 Salin URL NFC
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* BAR KONTROL SELECTION & BULK DOWNLOAD STIKER CETAK */}
           {selectedDeviceIds.length > 0 && (
             <div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', padding: '14px', borderRadius: '14px', marginBottom: '20px' }}>
@@ -850,9 +828,20 @@ export default function AdminPage() {
               {sortedDevices.map((device) => {
                 const isCardActive = Boolean(device.is_active);
                 const isSelected = selectedDeviceIds.includes(device.id);
+                const isPreviewingThis = previewDeviceModal?.id === device.id;
 
                 return (
-                  <div key={device.id} style={{ padding: '14px', borderRadius: '12px', border: isSelected ? '2px solid #2563eb' : '1px solid #e2e8f0', backgroundColor: isSelected ? '#eff6ff' : isCardActive ? '#f8fafc' : '#ffffff' }}>
+                  <div 
+                    key={device.id} 
+                    id={`card-${device.id}`}
+                    style={{ 
+                      padding: '14px', 
+                      borderRadius: '12px', 
+                      border: isPreviewingThis ? '2px solid #2563eb' : isSelected ? '2px solid #2563eb' : '1px solid #e2e8f0', 
+                      backgroundColor: isPreviewingThis ? '#f0f6ff' : isSelected ? '#eff6ff' : isCardActive ? '#f8fafc' : '#ffffff',
+                      transition: 'all 0.2s ease-in-out'
+                    }}
+                  >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <input type="checkbox" checked={isSelected} onChange={() => handleToggleSelectCard(device.id)} style={{ cursor: 'pointer' }} />
@@ -878,7 +867,7 @@ export default function AdminPage() {
 
                     <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       {editingDeviceId === device.id ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px', backgroundColor: '#f1f5f9', padding: '10px', borderRadius: '8px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px', backgroundColor: '#ffffff', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
                           <input type="text" placeholder="Nama Toko" value={editLabelName} onChange={(e) => setEditLabelName(e.target.value)} style={{ width: '100%', padding: '8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
                           <input type="text" placeholder="Link Direct Review (Kosongkan jika ingin reset)" value={editTargetUrl} onChange={(e) => setEditTargetUrl(e.target.value)} style={{ width: '100%', padding: '8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
                           <div style={{ display: 'flex', gap: '6px' }}>
@@ -893,8 +882,22 @@ export default function AdminPage() {
                       ) : (
                         <>
                           <div style={{ display: 'flex', gap: '6px' }}>
-                            <button onClick={() => setPreviewDeviceModal(device)} style={{ flex: 1, padding: '6px 10px', backgroundColor: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: '6px', fontSize: '11px', fontWeight: '700', cursor: 'pointer', textAlign: 'center' }}>
-                              👁️ Lihat &amp; Download Stiker
+                            <button 
+                              onClick={() => handleTogglePreview(device)} 
+                              style={{ 
+                                flex: 1, 
+                                padding: '6px 10px', 
+                                backgroundColor: isPreviewingThis ? '#2563eb' : '#eff6ff', 
+                                color: isPreviewingThis ? '#ffffff' : '#2563eb', 
+                                border: '1px solid #bfdbfe', 
+                                borderRadius: '6px', 
+                                fontSize: '11px', 
+                                fontWeight: '700', 
+                                cursor: 'pointer', 
+                                textAlign: 'center' 
+                              }}
+                            >
+                              {isPreviewingThis ? '✖ Tutup Stiker' : '👁️ Lihat & Download Stiker'}
                             </button>
                             <button onClick={() => handleSendWaCustomer(device)} style={{ flex: 1, padding: '6px 10px', backgroundColor: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '6px', fontSize: '11px', fontWeight: '700', cursor: 'pointer', textAlign: 'center' }}>
                               💬 Send Format WA
@@ -906,7 +909,6 @@ export default function AdminPage() {
                               ✏️ Edit Nama &amp; Link
                             </button>
                             
-                            {/* TOMBOL RESET KHUSUS HANYA UNTUK KARTU AKTIF */}
                             {isCardActive && (
                               <button onClick={() => setPinModal({ isOpen: true, actionType: 'resetCard', targetDevice: device, bulkQty: 10, pinInput: '', errorMsg: '', isSubmitting: false })} style={{ background: 'none', border: 'none', color: '#d97706', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
                                 🔄 Reset Kartu (PIN)
@@ -920,6 +922,48 @@ export default function AdminPage() {
                         </>
                       )}
                     </div>
+
+                    {/* DETAIL STIKER (MUNCUL TEPAT DI BAWAH KARTU YANG DIKLIK) */}
+                    {isPreviewingThis && (
+                      <div style={{ marginTop: '12px', backgroundColor: '#ffffff', padding: '16px', borderRadius: '12px', border: '2px solid #2563eb', boxShadow: '0 4px 12px rgba(37, 99, 235, 0.12)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                          <h5 style={{ margin: 0, color: '#2563eb', fontSize: '13px', fontWeight: '700' }}>
+                            ✨ Detail Stiker ({device.id})
+                          </h5>
+                          <button onClick={() => setPreviewDeviceModal(null)} style={{ background: 'none', border: 'none', fontSize: '14px', cursor: 'pointer', color: '#64748b' }}>
+                            ✖
+                          </button>
+                        </div>
+                        
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '12px' }}>
+                          <span style={{ color: '#64748b' }}>PIN Pembeli:</span>
+                          <strong style={{ color: '#dc2626' }}>{device.pin}</strong>
+                        </div>
+
+                        {device.label_name && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', fontSize: '12px' }}>
+                            <span style={{ color: '#64748b' }}>Nama Toko:</span>
+                            <strong style={{ color: '#2563eb' }}>{device.label_name}</strong>
+                          </div>
+                        )}
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px' }}>
+                          <button 
+                            onClick={() => handleDownloadSingleSticker(device.id)} 
+                            style={{ width: '100%', padding: '10px', backgroundColor: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '8px', fontWeight: '700', fontSize: '12px', cursor: 'pointer' }}
+                          >
+                            🖨️ Download Stiker Siap Cetak (PNG HD)
+                          </button>
+                          <button onClick={() => handleSendWaCustomer(device)} style={{ width: '100%', padding: '10px', backgroundColor: '#25d366', color: '#ffffff', border: 'none', borderRadius: '8px', fontWeight: '700', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                            💬 Kirim Format WA Setup ke Pembeli
+                          </button>
+                          <button onClick={() => handleCopyNfcUrl(device.id)} style={{ width: '100%', padding: '8px', backgroundColor: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: '8px', fontWeight: '600', fontSize: '11px', cursor: 'pointer' }}>
+                            📋 Salin URL NFC
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                   </div>
                 );
               })}
