@@ -24,12 +24,12 @@ export default function SetupPage({ params }) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [modalError, setModalError] = useState('');
 
   // KONFIGURASI BANTUAN WHATSAPP ADMIN
-  // Ganti angka di bawah dengan nomor WhatsApp Admin Anda (Gunakan format 62...)
-  const waAdminNumber = '6285156534909'; 
+  const waAdminNumber = '6281234567890'; 
   const waHelpMessage = `Halo Admin! Saya baru saja membeli Papan Review Akrilik.\n\nSaya ingin meminta PIN Akses untuk aktivasi:\n- ID Kartu: ${id || ''}\n\nMohon bantuannya ya, terima kasih!`;
   const waHelpUrl = `https://wa.me/${waAdminNumber}?text=${encodeURIComponent(waHelpMessage)}`;
 
@@ -77,7 +77,6 @@ export default function SetupPage({ params }) {
     return cleanUrl;
   };
 
-  // 1. TAHAP PERTAMA: Cek validasi input sebelum membuka modal PIN
   const handleOpenPinModal = (e) => {
     e.preventDefault();
     setMessage({ type: '', text: '' });
@@ -94,11 +93,9 @@ export default function SetupPage({ params }) {
       return;
     }
 
-    // Buka Modal PIN jika input utama sudah valid
     setShowPinModal(true);
   };
 
-  // 2. TAHAP KEDUA: Eksekusi SIMPAN saat PIN dikonfirmasi di Modal
   const handleFinalSubmit = async (e) => {
     e.preventDefault();
     setModalError('');
@@ -140,6 +137,53 @@ export default function SetupPage({ params }) {
       }
     } catch (err) {
       setModalError('❌ Terjadi kesalahan saat menyimpan.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // FUNGSI EKSEKUSI RESET KARTU MENJADI BELUM AKTIF
+  const handleResetSubmit = async (e) => {
+    e.preventDefault();
+    setModalError('');
+
+    if (!device) {
+      setModalError('Kartu tidak valid.');
+      return;
+    }
+
+    const inputPinClean = String(pinInput).trim();
+    const devicePinClean = String(device.pin).trim();
+
+    if (inputPinClean !== devicePinClean) {
+      setModalError('❌ PIN Kartu Salah!');
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      const { error } = await supabase
+        .from('devices')
+        .update({
+          label_name: null,
+          target_url: null,
+          is_active: false
+        })
+        .eq('id', id);
+
+      if (error) {
+        setModalError('❌ Gagal mereset kartu: ' + error.message);
+      } else {
+        setShowResetModal(false);
+        setPinInput('');
+        setStoreName('');
+        setReviewUrl('');
+        setMessage({ type: 'success', text: '🔄 Papan berhasil di-reset menjadi Belum Dipakai.' });
+        fetchDevice();
+      }
+    } catch (err) {
+      setModalError('❌ Terjadi kesalahan jaringan saat mereset.');
     } finally {
       setSubmitting(false);
     }
@@ -254,6 +298,21 @@ export default function SetupPage({ params }) {
               🚀 Simpan &amp; Aktifkan Papan
             </button>
 
+            {/* TOMBOL RESET KARTU (HANYA MUNCUL JIKA KARTU SUDAH AKTIF) */}
+            {device.is_active && (
+              <button
+                type="button"
+                onClick={() => { setPinInput(''); setModalError(''); setShowResetModal(true); }}
+                style={{
+                  width: '100%', padding: '10px', backgroundColor: '#fef2f2',
+                  color: '#dc2626', border: '1px solid #fca5a5', borderRadius: '10px',
+                  fontWeight: '600', fontSize: '12px', cursor: 'pointer'
+                }}
+              >
+                🔄 Reset Papan (Nonaktifkan &amp; Hapus Data Toko)
+              </button>
+            )}
+
             {/* BOX BANTUAN WHATSAPP DI HALAMAN UTAMA */}
             <div style={{ marginTop: '12px', textAlign: 'center', paddingTop: '16px', borderTop: '1px dashed #cbd5e1' }}>
               <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 8px 0', fontWeight: '500' }}>
@@ -294,7 +353,7 @@ export default function SetupPage({ params }) {
 
       </div>
 
-      {/* MODAL KONFIRMASI PIN 6-DIGIT */}
+      {/* MODAL KONFIRMASI PIN AKTIVASI */}
       {showPinModal && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -363,7 +422,6 @@ export default function SetupPage({ params }) {
                 </button>
               </div>
 
-              {/* LINK BANTUAN WHATSAPP DI DALAM MODAL */}
               <div style={{ paddingTop: '10px', borderTop: '1px dashed #e2e8f0' }}>
                 <a
                   href={waHelpUrl}
@@ -373,6 +431,79 @@ export default function SetupPage({ params }) {
                 >
                   💬 Belum dapat PIN? Hubungi WA Admin ↗
                 </a>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL KONFIRMASI RESET KARTU */}
+      {showResetModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '16px'
+        }}>
+          <div style={{
+            width: '100%', maxWidth: '360px', backgroundColor: '#ffffff', borderRadius: '18px',
+            padding: '24px 20px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)', border: '1px solid #fca5a5', textAlign: 'center'
+          }}>
+            <div style={{ width: '44px', height: '44px', backgroundColor: '#fef2f2', color: '#dc2626', borderRadius: '12px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', marginBottom: '10px' }}>
+              ⚠️
+            </div>
+            
+            <h3 style={{ margin: '0 0 6px 0', fontSize: '17px', fontWeight: '700', color: '#991b1b' }}>
+              Reset Papan Akrilik?
+            </h3>
+
+            <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#64748b', lineHeight: '1.4' }}>
+              Papan ini akan dikembalikan ke kondisi <strong>Belum Dipakai</strong>. Masukkan PIN Akses untuk konfirmasi:
+            </p>
+
+            <form onSubmit={handleResetSubmit} autoComplete="off">
+              <div style={{ marginBottom: '12px' }}>
+                <input
+                  type="password"
+                  required
+                  autoFocus
+                  maxLength={6}
+                  autoComplete="new-password"
+                  placeholder="••••••"
+                  value={pinInput}
+                  onChange={(e) => setPinInput(e.target.value)}
+                  style={{
+                    width: '100%', padding: '12px', fontSize: '18px', textAlign: 'center',
+                    letterSpacing: '6px', borderRadius: '10px', border: '1px solid #fca5a5',
+                    boxSizing: 'border-box', backgroundColor: '#fff5f5', outline: 'none'
+                  }}
+                />
+              </div>
+
+              {modalError && (
+                <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#ef4444', fontWeight: '600' }}>
+                  {modalError}
+                </p>
+              )}
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => { setShowResetModal(false); setPinInput(''); setModalError(''); }}
+                  style={{ flex: 1, padding: '12px', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  style={{
+                    flex: 1, padding: '12px', backgroundColor: submitting ? '#94a3b8' : '#dc2626',
+                    color: '#ffffff', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: '700',
+                    cursor: submitting ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {submitting ? 'Mereset...' : 'Ya, Reset Papan'}
+                </button>
               </div>
             </form>
           </div>
