@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 // UBAH DURASI TIMEOUT DI SINI:
 // Untuk pengujian: 10 * 1000 (10 Detik)
 // Untuk produksi: 30 * 60 * 1000 (30 Menit)
-const TIMEOUT_DURATION = 10 * 1000; 
+const TIMEOUT_DURATION = 30 * 60 * 1000; 
 
 export default function AutoLogout({ children, isAuthenticated, onLogout }) {
   const router = useRouter();
