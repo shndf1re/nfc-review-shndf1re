@@ -3,9 +3,10 @@
 import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 
-// KHUSUS PENGUJIAN: Setel ke 10 detik (10 * 1000 ms)
-// Nanti jika sudah berhasil, ubah kembali ke (30 * 60 * 1000) untuk 30 menit
-const TIMEOUT_DURATION = 30 * 1000; 
+// UBAH DURASI TIMEOUT DI SINI:
+// Untuk pengujian: 10 * 1000 (10 Detik)
+// Untuk produksi: 30 * 60 * 1000 (30 Menit)
+const TIMEOUT_DURATION = 10 * 1000; 
 
 export default function AutoLogout({ children, isAuthenticated, onLogout }) {
   const router = useRouter();
@@ -33,7 +34,7 @@ export default function AutoLogout({ children, isAuthenticated, onLogout }) {
   };
 
   useEffect(() => {
-    // JIKA USER BELUM LOGIN, JANGAN JALANKAN TIMER
+    // Jika user belum login, jangan jalankan timer
     if (!isAuthenticated) {
       if (timerRef.current) clearTimeout(timerRef.current);
       return;
@@ -51,7 +52,6 @@ export default function AutoLogout({ children, isAuthenticated, onLogout }) {
       }
     };
 
-    // Pasang listener aktivitas
     events.forEach((evt) => {
       window.addEventListener(evt, handleActivity);
     });
@@ -65,7 +65,7 @@ export default function AutoLogout({ children, isAuthenticated, onLogout }) {
         window.removeEventListener(evt, handleActivity);
       });
     };
-  }, [isAuthenticated]); // Re-run effect setiap kali status autentikasi berubah!
+  }, [isAuthenticated]);
 
   return <>{children}</>;
 }
