@@ -28,7 +28,7 @@ export default function SetupPage({ params }) {
   const [message, setMessage] = useState({ type: '', text: '' });
   const [modalError, setModalError] = useState('');
 
-  // KONFIGURASI BANTUAN WHATSAPP ADMIN
+  // 1. DEFAULT NOMOR WA ADMIN
   const waAdminNumber = '6285156534909'; 
   const waHelpMessage = `Halo Admin! Saya baru saja membeli Papan Review Akrilik.\n\nSaya ingin meminta PIN Akses untuk aktivasi:\n- ID Kartu: ${id || ''}\n\nMohon bantuannya ya, terima kasih!`;
   const waHelpUrl = `https://wa.me/${waAdminNumber}?text=${encodeURIComponent(waHelpMessage)}`;
@@ -142,7 +142,6 @@ export default function SetupPage({ params }) {
     }
   };
 
-  // FUNGSI EKSEKUSI RESET KARTU MENJADI BELUM AKTIF
   const handleResetSubmit = async (e) => {
     e.preventDefault();
     setModalError('');
@@ -179,7 +178,7 @@ export default function SetupPage({ params }) {
         setPinInput('');
         setStoreName('');
         setReviewUrl('');
-        setMessage({ type: 'success', text: '🔄 Papan berhasil di-reset menjadi Belum Dipakai.' });
+        setMessage({ type: 'success', text: '🔄 Papan berhasil di-reset.' });
         fetchDevice();
       }
     } catch (err) {
@@ -212,9 +211,11 @@ export default function SetupPage({ params }) {
           <h2 style={{ margin: '0 0 4px 0', fontSize: '20px', fontWeight: '700', color: '#0f172a' }}>Aktivasi Papan Review</h2>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
             <span style={{ fontSize: '12px', color: '#64748b' }}>ID Kartu: <strong>{id}</strong></span>
+            
+            {/* 2. PENYESUAIAN TEKS STATUS: BELUM AKTIVASI / AKTIF */}
             {device && (
               <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '10px', backgroundColor: device.is_active ? '#dcfce7' : '#fef3c7', color: device.is_active ? '#15803d' : '#b45309', fontWeight: '700' }}>
-                {device.is_active ? 'Sudah Aktif' : 'Belum Dipakai'}
+                {device.is_active ? 'Aktif' : 'Belum Aktivasi'}
               </span>
             )}
           </div>
@@ -235,10 +236,10 @@ export default function SetupPage({ params }) {
         {device ? (
           <form onSubmit={handleOpenPinModal} autoComplete="off" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             
-            {/* INPUT NAMA TOKO */}
+            {/* 3. PENYESUAIAN JUDUL FIELD: TANPA KATA "KAKAK" */}
             <div>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
-                🏪 Nama Toko / Usaha Kakak
+                🏪 Nama Toko / Usaha
               </label>
               <input
                 type="text"
@@ -286,7 +287,7 @@ export default function SetupPage({ params }) {
               />
             </div>
 
-            {/* SUBMIT BUTTON (MEMBUKA MODAL PIN) */}
+            {/* SUBMIT BUTTON */}
             <button
               type="submit"
               style={{
@@ -298,7 +299,7 @@ export default function SetupPage({ params }) {
               🚀 Simpan &amp; Aktifkan Papan
             </button>
 
-            {/* TOMBOL RESET KARTU (HANYA MUNCUL JIKA KARTU SUDAH AKTIF) */}
+            {/* TOMBOL RESET KARTU */}
             {device.is_active && (
               <button
                 type="button"
@@ -457,7 +458,7 @@ export default function SetupPage({ params }) {
             </h3>
 
             <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#64748b', lineHeight: '1.4' }}>
-              Papan ini akan dikembalikan ke kondisi <strong>Belum Dipakai</strong>. Masukkan PIN Akses untuk konfirmasi:
+              Papan ini akan dikembalikan ke kondisi <strong>Belum Aktivasi</strong>. Masukkan PIN Akses untuk konfirmasi:
             </p>
 
             <form onSubmit={handleResetSubmit} autoComplete="off">
