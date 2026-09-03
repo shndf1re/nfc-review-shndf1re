@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 
 // KHUSUS PENGUJIAN: Setel ke 10 detik (10 * 1000 ms)
 // Nanti jika sudah berhasil, ubah kembali ke (30 * 60 * 1000) untuk 30 menit
-const TIMEOUT_DURATION = 10 * 1000; 
+const TIMEOUT_DURATION = 30 * 1000; 
 
 export default function AutoLogout({ children, isAuthenticated, onLogout }) {
   const router = useRouter();
