@@ -830,6 +830,7 @@ export default function AdminPage() {
                 const baseUrl = getNfcBaseUrl();
                 const targetUrl = `${baseUrl}/r/${device.id}?src=qr`;
                 const qrPreviewApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(targetUrl)}`;
+                const googleLogoUrl = SITE_CONFIG?.qrLogoUrl || 'https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg';
 
                 return (
                   <div 
@@ -924,7 +925,7 @@ export default function AdminPage() {
                       )}
                     </div>
 
-                    {/* DETAIL STIKER & LIVE PREVIEW QR CODE */}
+                    {/* DETAIL STIKER & LIVE PREVIEW QR CODE DENGAN LOGO GOOGLE */}
                     {isPreviewingThis && (
                       <div style={{ marginTop: '12px', backgroundColor: '#ffffff', padding: '16px', borderRadius: '12px', border: '2px solid #2563eb', boxShadow: '0 4px 12px rgba(37, 99, 235, 0.12)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
@@ -936,14 +937,38 @@ export default function AdminPage() {
                           </button>
                         </div>
 
-                        {/* GAMBAR PREVIEW QR CODE INTERAKTIF */}
+                        {/* PREVIEW QR CODE DENGAN LOGO GOOGLE DI TENGAH */}
                         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: '14px', padding: '12px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
                           <div style={{ textAlign: 'center' }}>
-                            <img 
-                              src={qrPreviewApiUrl} 
-                              alt={`QR Code ${device.id}`}
-                              style={{ width: '120px', height: '120px', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', padding: '4px' }}
-                            />
+                            <div style={{ position: 'relative', display: 'inline-block' }}>
+                              <img 
+                                src={qrPreviewApiUrl} 
+                                alt={`QR Code ${device.id}`}
+                                style={{ width: '130px', height: '130px', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', padding: '4px', display: 'block' }}
+                              />
+                              {/* OVERLAY LOGO GOOGLE "G" */}
+                              <div style={{
+                                position: 'absolute',
+                                top: '50%',
+                                left: '50%',
+                                transform: 'translate(-50%, -50%)',
+                                width: '30px',
+                                height: '30px',
+                                backgroundColor: '#ffffff',
+                                borderRadius: '50%',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                border: '1px solid #e2e8f0',
+                                boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                              }}>
+                                <img 
+                                  src={googleLogoUrl} 
+                                  alt="Google G Logo" 
+                                  style={{ width: '18px', height: '18px', display: 'block' }} 
+                                />
+                              </div>
+                            </div>
                             <span style={{ display: 'block', fontSize: '10px', color: '#64748b', marginTop: '6px', fontWeight: '600' }}>
                               📱 Scan langsung untuk tes link
                             </span>
