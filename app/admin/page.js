@@ -21,7 +21,7 @@ try {
     SITE_CONFIG = configModule.SITE_CONFIG;
   }
 } catch (e) {
-  // Fallback
+  // Fallback jika file config tidak ditemukan
 }
 
 const supabase = createClient(
@@ -231,6 +231,8 @@ export default function AdminPage() {
       if (isSuccess) {
         setIsAuthenticated(true);
         localStorage.setItem('nfc_admin_session', 'true');
+        setUsernameInput('');
+        setPasswordInput('');
         fetchDashboardData();
       } else {
         setLoginError('❌ Username atau Password/PIN Salah!');
@@ -244,6 +246,8 @@ export default function AdminPage() {
 
   const handleLogout = (msg) => {
     setIsAuthenticated(false);
+    setUsernameInput('');
+    setPasswordInput('');
     localStorage.removeItem('nfc_admin_session');
     if (typeof msg === 'string') showToast(msg, 'error');
   };
@@ -537,14 +541,30 @@ export default function AdminPage() {
               <p style={{ margin: 0, fontSize: '14px', color: '#64748b' }}>Masuk untuk mengelola chip NFC &amp; QR</p>
             </div>
 
-            <form onSubmit={handleLogin}>
+            <form onSubmit={handleLogin} autoComplete="off">
               <div style={{ marginBottom: '16px' }}>
                 <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>Username</label>
-                <input type="text" required placeholder="Username" value={usernameInput} onChange={(e) => setUsernameInput(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '14px', boxSizing: 'border-box', backgroundColor: '#f8fafc' }} />
+                <input 
+                  type="text" 
+                  required 
+                  autoComplete="off"
+                  placeholder="Username" 
+                  value={usernameInput} 
+                  onChange={(e) => setUsernameInput(e.target.value)} 
+                  style={{ width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '14px', boxSizing: 'border-box', backgroundColor: '#f8fafc' }} 
+                />
               </div>
               <div style={{ marginBottom: '20px' }}>
                 <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>Password / PIN</label>
-                <input type="password" required placeholder="••••••••" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '14px', boxSizing: 'border-box', backgroundColor: '#f8fafc' }} />
+                <input 
+                  type="password" 
+                  required 
+                  autoComplete="new-password"
+                  placeholder="••••••••" 
+                  value={passwordInput} 
+                  onChange={(e) => setPasswordInput(e.target.value)} 
+                  style={{ width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '14px', boxSizing: 'border-box', backgroundColor: '#f8fafc' }} 
+                />
               </div>
               <button type="submit" disabled={loginLoading} style={{ width: '100%', padding: '12px', backgroundColor: loginLoading ? '#94a3b8' : '#2563eb', color: '#ffffff', border: 'none', borderRadius: '10px', fontWeight: '600', fontSize: '15px', cursor: loginLoading ? 'not-allowed' : 'pointer' }}>
                 {loginLoading ? 'Memeriksa...' : 'Masuk Dashboard'}
