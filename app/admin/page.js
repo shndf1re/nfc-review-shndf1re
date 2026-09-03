@@ -296,11 +296,10 @@ export default function AdminPage() {
       showToast('❌ Gagal membuat ID baru: ' + error.message, 'error');
     } else {
       setCurrentDevice(data);
-      setPreviewDeviceModal(data); // Otomatis buka preview di kartu baru
+      setPreviewDeviceModal(data);
       showToast(`Kartu Baru ${data.id} Berhasil Dibuat!`);
       fetchDashboardData();
       
-      // Auto Scroll ke kartu baru yang muncul di paling atas
       setTimeout(() => {
         const el = document.getElementById(`card-${data.id}`);
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -368,14 +367,11 @@ export default function AdminPage() {
 
   const handleTogglePreview = (device) => {
     if (previewDeviceModal?.id === device.id) {
-      // Jika kartu yang sama diklik lagi, tutup preview-nya
       setPreviewDeviceModal(null);
     } else {
-      // Buka preview kartu ini & tutup preview kartu lain
       setPreviewDeviceModal(device);
       setCurrentDevice(null);
 
-      // Auto Scroll halus ke kartu yang sedang di-preview
       setTimeout(() => {
         const el = document.getElementById(`card-${device.id}`);
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -830,6 +826,11 @@ export default function AdminPage() {
                 const isSelected = selectedDeviceIds.includes(device.id);
                 const isPreviewingThis = previewDeviceModal?.id === device.id;
 
+                // URL QR Code ringkas untuk preview cepat di layar
+                const baseUrl = getNfcBaseUrl();
+                const targetUrl = `${baseUrl}/r/${device.id}?src=qr`;
+                const qrPreviewApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(targetUrl)}`;
+
                 return (
                   <div 
                     key={device.id} 
@@ -923,16 +924,30 @@ export default function AdminPage() {
                       )}
                     </div>
 
-                    {/* DETAIL STIKER (MUNCUL TEPAT DI BAWAH KARTU YANG DIKLIK) */}
+                    {/* DETAIL STIKER & LIVE PREVIEW QR CODE */}
                     {isPreviewingThis && (
                       <div style={{ marginTop: '12px', backgroundColor: '#ffffff', padding: '16px', borderRadius: '12px', border: '2px solid #2563eb', boxShadow: '0 4px 12px rgba(37, 99, 235, 0.12)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                           <h5 style={{ margin: 0, color: '#2563eb', fontSize: '13px', fontWeight: '700' }}>
                             ✨ Detail Stiker ({device.id})
                           </h5>
                           <button onClick={() => setPreviewDeviceModal(null)} style={{ background: 'none', border: 'none', fontSize: '14px', cursor: 'pointer', color: '#64748b' }}>
                             ✖
                           </button>
+                        </div>
+
+                        {/* GAMBAR PREVIEW QR CODE INTERAKTIF */}
+                        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: '14px', padding: '12px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                          <div style={{ textAlign: 'center' }}>
+                            <img 
+                              src={qrPreviewApiUrl} 
+                              alt={`QR Code ${device.id}`}
+                              style={{ width: '120px', height: '120px', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', padding: '4px' }}
+                            />
+                            <span style={{ display: 'block', fontSize: '10px', color: '#64748b', marginTop: '6px', fontWeight: '600' }}>
+                              📱 Scan langsung untuk tes link
+                            </span>
+                          </div>
                         </div>
                         
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '12px' }}>
