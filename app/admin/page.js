@@ -144,6 +144,7 @@ export default function AdminPage() {
   const [isDownloadingBulk, setIsDownloadingBulk] = useState(false);
 
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+  const [showScrollTop, setShowScrollTop] = useState(false);
 
   const [stickerCmConfig, setStickerCmConfig] = useState({
     stikerWidthCm: 10.3,
@@ -183,10 +184,28 @@ export default function AdminPage() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, () => { fetchDashboardData(); })
       .subscribe();
 
+    const handleScroll = () => {
+      if (window.scrollY > 300) {
+        setShowScrollTop(true);
+      } else {
+        setShowScrollTop(false);
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll);
+
     return () => {
       supabase.removeChannel(channel);
+      window.removeEventListener('scroll', handleScroll);
     };
   }, []);
+
+  const scrollToTop = () => {
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
+  };
 
   const fetchDashboardData = async () => {
     const { data: devData } = await supabase.from('devices').select('*');
@@ -505,7 +524,6 @@ export default function AdminPage() {
     setPinModal({ isOpen: false, actionType: null, targetDevice: null, bulkQty: 10, pinInput: '', errorMsg: '', isSubmitting: false });
   };
 
-  // LOGIKA FILTERING & SORTING DENGAN DUKUNGAN STATUS KARTU DAN URUTAN TANGGAL
   const filteredDevices = devices.filter((device) => {
     const query = searchQuery.toLowerCase();
     const idMatch = device.id.toLowerCase().includes(query);
@@ -743,7 +761,6 @@ export default function AdminPage() {
           {/* BAR KONTROL SEARCH, FILTER STATUS & SORT TANGGAL */}
           <div style={{ backgroundColor: '#ffffff', padding: '18px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '12px' }}>
-              {/* INPUT PENCARIAN */}
               <input
                 type="text"
                 placeholder="🔍 Cari ID atau Nama Toko..."
@@ -752,7 +769,6 @@ export default function AdminPage() {
                 style={{ width: '100%', padding: '10px 12px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', boxSizing: 'border-box' }}
               />
 
-              {/* DROPDOWN FILTER STATUS & SORTING TANGGAL */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                 <div>
                   <label style={{ fontSize: '10px', fontWeight: '700', color: '#64748b', display: 'block', marginBottom: '4px' }}>
@@ -923,6 +939,35 @@ export default function AdminPage() {
             <div style={{ position: 'fixed', bottom: '24px', right: '24px', backgroundColor: toast.type === 'error' ? '#ef4444' : '#16a34a', color: '#ffffff', padding: '12px 20px', borderRadius: '10px', boxShadow: '0 4px 14px rgba(0,0,0,0.2)', fontSize: '13px', fontWeight: '600', zIndex: 10000 }}>
               {toast.message}
             </div>
+          )}
+
+          {/* TOMBOL FLOATING BACK TO TOP */}
+          {showScrollTop && (
+            <button
+              onClick={scrollToTop}
+              title="Kembali ke Atas"
+              style={{
+                position: 'fixed',
+                bottom: '28px',
+                right: '28px',
+                width: '46px',
+                height: '46px',
+                backgroundColor: '#2563eb',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '50%',
+                boxShadow: '0 4px 14px rgba(37, 99, 235, 0.4)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '20px',
+                fontWeight: 'bold',
+                zIndex: 999
+              }}
+            >
+              ⬆️
+            </button>
           )}
 
         </div>
