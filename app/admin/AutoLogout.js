@@ -3,57 +3,60 @@
 import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 
-const TIMEOUT_30_MINS = 30 * 60 * 1000; // 30 Menit
+// KHUSUS PENGUJIAN: Setel ke 10 detik (10 * 1000 ms)
+// Nanti jika sudah berhasil, ubah kembali ke (30 * 60 * 1000) untuk 30 menit
+const TIMEOUT_DURATION = 10 * 1000; 
 
-export default function AutoLogout({ children, onLogout }) {
+export default function AutoLogout({ children, isAuthenticated, onLogout }) {
   const router = useRouter();
   const timerRef = useRef(null);
 
   const handleLogout = () => {
-    // 1. Hapus semua kunci session lokal
+    // 1. Hapus semua kredensial session dari browser
     localStorage.removeItem('nfc_admin_session');
     localStorage.removeItem('admin_token');
     sessionStorage.clear();
-
-    // 2. Hapus cookie jika ada
     document.cookie = 'auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
 
-    // 3. Panggil callback logout dari parent jika ada
+    // 2. Panggil callback logout ke parent (page.js)
     if (typeof onLogout === 'function') {
-      onLogout('Session expired karena tidak ada aktivitas selama 30 menit.');
+      onLogout('Session expired karena tidak ada aktivitas.');
     }
 
-    // 4. Redirect ke login admin
+    // 3. Redirect halaman
     router.push('/admin?reason=expired');
   };
 
   const resetTimer = () => {
     if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(handleLogout, TIMEOUT_30_MINS);
+    timerRef.current = setTimeout(handleLogout, TIMEOUT_DURATION);
   };
 
   useEffect(() => {
-    // Cek apakah user sedang dalam posisi terautentikasi
-    const isAuth = localStorage.getItem('nfc_admin_session') === 'true';
-    if (!isAuth) return;
+    // JIKA USER BELUM LOGIN, JANGAN JALANKAN TIMER
+    if (!isAuthenticated) {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      return;
+    }
 
     const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
     let lastActivityTime = Date.now();
 
     const handleActivity = () => {
       const now = Date.now();
-      // Throttle 1 detik agar hemat performa tapi tetap responsif
+      // Throttle 1 detik agar tidak memberatkan CPU
       if (now - lastActivityTime > 1000) {
         lastActivityTime = now;
         resetTimer();
       }
     };
 
+    // Pasang listener aktivitas
     events.forEach((evt) => {
       window.addEventListener(evt, handleActivity);
     });
 
-    // Jalankan timer saat mount
+    // Jalankan timer pertama kali saat user terautentikasi
     resetTimer();
 
     return () => {
@@ -62,7 +65,7 @@ export default function AutoLogout({ children, onLogout }) {
         window.removeEventListener(evt, handleActivity);
       });
     };
-  }, []);
+  }, [isAuthenticated]); // Re-run effect setiap kali status autentikasi berubah!
 
   return <>{children}</>;
 }
