@@ -27,6 +27,12 @@ export default function SetupPage({ params }) {
   const [message, setMessage] = useState({ type: '', text: '' });
   const [modalError, setModalError] = useState('');
 
+  // KONFIGURASI BANTUAN WHATSAPP ADMIN
+  // Ganti angka di bawah dengan nomor WhatsApp Admin Anda (Gunakan format 62...)
+  const waAdminNumber = '6281234567890'; 
+  const waHelpMessage = `Halo Admin! Saya baru saja membeli Papan Review Akrilik.\n\nSaya ingin meminta PIN Akses untuk aktivasi:\n- ID Kartu: ${id || ''}\n\nMohon bantuannya ya, terima kasih!`;
+  const waHelpUrl = `https://wa.me/${waAdminNumber}?text=${encodeURIComponent(waHelpMessage)}`;
+
   useEffect(() => {
     if (id) {
       fetchDevice();
@@ -247,6 +253,36 @@ export default function SetupPage({ params }) {
             >
               🚀 Simpan &amp; Aktifkan Papan
             </button>
+
+            {/* BOX BANTUAN WHATSAPP DI HALAMAN UTAMA */}
+            <div style={{ marginTop: '12px', textAlign: 'center', paddingTop: '16px', borderTop: '1px dashed #cbd5e1' }}>
+              <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 8px 0', fontWeight: '500' }}>
+                Belum menerima PIN atau butuh bantuan?
+              </p>
+              <a
+                href={waHelpUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  width: '100%',
+                  padding: '10px 14px',
+                  backgroundColor: '#f0fdf4',
+                  color: '#16a34a',
+                  border: '1px solid #bbf7d0',
+                  borderRadius: '10px',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  textDecoration: 'none',
+                  boxSizing: 'border-box'
+                }}
+              >
+                💬 Hubungi Admin via WA untuk Minta PIN ↗
+              </a>
+            </div>
           </form>
         ) : (
           <div style={{ textAlign: 'center', marginTop: '10px' }}>
@@ -282,7 +318,7 @@ export default function SetupPage({ params }) {
             </p>
 
             <form onSubmit={handleFinalSubmit} autoComplete="off">
-              <div style={{ marginBottom: '16px' }}>
+              <div style={{ marginBottom: '12px' }}>
                 <input
                   type="password"
                   required
@@ -301,12 +337,12 @@ export default function SetupPage({ params }) {
               </div>
 
               {modalError && (
-                <p style={{ margin: '0 0 14px 0', fontSize: '12px', color: '#ef4444', fontWeight: '600' }}>
+                <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#ef4444', fontWeight: '600' }}>
                   {modalError}
                 </p>
               )}
 
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
                 <button
                   type="button"
                   onClick={() => { setShowPinModal(false); setPinInput(''); setModalError(''); }}
@@ -325,6 +361,18 @@ export default function SetupPage({ params }) {
                 >
                   {submitting ? 'Memproses...' : 'Konfirmasi & Aktifkan'}
                 </button>
+              </div>
+
+              {/* LINK BANTUAN WHATSAPP DI DALAM MODAL */}
+              <div style={{ paddingTop: '10px', borderTop: '1px dashed #e2e8f0' }}>
+                <a
+                  href={waHelpUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ fontSize: '11px', color: '#16a34a', fontWeight: '700', textDecoration: 'none', display: 'inline-block' }}
+                >
+                  💬 Belum dapat PIN? Hubungi WA Admin ↗
+                </a>
               </div>
             </form>
           </div>
