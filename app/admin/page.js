@@ -134,7 +134,8 @@ export default function AdminPage() {
   const [editLabelName, setEditLabelName] = useState('');
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState('newest');
+  const [sortBy, setSortBy] = useState('newest'); // 'newest' | 'oldest'
+  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'active' | 'inactive'
 
   const [selectedDeviceIds, setSelectedDeviceIds] = useState([]);
   const [bulkEditLabel, setBulkEditLabel] = useState('');
@@ -504,19 +505,31 @@ export default function AdminPage() {
     setPinModal({ isOpen: false, actionType: null, targetDevice: null, bulkQty: 10, pinInput: '', errorMsg: '', isSubmitting: false });
   };
 
+  // LOGIKA FILTERING & SORTING DENGAN DUKUNGAN STATUS KARTU DAN URUTAN TANGGAL
   const filteredDevices = devices.filter((device) => {
     const query = searchQuery.toLowerCase();
     const idMatch = device.id.toLowerCase().includes(query);
     const labelMatch = device.label_name ? device.label_name.toLowerCase().includes(query) : false;
-    return idMatch || labelMatch;
+    const matchesSearch = idMatch || labelMatch;
+
+    const isCardActive = Boolean(device.is_active);
+    let matchesStatus = true;
+    if (statusFilter === 'active') matchesStatus = isCardActive === true;
+    if (statusFilter === 'inactive') matchesStatus = isCardActive === false;
+
+    return matchesSearch && matchesStatus;
   });
 
   const sortedDevices = [...filteredDevices].sort((a, b) => {
+    const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+    const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+
     if (sortBy === 'newest') {
-      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
       if (timeA !== timeB) return timeB - timeA;
       return b.id.localeCompare(a.id);
+    } else if (sortBy === 'oldest') {
+      if (timeA !== timeB) return timeA - timeB;
+      return a.id.localeCompare(b.id);
     }
     return 0;
   });
@@ -727,20 +740,62 @@ export default function AdminPage() {
             </div>
           )}
 
+          {/* BAR KONTROL SEARCH, FILTER STATUS & SORT TANGGAL */}
           <div style={{ backgroundColor: '#ffffff', padding: '18px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '12px' }}>
+              {/* INPUT PENCARIAN */}
               <input
                 type="text"
                 placeholder="🔍 Cari ID atau Nama Toko..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                style={{ flex: 1, padding: '10px 12px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }}
+                style={{ width: '100%', padding: '10px 12px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', boxSizing: 'border-box' }}
               />
+
+              {/* DROPDOWN FILTER STATUS & SORTING TANGGAL */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <div>
+                  <label style={{ fontSize: '10px', fontWeight: '700', color: '#64748b', display: 'block', marginBottom: '4px' }}>
+                    🏷️ Status Kartu:
+                  </label>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    style={{ width: '100%', padding: '8px 10px', fontSize: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', color: '#0f172a', fontWeight: '600', outline: 'none' }}
+                  >
+                    <option value="all">Semua Kartu ({devices.length})</option>
+                    <option value="active">🟢 Hanya Aktif ({devices.filter(d => d.is_active).length})</option>
+                    <option value="inactive">🟡 Belum Dipakai ({devices.filter(d => !d.is_active).length})</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '10px', fontWeight: '700', color: '#64748b', display: 'block', marginBottom: '4px' }}>
+                    📅 Urutan Tanggal:
+                  </label>
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                    style={{ width: '100%', padding: '8px 10px', fontSize: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', color: '#0f172a', fontWeight: '600', outline: 'none' }}
+                  >
+                    <option value="newest">⬇️ Terbaru Dibuat</option>
+                    <option value="oldest">⬆️ Terlama Dibuat</option>
+                  </select>
+                </div>
+              </div>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#64748b' }}>
-              <input type="checkbox" id="selectAll" checked={selectedDeviceIds.length === sortedDevices.length && sortedDevices.length > 0} onChange={handleSelectAll} style={{ cursor: 'pointer' }} />
-              <label htmlFor="selectAll" style={{ cursor: 'pointer', fontWeight: '600' }}>Pilih Semua Kartu ({sortedDevices.length})</label>
+              <input 
+                type="checkbox" 
+                id="selectAll" 
+                checked={selectedDeviceIds.length === sortedDevices.length && sortedDevices.length > 0} 
+                onChange={handleSelectAll} 
+                style={{ cursor: 'pointer' }} 
+              />
+              <label htmlFor="selectAll" style={{ cursor: 'pointer', fontWeight: '600' }}>
+                Pilih Semua Kartu Terfilter ({sortedDevices.length})
+              </label>
             </div>
           </div>
 
