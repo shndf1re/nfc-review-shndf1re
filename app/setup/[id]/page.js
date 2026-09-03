@@ -17,13 +17,15 @@ export default function SetupPage({ params }) {
   const router = useRouter();
 
   const [device, setDevice] = useState(null);
-  const [pinInput, setPinInput] = useState('');
   const [storeName, setStoreName] = useState('');
   const [reviewUrl, setReviewUrl] = useState('');
+  const [pinInput, setPinInput] = useState('');
   
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [showPinModal, setShowPinModal] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [modalError, setModalError] = useState('');
 
   useEffect(() => {
     if (id) {
@@ -69,12 +71,34 @@ export default function SetupPage({ params }) {
     return cleanUrl;
   };
 
-  const handleSetupSubmit = async (e) => {
+  // 1. TAHAP PERTAMA: Cek validasi input sebelum membuka modal PIN
+  const handleOpenPinModal = (e) => {
     e.preventDefault();
     setMessage({ type: '', text: '' });
+    setModalError('');
+
+    if (!storeName.trim()) {
+      setMessage({ type: 'error', text: '❌ Nama Toko / Usaha wajib diisi!' });
+      return;
+    }
+
+    const formattedUrl = formatReviewUrl(reviewUrl);
+    if (!formattedUrl) {
+      setMessage({ type: 'error', text: '❌ Link Google Review wajib diisi!' });
+      return;
+    }
+
+    // Buka Modal PIN jika input utama sudah valid
+    setShowPinModal(true);
+  };
+
+  // 2. TAHAP KEDUA: Eksekusi SIMPAN saat PIN dikonfirmasi di Modal
+  const handleFinalSubmit = async (e) => {
+    e.preventDefault();
+    setModalError('');
 
     if (!device) {
-      setMessage({ type: 'error', text: 'Kartu tidak valid.' });
+      setModalError('Kartu tidak valid.');
       return;
     }
 
@@ -82,16 +106,11 @@ export default function SetupPage({ params }) {
     const devicePinClean = String(device.pin).trim();
 
     if (inputPinClean !== devicePinClean) {
-      setMessage({ type: 'error', text: '❌ PIN Kartu Salah! Periksa kembali pesan WA dari kami.' });
+      setModalError('❌ PIN Kartu Salah! Periksa pesan WA dari kami.');
       return;
     }
 
     const formattedUrl = formatReviewUrl(reviewUrl);
-    if (!formattedUrl) {
-      setMessage({ type: 'error', text: '❌ Link Google Review / Place ID wajib diisi!' });
-      return;
-    }
-
     setSubmitting(true);
 
     try {
@@ -105,15 +124,16 @@ export default function SetupPage({ params }) {
         .eq('id', id);
 
       if (error) {
-        setMessage({ type: 'error', text: '❌ Gagal memperbarui data: ' + error.message });
+        setModalError('❌ Gagal memperbarui data: ' + error.message);
       } else {
+        setShowPinModal(false);
         setMessage({ type: 'success', text: '🎉 Papan Akrilik Anda Berhasil Diaktifkan!' });
         setTimeout(() => {
           router.push(`/r/${id}`);
         }, 1800);
       }
     } catch (err) {
-      setMessage({ type: 'error', text: '❌ Terjadi kesalahan saat menyimpan.' });
+      setModalError('❌ Terjadi kesalahan saat menyimpan.');
     } finally {
       setSubmitting(false);
     }
@@ -150,7 +170,7 @@ export default function SetupPage({ params }) {
           </div>
         </div>
 
-        {/* NOTIFIKASI MESSAGE */}
+        {/* NOTIFIKASI UTAMA */}
         {message.text && (
           <div style={{
             padding: '12px', borderRadius: '10px', fontSize: '13px', fontWeight: '600', marginBottom: '18px', textAlign: 'center',
@@ -163,7 +183,7 @@ export default function SetupPage({ params }) {
         )}
 
         {device ? (
-          <form onSubmit={handleSetupSubmit} autoComplete="off" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <form onSubmit={handleOpenPinModal} autoComplete="off" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             
             {/* INPUT NAMA TOKO */}
             <div>
@@ -186,11 +206,10 @@ export default function SetupPage({ params }) {
                 🔗 Link Direct Google Review
               </label>
 
-              {/* BANNER / BANTUAN GENERATE LINK PRODUCTMATE */}
               <div style={{ backgroundColor: '#f0f9ff', border: '1px solid #bae6fd', padding: '12px', borderRadius: '10px', marginBottom: '10px' }}>
                 <div style={{ fontSize: '11px', color: '#0369a1', lineHeight: '1.4', marginBottom: '8px' }}>
                   💡 <strong>Belum punya link direct review?</strong><br />
-                  Klik tombol di bawah ini untuk mencari nama toko Anda di Productmate, lalu <strong>salin/copy link</strong> yang dihasilkan.
+                  Klik tombol di bawah untuk cari nama toko Anda di Productmate, lalu <strong>salin link</strong> yang muncul.
                 </div>
                 <a 
                   href="https://productmate.com/google-review-link-generator" 
@@ -217,37 +236,16 @@ export default function SetupPage({ params }) {
               />
             </div>
 
-            {/* INPUT PIN AKSES KARTU */}
-            <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
-                🔑 PIN Akses Kartu (6-Digit)
-              </label>
-              <input
-                type="password"
-                required
-                maxLength={6}
-                autoComplete="new-password"
-                placeholder="Masukkan PIN dari WA"
-                value={pinInput}
-                onChange={(e) => setPinInput(e.target.value)}
-                style={{ width: '100%', padding: '12px', fontSize: '16px', textAlign: 'center', letterSpacing: '4px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box', backgroundColor: '#f8fafc', outline: 'none' }}
-              />
-              <span style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', display: 'block', textAlign: 'center' }}>
-                PIN dapat dilihat dari pesan WhatsApp yang kami kirimkan.
-              </span>
-            </div>
-
-            {/* SUBMIT BUTTON */}
+            {/* SUBMIT BUTTON (MEMBUKA MODAL PIN) */}
             <button
               type="submit"
-              disabled={submitting}
               style={{
-                width: '100%', padding: '14px', backgroundColor: submitting ? '#94a3b8' : '#2563eb',
+                width: '100%', padding: '14px', backgroundColor: '#2563eb',
                 color: '#ffffff', border: 'none', borderRadius: '12px', fontWeight: '700', fontSize: '14px',
-                cursor: submitting ? 'not-allowed' : 'pointer', marginTop: '4px', boxShadow: '0 4px 12px rgba(37, 99, 235, 0.2)'
+                cursor: 'pointer', marginTop: '4px', boxShadow: '0 4px 12px rgba(37, 99, 235, 0.2)'
               }}
             >
-              {submitting ? 'Mengaktifkan Papan...' : '🚀 Simpan & Aktifkan Papan'}
+              🚀 Simpan &amp; Aktifkan Papan
             </button>
           </form>
         ) : (
@@ -259,6 +257,80 @@ export default function SetupPage({ params }) {
         )}
 
       </div>
+
+      {/* MODAL KONFIRMASI PIN 6-DIGIT */}
+      {showPinModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '16px'
+        }}>
+          <div style={{
+            width: '100%', maxWidth: '360px', backgroundColor: '#ffffff', borderRadius: '18px',
+            padding: '24px 20px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)', border: '1px solid #e2e8f0', textAlign: 'center'
+          }}>
+            <div style={{ width: '44px', height: '44px', backgroundColor: '#eff6ff', color: '#2563eb', borderRadius: '12px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', marginBottom: '10px' }}>
+              🔑
+            </div>
+            
+            <h3 style={{ margin: '0 0 6px 0', fontSize: '17px', fontWeight: '700', color: '#0f172a' }}>
+              Konfirmasi PIN Akses
+            </h3>
+
+            <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#64748b', lineHeight: '1.4' }}>
+              Masukkan <strong>6-Digit PIN Akses</strong> yang kami kirimkan melalui pesan WhatsApp untuk memverifikasi kepemilikan papan.
+            </p>
+
+            <form onSubmit={handleFinalSubmit} autoComplete="off">
+              <div style={{ marginBottom: '16px' }}>
+                <input
+                  type="password"
+                  required
+                  autoFocus
+                  maxLength={6}
+                  autoComplete="new-password"
+                  placeholder="••••••"
+                  value={pinInput}
+                  onChange={(e) => setPinInput(e.target.value)}
+                  style={{
+                    width: '100%', padding: '12px', fontSize: '18px', textAlign: 'center',
+                    letterSpacing: '6px', borderRadius: '10px', border: '1px solid #cbd5e1',
+                    boxSizing: 'border-box', backgroundColor: '#f8fafc', outline: 'none'
+                  }}
+                />
+              </div>
+
+              {modalError && (
+                <p style={{ margin: '0 0 14px 0', fontSize: '12px', color: '#ef4444', fontWeight: '600' }}>
+                  {modalError}
+                </p>
+              )}
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => { setShowPinModal(false); setPinInput(''); setModalError(''); }}
+                  style={{ flex: 1, padding: '12px', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  style={{
+                    flex: 1, padding: '12px', backgroundColor: submitting ? '#94a3b8' : '#2563eb',
+                    color: '#ffffff', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: '700',
+                    cursor: submitting ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {submitting ? 'Memproses...' : 'Konfirmasi & Aktifkan'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
