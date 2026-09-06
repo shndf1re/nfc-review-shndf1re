@@ -209,8 +209,15 @@ export default function SetupPage({ params }) {
     <div className={inter.className} style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc', padding: '24px 16px', boxSizing: 'border-box' }}>
       
       {/* MAIN CARD CONTAINER */}
-      <div style={{ width: '100%', maxWidth: '440px', backgroundColor: '#ffffff', borderRadius: '24px', padding: '36px 28px', boxShadow: '0 20px 40px -15px rgba(0, 0, 0, 0.05)', border: '1px solid #f1f5f9', boxSizing: 'border-box' }}>
+      <div style={{ width: '100%', maxWidth: '440px', backgroundColor: '#ffffff', borderRadius: '24px', padding: '32px 28px', boxShadow: '0 20px 40px -15px rgba(0, 0, 0, 0.05)', border: '1px solid #f1f5f9', boxSizing: 'border-box' }}>
         
+        {/* TOMBOL BATAL & KEMBALI KE LANDING PAGE */}
+        <div style={{ marginBottom: '24px', textAlign: 'left' }}>
+          <Link href="/" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: '600', color: '#64748b', textDecoration: 'none', padding: '8px 12px', borderRadius: '10px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}>
+            ⬅️ Batal & Kembali
+          </Link>
+        </div>
+
         {/* HEADER */}
         <div style={{ textAlign: 'center', marginBottom: '28px' }}>
           <div style={{ width: '60px', height: '60px', backgroundColor: '#0f172a', color: '#ffffff', borderRadius: '18px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', marginBottom: '16px', boxShadow: '0 10px 15px -3px rgba(15, 23, 42, 0.1)' }}>
@@ -223,7 +230,7 @@ export default function SetupPage({ params }) {
             
             {/* PENYESUAIAN TEKS STATUS */}
             {device && (
-              <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '20px', backgroundColor: device.is_active ? '#ecfdf5' : '#f1f5f9', color: device.is_active ? '#059669' : '#475569', fontWeight: '700', letterSpacing: '0.3px' }}>
+              <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '20px', backgroundColor: device.is_active ? '#ecfdf5' : '#f8fafc', color: device.is_active ? '#059669' : '#64748b', fontWeight: '700', letterSpacing: '0.3px' }}>
                 {device.is_active ? 'Aktif' : 'Belum Aktivasi'}
               </span>
             )}
