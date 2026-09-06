@@ -3,6 +3,9 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import Link from 'next/link';
+import { Inter } from 'next/font/google';
+
+const inter = Inter({ subsets: ['latin'] });
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -16,6 +19,22 @@ export default function StatsPage() {
   const [qrCount, setQrCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
+  // State untuk Toast & Modal Konfirmasi Password/PIN Admin
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+  const [pinModal, setPinModal] = useState({
+    isOpen: false,
+    actionType: null, // 'resetAll' atau 'resetSingle'
+    targetDeviceId: null,
+    pinInput: '',
+    errorMsg: '',
+    isSubmitting: false
+  });
+
+  const showToast = (message, type = 'success') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 3000);
+  };
+
   // REALTIME LISTENER STATISTIK SUPABASE
   useEffect(() => {
     fetchStats();
@@ -25,16 +44,12 @@ export default function StatsPage() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'device_stats' },
-        () => {
-          fetchStats();
-        }
+        () => { fetchStats(); }
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'devices' },
-        () => {
-          fetchStats();
-        }
+        () => { fetchStats(); }
       )
       .subscribe();
 
@@ -46,7 +61,6 @@ export default function StatsPage() {
   const fetchStats = async () => {
     setLoading(true);
 
-    // 1. Ambil data statistik & gabungkan (JOIN) dengan tabel devices untuk mendapat label_name
     const { data: statsData, error: statsErr } = await supabase
       .from('device_stats')
       .select('device_id, type, created_at')
@@ -56,7 +70,6 @@ export default function StatsPage() {
       .from('devices')
       .select('id, label_name');
 
-    // Buat peta ID Kartu ke Nama Toko
     const deviceMap = {};
     if (devicesData) {
       devicesData.forEach(d => {
@@ -70,7 +83,6 @@ export default function StatsPage() {
       let totalNfc = 0;
       let totalQr = 0;
 
-      // 2. Kelompokkan data berdasarkan Device ID & Sertakan Nama Toko
       const grouped = statsData.reduce((acc, curr) => {
         const id = curr.device_id || 'Unknown';
         const labelName = deviceMap[id] || null;
@@ -104,14 +116,54 @@ export default function StatsPage() {
     setLoading(false);
   };
 
+  // Handler untuk mengeksekusi Reset setelah PIN diverifikasi
+  const handleModalAction = async (e) => {
+    e.preventDefault();
+    setPinModal(prev => ({ ...prev, isSubmitting: true, errorMsg: '' }));
+
+    const inputPin = pinModal.pinInput.trim();
+
+    // Verifikasi PIN menggunakan fungsi rpc yang sama seperti di admin dashboard
+    const { data: isValidPin, error: rpcErr } = await supabase.rpc('verify_sales_pin', {
+      input_pin: inputPin
+    });
+
+    if (rpcErr || !isValidPin) {
+      setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: '❌ PIN Admin Salah atau Tidak Valid!' }));
+      return;
+    }
+
+    if (pinModal.actionType === 'resetAll') {
+      // Hapus seluruh baris data di tabel device_stats
+      const { error } = await supabase.from('device_stats').delete().neq('id', 0); // Menghapus semua record
+      if (error) {
+        setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: error.message }));
+        return;
+      }
+      showToast('🧹 Semua statistik interaksi berhasil di-reset!');
+    } else if (pinModal.actionType === 'resetSingle') {
+      // Hapus statistik berdasarkan device_id tertentu
+      const targetId = pinModal.targetDeviceId;
+      const { error } = await supabase.from('device_stats').delete().eq('device_id', targetId);
+      if (error) {
+        setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: error.message }));
+        return;
+      }
+      showToast(`🔄 Statistik kartu ${targetId} berhasil di-reset!`);
+    }
+
+    setPinModal({ isOpen: false, actionType: null, targetDeviceId: null, pinInput: '', errorMsg: '', isSubmitting: false });
+    fetchStats();
+  };
+
   return (
-    <div style={{ maxWidth: '600px', margin: '0 auto', padding: '24px 16px', fontFamily: '-apple-system, sans-serif' }}>
+    <div className={inter.className} style={{ maxWidth: '600px', margin: '0 auto', padding: '24px 16px', boxSizing: 'border-box' }}>
       
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <div>
           <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '700', color: '#0f172a' }}>📊 Statistik Interaksi</h2>
-          <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Analisis Realtime Scan QR & Tap NFC</p>
+          <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Analisis Realtime Scan QR &amp; Tap NFC</p>
         </div>
         <Link href="/admin" style={{ padding: '8px 14px', backgroundColor: '#2563eb', color: '#fff', textDecoration: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '600' }}>
           ⬅️ Dashboard
@@ -138,9 +190,19 @@ export default function StatsPage() {
       <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '700' }}>Rincian Per Kartu Akrilik</h3>
-          <button onClick={fetchStats} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
-            🔄 Refresh
-          </button>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button onClick={fetchStats} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+              🔄 Refresh
+            </button>
+            {stats.length > 0 && (
+              <button 
+                onClick={() => setPinModal({ isOpen: true, actionType: 'resetAll', targetDeviceId: null, pinInput: '', errorMsg: '', isSubmitting: false })} 
+                style={{ padding: '6px 10px', backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: '6px', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
+              >
+                🧹 Reset Semua
+              </button>
+            )}
+          </div>
         </div>
 
         {loading ? (
@@ -163,9 +225,18 @@ export default function StatsPage() {
                     )}
                   </div>
 
-                  <span style={{ fontSize: '12px', fontWeight: '700', color: '#2563eb', backgroundColor: '#eff6ff', padding: '2px 8px', borderRadius: '6px' }}>
-                    {item.total} Scan/Tap
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: '700', color: '#2563eb', backgroundColor: '#eff6ff', padding: '2px 8px', borderRadius: '6px' }}>
+                      {item.total} Scan
+                    </span>
+                    <button 
+                      onClick={() => setPinModal({ isOpen: true, actionType: 'resetSingle', targetDeviceId: item.id, pinInput: '', errorMsg: '', isSubmitting: false })}
+                      title="Reset statistik kartu ini"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', padding: '2px' }}
+                    >
+                      🗑️
+                    </button>
+                  </div>
                 </div>
                 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
@@ -186,6 +257,78 @@ export default function StatsPage() {
           </div>
         )}
       </div>
+
+      {/* MODAL PIN VERIFIKASI ADMIN */}
+      {pinModal.isOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '16px' }}>
+          <div style={{ width: '100%', maxWidth: '360px', backgroundColor: '#ffffff', borderRadius: '18px', padding: '24px 20px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)', border: '1px solid #e2e8f0', textAlign: 'center' }}>
+            <div style={{ width: '44px', height: '44px', backgroundColor: '#fef2f2', color: '#dc2626', borderRadius: '12px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', marginBottom: '10px' }}>
+              🔐
+            </div>
+            
+            <h3 style={{ margin: '0 0 6px 0', fontSize: '17px', fontWeight: '700', color: '#0f172a' }}>
+              {pinModal.actionType === 'resetAll' ? '🧹 Reset Semua Statistik' : `🔄 Reset Statistik (${pinModal.targetDeviceId})`}
+            </h3>
+
+            <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#64748b', lineHeight: '1.4' }}>
+              Masukkan <strong>PIN / Password Admin</strong> untuk mengonfirmasi tindakan penghapusan data ini.
+            </p>
+
+            <form onSubmit={handleModalAction} autoComplete="off">
+              <div style={{ marginBottom: '12px' }}>
+                <input
+                  type="password"
+                  required
+                  autoFocus
+                  maxLength={10}
+                  placeholder="Masukkan PIN Admin"
+                  value={pinModal.pinInput}
+                  onChange={(e) => setPinModal(prev => ({ ...prev, pinInput: e.target.value }))}
+                  style={{
+                    width: '100%', padding: '12px', fontSize: '16px', textAlign: 'center',
+                    letterSpacing: '4px', borderRadius: '10px', border: '1px solid #cbd5e1',
+                    boxSizing: 'border-box', backgroundColor: '#f8fafc', outline: 'none'
+                  }}
+                />
+              </div>
+
+              {pinModal.errorMsg && (
+                <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#ef4444', fontWeight: '600' }}>
+                  {pinModal.errorMsg}
+                </p>
+              )}
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setPinModal({ isOpen: false, actionType: null, targetDeviceId: null, pinInput: '', errorMsg: '', isSubmitting: false })}
+                  style={{ flex: 1, padding: '12px', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={pinModal.isSubmitting}
+                  style={{
+                    flex: 1, padding: '12px', backgroundColor: pinModal.isSubmitting ? '#94a3b8' : '#dc2626',
+                    color: '#ffffff', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: '700',
+                    cursor: pinModal.isSubmitting ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {pinModal.isSubmitting ? 'Memproses...' : 'Ya, Reset Data'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* TOAST NOTIFICATION */}
+      {toast.show && (
+        <div style={{ position: 'fixed', bottom: '24px', right: '24px', backgroundColor: toast.type === 'error' ? '#ef4444' : '#16a34a', color: '#ffffff', padding: '12px 20px', borderRadius: '10px', boxShadow: '0 4px 14px rgba(0,0,0,0.2)', fontSize: '13px', fontWeight: '600', zIndex: 10000 }}>
+          {toast.message}
+        </div>
+      )}
 
     </div>
   );
