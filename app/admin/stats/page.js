@@ -121,14 +121,14 @@ export default function StatsPage() {
     setLoading(false);
   };
 
-  // Handler untuk mengeksekusi Reset setelah PIN diverifikasi
+  // Handler untuk mengeksekusi Reset setelah PIN diverifikasi via RPC
   const handleModalAction = async (e) => {
     e.preventDefault();
     setPinModal(prev => ({ ...prev, isSubmitting: true, errorMsg: '' }));
 
     const inputPin = pinModal.pinInput.trim();
 
-    // Verifikasi PIN menggunakan fungsi rpc admin
+    // 1. Verifikasi PIN admin terlebih dahulu
     const { data: isValidPin, error: rpcErr } = await supabase.rpc('verify_sales_pin', {
       input_pin: inputPin
     });
@@ -138,9 +138,9 @@ export default function StatsPage() {
       return;
     }
 
+    // 2. Eksekusi fungsi reset via RPC Supabase
     if (pinModal.actionType === 'resetAll') {
-      // Menghapus semua baris data pada tabel device_stats
-      const { error } = await supabase.from('device_stats').delete().not('device_id', 'is', null);
+      const { error } = await supabase.rpc('reset_device_stats');
       if (error) {
         setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: 'Gagal database: ' + error.message }));
         return;
@@ -148,14 +148,11 @@ export default function StatsPage() {
       showToast('🧹 Semua statistik interaksi berhasil di-reset!');
     } else if (pinModal.actionType === 'resetSingle') {
       const targetId = pinModal.targetDeviceId;
-      
-      // Menghapus data statistik berdasarkan device_id tertentu
-      const { error } = await supabase.from('device_stats').delete().eq('device_id', targetId);
+      const { error } = await supabase.rpc('reset_device_stats', { target_device_id: targetId });
       if (error) {
         setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: 'Gagal database: ' + error.message }));
         return;
       }
-      
       showToast(`🔄 Statistik kartu ${targetId} berhasil di-reset!`);
     }
 
