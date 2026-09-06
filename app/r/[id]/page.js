@@ -52,15 +52,19 @@ export default function RedirectPage({ params }) {
           destinationUrl = `https://${destinationUrl}`;
         }
 
-        // 4. Catat Log Statistik Scan/Tap (Opsional - Cepat & Asinkron)
+        // 4. Catat Log Statistik Scan/Tap ke tabel 'device_stats' (Sesuai dengan Stats Page)
         try {
-          await supabase.from('scan_logs').insert([
+          const urlParams = new URLSearchParams(window.location.search);
+          const srcType = urlParams.get('src') === 'qr' ? 'qr' : 'nfc';
+
+          await supabase.from('device_stats').insert([
             {
               device_id: id,
-              scanned_at: new Date().toISOString()
+              type: srcType
             }
           ]);
         } catch (logErr) {
+          console.error('Gagal mencatat statistik:', logErr);
           // Abaikan error log agar redirect utama tetap berjalan mulus
         }
 
