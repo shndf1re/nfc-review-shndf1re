@@ -74,9 +74,12 @@ export default function LandingPage() {
         <div style={{ maxWidth: '1100px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ width: '38px', height: '38px', backgroundColor: '#0f172a', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: '800', fontSize: '18px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
-              N
-            </div>
+            {/* LOGO GAMBAR DARI PUBLIC/APP-ICON.PNG */}
+            <img 
+              src="/app-icon.png" 
+              alt="App Logo" 
+              style={{ width: '38px', height: '38px', borderRadius: '12px', objectFit: 'cover', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }} 
+            />
             <span style={{ fontSize: '19px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.5px' }}>
               {SITE_CONFIG.brandName}
             </span>
