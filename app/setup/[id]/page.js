@@ -4,6 +4,10 @@ import { useState, useEffect, use } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Inter } from 'next/font/google';
+
+// Menggunakan Font Premium Inter
+const inter = Inter({ subsets: ['latin'] });
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -28,7 +32,7 @@ export default function SetupPage({ params }) {
   const [message, setMessage] = useState({ type: '', text: '' });
   const [modalError, setModalError] = useState('');
 
-  // 1. DEFAULT NOMOR WA ADMIN
+  // DEFAULT NOMOR WA ADMIN
   const waAdminNumber = '6285156534909'; 
   const waHelpMessage = `Halo Admin! Saya baru saja membeli Papan Review Akrilik.\n\nSaya ingin meminta PIN Akses untuk aktivasi:\n- ID Kartu: ${id || ''}\n\nMohon bantuannya ya, terima kasih!`;
   const waHelpUrl = `https://wa.me/${waAdminNumber}?text=${encodeURIComponent(waHelpMessage)}`;
@@ -188,33 +192,38 @@ export default function SetupPage({ params }) {
     }
   };
 
+  // PREMIUM LOADING SPINNER
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc', padding: '16px', fontFamily: '-apple-system, sans-serif' }}>
+      <div className={inter.className} style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc' }}>
         <div style={{ textAlign: 'center', color: '#64748b' }}>
-          <div style={{ fontSize: '28px', marginBottom: '8px' }}>🔄</div>
-          <p style={{ margin: 0, fontSize: '14px', fontWeight: '500' }}>Memuat halaman aktivasi...</p>
+          <div style={{ width: '40px', height: '40px', border: '3px solid #e2e8f0', borderTop: '3px solid #0f172a', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 16px auto' }} />
+          <p style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>Memuat Sistem...</p>
         </div>
+        <style jsx>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
       </div>
     );
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc', padding: '24px 16px', boxSizing: 'border-box', fontFamily: '-apple-system, sans-serif' }}>
-      <div style={{ width: '100%', maxWidth: '420px', backgroundColor: '#ffffff', borderRadius: '18px', padding: '28px 22px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.05)', border: '1px solid #e2e8f0' }}>
+    <div className={inter.className} style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc', padding: '24px 16px', boxSizing: 'border-box' }}>
+      
+      {/* MAIN CARD CONTAINER */}
+      <div style={{ width: '100%', maxWidth: '440px', backgroundColor: '#ffffff', borderRadius: '24px', padding: '36px 28px', boxShadow: '0 20px 40px -15px rgba(0, 0, 0, 0.05)', border: '1px solid #f1f5f9', boxSizing: 'border-box' }}>
         
         {/* HEADER */}
-        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-          <div style={{ width: '52px', height: '52px', backgroundColor: '#eff6ff', color: '#2563eb', borderRadius: '14px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '26px', marginBottom: '12px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '28px' }}>
+          <div style={{ width: '60px', height: '60px', backgroundColor: '#0f172a', color: '#ffffff', borderRadius: '18px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', marginBottom: '16px', boxShadow: '0 10px 15px -3px rgba(15, 23, 42, 0.1)' }}>
             📲
           </div>
-          <h2 style={{ margin: '0 0 4px 0', fontSize: '20px', fontWeight: '700', color: '#0f172a' }}>Aktivasi Papan Review</h2>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
-            <span style={{ fontSize: '12px', color: '#64748b' }}>ID Kartu: <strong>{id}</strong></span>
+          <h2 style={{ margin: '0 0 6px 0', fontSize: '22px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.5px' }}>Device Setup</h2>
+          
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+            <span style={{ fontSize: '13px', color: '#64748b', fontFamily: 'monospace', fontWeight: '500' }}>{id}</span>
             
-            {/* 2. PENYESUAIAN TEKS STATUS: BELUM AKTIVASI / AKTIF */}
+            {/* PENYESUAIAN TEKS STATUS */}
             {device && (
-              <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '10px', backgroundColor: device.is_active ? '#dcfce7' : '#fef3c7', color: device.is_active ? '#15803d' : '#b45309', fontWeight: '700' }}>
+              <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '20px', backgroundColor: device.is_active ? '#ecfdf5' : '#f1f5f9', color: device.is_active ? '#059669' : '#475569', fontWeight: '700', letterSpacing: '0.3px' }}>
                 {device.is_active ? 'Aktif' : 'Belum Aktivasi'}
               </span>
             )}
@@ -224,21 +233,21 @@ export default function SetupPage({ params }) {
         {/* NOTIFIKASI UTAMA */}
         {message.text && (
           <div style={{
-            padding: '12px', borderRadius: '10px', fontSize: '13px', fontWeight: '600', marginBottom: '18px', textAlign: 'center',
-            backgroundColor: message.type === 'error' ? '#fee2e2' : '#dcfce7',
-            color: message.type === 'error' ? '#dc2626' : '#15803d',
-            border: message.type === 'error' ? '1px solid #fca5a5' : '1px solid #86efac'
+            padding: '14px', borderRadius: '12px', fontSize: '13px', fontWeight: '600', marginBottom: '24px', textAlign: 'center',
+            backgroundColor: message.type === 'error' ? '#fef2f2' : '#ecfdf5',
+            color: message.type === 'error' ? '#dc2626' : '#059669',
+            border: message.type === 'error' ? '1px solid #fee2e2' : '1px solid #d1fae5'
           }}>
             {message.text}
           </div>
         )}
 
         {device ? (
-          <form onSubmit={handleOpenPinModal} autoComplete="off" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <form onSubmit={handleOpenPinModal} autoComplete="off" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             
-            {/* 3. PENYESUAIAN JUDUL FIELD: TANPA KATA "KAKAK" */}
+            {/* JUDUL FIELD SESUAI REQUEST: TANPA KATA "KAKAK" */}
             <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#1e293b', marginBottom: '8px' }}>
                 🏪 Nama Toko / Usaha
               </label>
               <input
@@ -247,18 +256,18 @@ export default function SetupPage({ params }) {
                 placeholder="Contoh: Kopi Kenangan Samarinda"
                 value={storeName}
                 onChange={(e) => setStoreName(e.target.value)}
-                style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box', outline: 'none' }}
+                style={{ width: '100%', padding: '14px 16px', fontSize: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', boxSizing: 'border-box', outline: 'none' }}
               />
             </div>
 
-            {/* INPUT LINK REVIEW & TOMBOL PRODUCTMATE */}
+            {/* INPUT LINK REVIEW */}
             <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#1e293b', marginBottom: '8px' }}>
                 🔗 Link Direct Google Review
               </label>
 
-              <div style={{ backgroundColor: '#f0f9ff', border: '1px solid #bae6fd', padding: '12px', borderRadius: '10px', marginBottom: '10px' }}>
-                <div style={{ fontSize: '11px', color: '#0369a1', lineHeight: '1.4', marginBottom: '8px' }}>
+              <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', padding: '16px', borderRadius: '12px', marginBottom: '12px' }}>
+                <div style={{ fontSize: '12px', color: '#475569', lineHeight: '1.5', marginBottom: '12px' }}>
                   💡 <strong>Belum punya link direct review?</strong><br />
                   Klik tombol di bawah untuk cari nama toko Anda di Productmate, lalu <strong>salin link</strong> yang muncul.
                 </div>
@@ -268,55 +277,55 @@ export default function SetupPage({ params }) {
                   rel="noopener noreferrer"
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                    width: '100%', padding: '8px 12px', backgroundColor: '#0284c7', color: '#ffffff',
-                    borderRadius: '8px', fontSize: '12px', fontWeight: '700', textDecoration: 'none',
-                    boxSizing: 'border-box'
+                    width: '100%', padding: '10px 12px', backgroundColor: '#ffffff', color: '#0f172a',
+                    borderRadius: '10px', fontSize: '13px', fontWeight: '700', textDecoration: 'none',
+                    boxSizing: 'border-box', border: '1px solid #cbd5e1'
                   }}
                 >
-                  🔍 Cari Link Toko di Productmate ↗
+                  🔍 Cari di Productmate ↗
                 </a>
               </div>
 
               <input
                 type="text"
                 required
-                placeholder="Paste link Google Review hasil dari Productmate di sini"
+                placeholder="Paste link hasil dari Productmate di sini"
                 value={reviewUrl}
                 onChange={(e) => setReviewUrl(e.target.value)}
-                style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box', outline: 'none' }}
+                style={{ width: '100%', padding: '14px 16px', fontSize: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', boxSizing: 'border-box', outline: 'none' }}
               />
             </div>
 
-            {/* SUBMIT BUTTON */}
+            {/* SUBMIT BUTTON PRIMARY */}
             <button
               type="submit"
               style={{
-                width: '100%', padding: '14px', backgroundColor: '#2563eb',
-                color: '#ffffff', border: 'none', borderRadius: '12px', fontWeight: '700', fontSize: '14px',
-                cursor: 'pointer', marginTop: '4px', boxShadow: '0 4px 12px rgba(37, 99, 235, 0.2)'
+                width: '100%', padding: '16px', backgroundColor: '#0f172a',
+                color: '#ffffff', border: 'none', borderRadius: '14px', fontWeight: '700', fontSize: '14px',
+                cursor: 'pointer', marginTop: '8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
               }}
             >
               🚀 Simpan &amp; Aktifkan Papan
             </button>
 
-            {/* TOMBOL RESET KARTU */}
+            {/* TOMBOL RESET KARTU (TAMPIL JIKA AKTIF) */}
             {device.is_active && (
               <button
                 type="button"
                 onClick={() => { setPinInput(''); setModalError(''); setShowResetModal(true); }}
                 style={{
-                  width: '100%', padding: '10px', backgroundColor: '#fef2f2',
-                  color: '#dc2626', border: '1px solid #fca5a5', borderRadius: '10px',
-                  fontWeight: '600', fontSize: '12px', cursor: 'pointer'
+                  width: '100%', padding: '12px', backgroundColor: 'transparent',
+                  color: '#ef4444', border: '1px solid #fecaca', borderRadius: '12px',
+                  fontWeight: '600', fontSize: '13px', cursor: 'pointer'
                 }}
               >
-                🔄 Reset Papan (Nonaktifkan &amp; Hapus Data Toko)
+                🔄 Reset Papan (Hapus Data)
               </button>
             )}
 
-            {/* BOX BANTUAN WHATSAPP DI HALAMAN UTAMA */}
-            <div style={{ marginTop: '12px', textAlign: 'center', paddingTop: '16px', borderTop: '1px dashed #cbd5e1' }}>
-              <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 8px 0', fontWeight: '500' }}>
+            {/* HELP FOOTER */}
+            <div style={{ marginTop: '16px', textAlign: 'center', paddingTop: '20px', borderTop: '1px solid #f1f5f9' }}>
+              <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontWeight: '500' }}>
                 Belum menerima PIN atau butuh bantuan?
               </p>
               <a
@@ -324,29 +333,19 @@ export default function SetupPage({ params }) {
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px',
-                  width: '100%',
-                  padding: '10px 14px',
-                  backgroundColor: '#f0fdf4',
-                  color: '#16a34a',
-                  border: '1px solid #bbf7d0',
-                  borderRadius: '10px',
-                  fontSize: '12px',
-                  fontWeight: '700',
-                  textDecoration: 'none',
-                  boxSizing: 'border-box'
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                  width: '100%', padding: '12px 14px', backgroundColor: '#f8fafc', color: '#475569',
+                  border: '1px solid #e2e8f0', borderRadius: '12px', fontSize: '13px', fontWeight: '700',
+                  textDecoration: 'none', boxSizing: 'border-box'
                 }}
               >
-                💬 Hubungi Admin via WA untuk Minta PIN ↗
+                💬 Hubungi CS via WhatsApp ↗
               </a>
             </div>
           </form>
         ) : (
           <div style={{ textAlign: 'center', marginTop: '10px' }}>
-            <Link href="/" style={{ padding: '10px 16px', backgroundColor: '#f1f5f9', color: '#334155', textDecoration: 'none', borderRadius: '10px', fontSize: '12px', fontWeight: '600', display: 'inline-block' }}>
+            <Link href="/" style={{ padding: '12px 20px', backgroundColor: '#f8fafc', color: '#475569', textDecoration: 'none', borderRadius: '12px', fontSize: '13px', fontWeight: '600', display: 'inline-block', border: '1px solid #e2e8f0' }}>
               ⬅️ Kembali ke Halaman Utama
             </Link>
           </div>
@@ -354,31 +353,20 @@ export default function SetupPage({ params }) {
 
       </div>
 
-      {/* MODAL KONFIRMASI PIN AKTIVASI */}
+      {/* MODAL KONFIRMASI PIN AKTIVASI (GLASSMORPHISM) */}
       {showPinModal && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '16px'
-        }}>
-          <div style={{
-            width: '100%', maxWidth: '360px', backgroundColor: '#ffffff', borderRadius: '18px',
-            padding: '24px 20px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)', border: '1px solid #e2e8f0', textAlign: 'center'
-          }}>
-            <div style={{ width: '44px', height: '44px', backgroundColor: '#eff6ff', color: '#2563eb', borderRadius: '12px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', marginBottom: '10px' }}>
-              🔑
-            </div>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.45)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '16px' }}>
+          <div style={{ width: '100%', maxWidth: '340px', backgroundColor: '#ffffff', borderRadius: '24px', padding: '32px 24px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.15)', textAlign: 'center' }}>
             
-            <h3 style={{ margin: '0 0 6px 0', fontSize: '17px', fontWeight: '700', color: '#0f172a' }}>
-              Konfirmasi PIN Akses
+            <h3 style={{ margin: '0 0 8px 0', fontSize: '18px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.5px' }}>
+              Otorisasi Akses
             </h3>
-
-            <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#64748b', lineHeight: '1.4' }}>
-              Masukkan <strong>6-Digit PIN Akses</strong> yang kami kirimkan melalui pesan WhatsApp untuk memverifikasi kepemilikan papan.
+            <p style={{ margin: '0 0 24px 0', fontSize: '13px', color: '#64748b', lineHeight: '1.5' }}>
+              Masukkan <strong>6-Digit PIN</strong> yang kami kirimkan untuk verifikasi kepemilikan.
             </p>
 
             <form onSubmit={handleFinalSubmit} autoComplete="off">
-              <div style={{ marginBottom: '12px' }}>
+              <div style={{ marginBottom: '16px' }}>
                 <input
                   type="password"
                   required
@@ -389,49 +377,26 @@ export default function SetupPage({ params }) {
                   value={pinInput}
                   onChange={(e) => setPinInput(e.target.value)}
                   style={{
-                    width: '100%', padding: '12px', fontSize: '18px', textAlign: 'center',
-                    letterSpacing: '6px', borderRadius: '10px', border: '1px solid #cbd5e1',
+                    width: '100%', padding: '16px', fontSize: '22px', textAlign: 'center',
+                    letterSpacing: '10px', borderRadius: '14px', border: '1px solid #cbd5e1',
                     boxSizing: 'border-box', backgroundColor: '#f8fafc', outline: 'none'
                   }}
                 />
               </div>
 
               {modalError && (
-                <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#ef4444', fontWeight: '600' }}>
+                <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: '#ef4444', fontWeight: '600' }}>
                   {modalError}
                 </p>
               )}
 
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
-                <button
-                  type="button"
-                  onClick={() => { setShowPinModal(false); setPinInput(''); setModalError(''); }}
-                  style={{ flex: 1, padding: '12px', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}
-                >
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button type="button" onClick={() => { setShowPinModal(false); setPinInput(''); setModalError(''); }} style={{ flex: 1, padding: '14px', backgroundColor: '#f8fafc', color: '#475569', border: '1px solid #e2e8f0', borderRadius: '12px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>
                   Batal
                 </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  style={{
-                    flex: 1, padding: '12px', backgroundColor: submitting ? '#94a3b8' : '#2563eb',
-                    color: '#ffffff', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: '700',
-                    cursor: submitting ? 'not-allowed' : 'pointer'
-                  }}
-                >
-                  {submitting ? 'Memproses...' : 'Konfirmasi & Aktifkan'}
+                <button type="submit" disabled={submitting} style={{ flex: 1, padding: '14px', backgroundColor: submitting ? '#94a3b8' : '#2563eb', color: '#ffffff', border: 'none', borderRadius: '12px', fontSize: '14px', fontWeight: '700', cursor: submitting ? 'not-allowed' : 'pointer' }}>
+                  {submitting ? 'Memproses' : 'Otorisasi'}
                 </button>
-              </div>
-
-              <div style={{ paddingTop: '10px', borderTop: '1px dashed #e2e8f0' }}>
-                <a
-                  href={waHelpUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ fontSize: '11px', color: '#16a34a', fontWeight: '700', textDecoration: 'none', display: 'inline-block' }}
-                >
-                  💬 Belum dapat PIN? Hubungi WA Admin ↗
-                </a>
               </div>
             </form>
           </div>
@@ -440,29 +405,18 @@ export default function SetupPage({ params }) {
 
       {/* MODAL KONFIRMASI RESET KARTU */}
       {showResetModal && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '16px'
-        }}>
-          <div style={{
-            width: '100%', maxWidth: '360px', backgroundColor: '#ffffff', borderRadius: '18px',
-            padding: '24px 20px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)', border: '1px solid #fca5a5', textAlign: 'center'
-          }}>
-            <div style={{ width: '44px', height: '44px', backgroundColor: '#fef2f2', color: '#dc2626', borderRadius: '12px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', marginBottom: '10px' }}>
-              ⚠️
-            </div>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.45)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '16px' }}>
+          <div style={{ width: '100%', maxWidth: '340px', backgroundColor: '#ffffff', borderRadius: '24px', padding: '32px 24px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.15)', textAlign: 'center' }}>
             
-            <h3 style={{ margin: '0 0 6px 0', fontSize: '17px', fontWeight: '700', color: '#991b1b' }}>
-              Reset Papan Akrilik?
+            <h3 style={{ margin: '0 0 8px 0', fontSize: '18px', fontWeight: '800', color: '#ef4444', letterSpacing: '-0.5px' }}>
+              Reset Perangkat?
             </h3>
-
-            <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#64748b', lineHeight: '1.4' }}>
-              Papan ini akan dikembalikan ke kondisi <strong>Belum Aktivasi</strong>. Masukkan PIN Akses untuk konfirmasi:
+            <p style={{ margin: '0 0 24px 0', fontSize: '13px', color: '#64748b', lineHeight: '1.5' }}>
+              Data toko akan dihapus dan perangkat kembali ke kondisi awal. Masukkan PIN Anda:
             </p>
 
             <form onSubmit={handleResetSubmit} autoComplete="off">
-              <div style={{ marginBottom: '12px' }}>
+              <div style={{ marginBottom: '16px' }}>
                 <input
                   type="password"
                   required
@@ -473,37 +427,25 @@ export default function SetupPage({ params }) {
                   value={pinInput}
                   onChange={(e) => setPinInput(e.target.value)}
                   style={{
-                    width: '100%', padding: '12px', fontSize: '18px', textAlign: 'center',
-                    letterSpacing: '6px', borderRadius: '10px', border: '1px solid #fca5a5',
-                    boxSizing: 'border-box', backgroundColor: '#fff5f5', outline: 'none'
+                    width: '100%', padding: '16px', fontSize: '22px', textAlign: 'center',
+                    letterSpacing: '10px', borderRadius: '14px', border: '1px solid #fecaca',
+                    boxSizing: 'border-box', backgroundColor: '#fef2f2', outline: 'none'
                   }}
                 />
               </div>
 
               {modalError && (
-                <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#ef4444', fontWeight: '600' }}>
+                <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: '#ef4444', fontWeight: '600' }}>
                   {modalError}
                 </p>
               )}
 
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button
-                  type="button"
-                  onClick={() => { setShowResetModal(false); setPinInput(''); setModalError(''); }}
-                  style={{ flex: 1, padding: '12px', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}
-                >
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button type="button" onClick={() => { setShowResetModal(false); setPinInput(''); setModalError(''); }} style={{ flex: 1, padding: '14px', backgroundColor: '#f8fafc', color: '#475569', border: '1px solid #e2e8f0', borderRadius: '12px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>
                   Batal
                 </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  style={{
-                    flex: 1, padding: '12px', backgroundColor: submitting ? '#94a3b8' : '#dc2626',
-                    color: '#ffffff', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: '700',
-                    cursor: submitting ? 'not-allowed' : 'pointer'
-                  }}
-                >
-                  {submitting ? 'Mereset...' : 'Ya, Reset Papan'}
+                <button type="submit" disabled={submitting} style={{ flex: 1, padding: '14px', backgroundColor: submitting ? '#94a3b8' : '#ef4444', color: '#ffffff', border: 'none', borderRadius: '12px', fontSize: '14px', fontWeight: '700', cursor: submitting ? 'not-allowed' : 'pointer' }}>
+                  {submitting ? 'Memproses' : 'Ya, Reset'}
                 </button>
               </div>
             </form>
