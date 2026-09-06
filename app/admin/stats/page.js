@@ -111,6 +111,11 @@ export default function StatsPage() {
       setNfcCount(totalNfc);
       setQrCount(totalQr);
       setStats(Object.values(grouped));
+    } else {
+      setStats([]);
+      setTotalScans(0);
+      setNfcCount(0);
+      setQrCount(0);
     }
 
     setLoading(false);
@@ -123,7 +128,7 @@ export default function StatsPage() {
 
     const inputPin = pinModal.pinInput.trim();
 
-    // Verifikasi PIN menggunakan fungsi rpc yang sama seperti di admin dashboard
+    // Verifikasi PIN menggunakan fungsi rpc admin
     const { data: isValidPin, error: rpcErr } = await supabase.rpc('verify_sales_pin', {
       input_pin: inputPin
     });
@@ -134,21 +139,23 @@ export default function StatsPage() {
     }
 
     if (pinModal.actionType === 'resetAll') {
-      // Hapus seluruh baris data di tabel device_stats
-      const { error } = await supabase.from('device_stats').delete().neq('id', 0); // Menghapus semua record
+      // Menghapus semua baris data pada tabel device_stats
+      const { error } = await supabase.from('device_stats').delete().not('device_id', 'is', null);
       if (error) {
-        setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: error.message }));
+        setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: 'Gagal database: ' + error.message }));
         return;
       }
       showToast('🧹 Semua statistik interaksi berhasil di-reset!');
     } else if (pinModal.actionType === 'resetSingle') {
-      // Hapus statistik berdasarkan device_id tertentu
       const targetId = pinModal.targetDeviceId;
+      
+      // Menghapus data statistik berdasarkan device_id tertentu
       const { error } = await supabase.from('device_stats').delete().eq('device_id', targetId);
       if (error) {
-        setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: error.message }));
+        setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: 'Gagal database: ' + error.message }));
         return;
       }
+      
       showToast(`🔄 Statistik kartu ${targetId} berhasil di-reset!`);
     }
 
