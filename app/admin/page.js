@@ -156,9 +156,22 @@ export default function AdminPage() {
 
   useEffect(() => {
     const savedSession = localStorage.getItem('nfc_admin_session');
+    const lastActivity = localStorage.getItem('nfc_admin_last_activity');
+    const TIMEOUT_DURATION = 10 * 60 * 1000; // 10 Menit
+
     if (savedSession === 'true') {
-      setIsAuthenticated(true);
-      fetchDashboardData();
+      const now = Date.now();
+      
+      // Validasi sesi: jika waktu diam melebihi 10 menit atau timestamp tidak ada
+      if (!lastActivity || (now - parseInt(lastActivity, 10)) > TIMEOUT_DURATION) {
+        localStorage.removeItem('nfc_admin_session');
+        localStorage.removeItem('nfc_admin_last_activity');
+        setIsAuthenticated(false);
+        setLoginError('Sesi Anda telah berakhir. Silakan login kembali.');
+      } else {
+        setIsAuthenticated(true);
+        fetchDashboardData();
+      }
     }
 
     const channel = supabase
@@ -211,6 +224,7 @@ export default function AdminPage() {
       if (isSuccess) {
         setIsAuthenticated(true);
         localStorage.setItem('nfc_admin_session', 'true');
+        localStorage.setItem('nfc_admin_last_activity', Date.now().toString());
         setUsernameInput(''); setPasswordInput('');
         fetchDashboardData();
       } else {
@@ -226,6 +240,7 @@ export default function AdminPage() {
   const handleLogout = (msg) => {
     setIsAuthenticated(false); setUsernameInput(''); setPasswordInput('');
     localStorage.removeItem('nfc_admin_session');
+    localStorage.removeItem('nfc_admin_last_activity');
     if (typeof msg === 'string') showToast(msg, 'error');
   };
 
