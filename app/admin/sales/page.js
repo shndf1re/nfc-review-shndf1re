@@ -11,6 +11,7 @@ const supabase = createClient(
 
 export default function SalesPage() {
   const [acrylicStock, setAcrylicStock] = useState(0);
+  const [stockItemRecord, setStockItemRecord] = useState(null);
   const [salesHistory, setSalesHistory] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -65,15 +66,19 @@ export default function SalesPage() {
   const fetchData = async () => {
     setLoading(true);
     
-    // Fetch Stok Papan Akrilik Langsung via ID = 1 (Berdasarkan DB Supabase)
-    const { data: invData } = await supabase
+    // Fetch Stok Papan Akrilik
+    const { data: invData, error: invError } = await supabase
       .from('inventory')
       .select('*')
-      .eq('id', 1)
+      .ilike('item_name', '%Papan Akrilik%')
+      .limit(1)
       .maybeSingle();
 
-    if (invData) {
+    if (invError) {
+      console.error('Error fetching inventory:', invError);
+    } else if (invData) {
       setAcrylicStock(Number(invData.stock_quantity) || 0);
+      setStockItemRecord(invData);
     }
 
     // Fetch Riwayat Penjualan
@@ -108,7 +113,6 @@ export default function SalesPage() {
     setSelectedMonth(new Date().toISOString().substring(0, 7));
   };
 
-  // PEMICU NOTIFIKASI STOK RENDAH VIA WHATSAPP
   const checkAndNotifyLowStock = async () => {
     try {
       const res = await fetch('/api/notify-stock', {
@@ -131,7 +135,7 @@ export default function SalesPage() {
     setSubmitStatus('');
 
     const priceNumber = parseFloat(totalPrice) || 0;
-    const qtyNumber = parseInt(quantity) || 1;
+    const qtyNumber = parseInt(quantity, 10) || 1;
 
     if (acrylicStock <= 0 || qtyNumber > acrylicStock) {
       setSubmitStatus('❌ Stok Akrilik tidak mencukupi!');
@@ -156,10 +160,20 @@ export default function SalesPage() {
       return;
     }
 
-    const newStock = acrylicStock - qtyNumber;
-    await supabase.from('inventory').update({ stock_quantity: newStock }).eq('id', 1);
+    const newStock = Math.max(0, acrylicStock - qtyNumber);
+    const targetId = stockItemRecord?.id || 1;
 
-    setSubmitStatus('✅ Penjualan berhasil dicatat!');
+    const { error: stockUpdateErr } = await supabase
+      .from('inventory')
+      .update({ stock_quantity: newStock })
+      .eq('id', targetId);
+
+    if (stockUpdateErr) {
+      setSubmitStatus('⚠️ Transaksi tercatat, tetapi gagal memotong stok: ' + stockUpdateErr.message);
+    } else {
+      setSubmitStatus('✅ Penjualan berhasil dicatat!');
+    }
+
     setCustomerName('');
     setQuantity(1);
     setTotalPrice('');
@@ -190,7 +204,7 @@ export default function SalesPage() {
     if (modalState.actionType === 'updateStock') {
       newStockVal = parseInt(modalState.stockInput, 10);
       if (isNaN(newStockVal) || newStockVal < 0) {
-        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Jumlah stok harus angka positif!' }));
+        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Jumlah stok harus berupa angka positif!' }));
         return;
       }
     }
@@ -210,15 +224,22 @@ export default function SalesPage() {
       return;
     }
 
-    // Eksekusi Update ke Database
+    const targetId = stockItemRecord?.id || 1;
+
     if (modalState.actionType === 'updateStock') {
-      const { error: updateErr } = await supabase
+      const { data: updatedRows, error: updateErr } = await supabase
         .from('inventory')
         .update({ stock_quantity: newStockVal })
-        .eq('id', 1);
+        .eq('id', targetId)
+        .select();
 
       if (updateErr) {
         setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ DB Error: ' + updateErr.message }));
+        return;
+      }
+
+      if (!updatedRows || updatedRows.length === 0) {
+        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Baris stok tidak ditemukan di database!' }));
         return;
       }
     } else if (modalState.actionType === 'delete') {
@@ -231,7 +252,7 @@ export default function SalesPage() {
       }
 
       const restoredStock = acrylicStock + (parseInt(sale.quantity, 10) || 1);
-      await supabase.from('inventory').update({ stock_quantity: restoredStock }).eq('id', 1);
+      await supabase.from('inventory').update({ stock_quantity: restoredStock }).eq('id', targetId);
 
     } else if (modalState.actionType === 'updateStatus') {
       const sale = modalState.targetData;
