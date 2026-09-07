@@ -33,6 +33,13 @@ export default function SalesPage() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
+  // State Modal Warning Stok WA
+  const [waAlertModal, setWaAlertModal] = useState({
+    isOpen: false,
+    stockLeft: 0,
+    waUrl: ''
+  });
+
   // State Modal PIN Kustom
   const [modalState, setModalState] = useState({
     isOpen: false,
@@ -66,7 +73,6 @@ export default function SalesPage() {
   const fetchData = async () => {
     setLoading(true);
     
-    // Fetch Stok Papan Akrilik
     const { data: invData, error: invError } = await supabase
       .from('inventory')
       .select('*')
@@ -81,7 +87,6 @@ export default function SalesPage() {
       setStockItemRecord(invData);
     }
 
-    // Fetch Riwayat Penjualan
     let query = supabase.from('sales').select('*').order('created_at', { ascending: false });
 
     if (startDate && endDate) {
@@ -113,20 +118,20 @@ export default function SalesPage() {
     setSelectedMonth(new Date().toISOString().substring(0, 7));
   };
 
-  const checkAndNotifyLowStock = async () => {
-    try {
-      const res = await fetch('/api/notify-stock', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ itemName: 'Papan Akrilik' })
-      });
-      const data = await res.json();
+  // FUNGSI NOTIFIKASI STOK WA (DENGAN MODAL DIALOG)
+  const checkAndTriggerLowStockModal = (currentStock) => {
+    const LOW_STOCK_LIMIT = 5;
+    const ADMIN_PHONE = '6285156534909';
 
-      if (data.isLowStock && data.waUrl) {
-        window.open(data.waUrl, '_blank');
-      }
-    } catch (err) {
-      console.error('Gagal memicu notifikasi stok:', err);
+    if (currentStock <= LOW_STOCK_LIMIT) {
+      const message = `⚠️ *PERINGATAN STOK TIPIS!*\n\nStok item *Papan Akrilik* saat ini tersisa *${currentStock} pcs* (Batas Minimum: ${LOW_STOCK_LIMIT} pcs).\n\nMohon segera lakukan *restock* atau pemesanan ulang ke supplier.`;
+      const waUrl = `https://wa.me/${ADMIN_PHONE}?text=${encodeURIComponent(message)}`;
+
+      setWaAlertModal({
+        isOpen: true,
+        stockLeft: currentStock,
+        waUrl
+      });
     }
   };
 
@@ -180,7 +185,9 @@ export default function SalesPage() {
     setDeviceId('');
     setNotes('');
 
-    await checkAndNotifyLowStock();
+    // Cek Peringatan Stok
+    checkAndTriggerLowStockModal(newStock);
+
     fetchData();
   };
 
@@ -209,7 +216,6 @@ export default function SalesPage() {
       }
     }
 
-    // Verifikasi PIN via RPC
     const { data: isValidPin, error: pinError } = await supabase.rpc('verify_sales_pin', {
       input_pin: modalState.pinInput.trim()
     });
@@ -242,6 +248,10 @@ export default function SalesPage() {
         setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Baris stok tidak ditemukan di database!' }));
         return;
       }
+
+      // Cek stok setelah update manual
+      checkAndTriggerLowStockModal(newStockVal);
+
     } else if (modalState.actionType === 'delete') {
       const sale = modalState.targetData;
       const { error: delErr } = await supabase.from('sales').delete().eq('id', sale.id);
@@ -266,12 +276,7 @@ export default function SalesPage() {
     }
 
     setModalState({ isOpen: false, actionType: null, targetData: null, stockInput: '', pinInput: '', errorMsg: '', isVerifying: false });
-    
-    await fetchData();
-
-    if (modalState.actionType === 'updateStock') {
-      await checkAndNotifyLowStock();
-    }
+    fetchData();
   };
 
   const totalOmzetTotal = salesHistory.reduce((acc, curr) => acc + (parseFloat(curr.total_price) || 0), 0);
@@ -422,6 +427,39 @@ export default function SalesPage() {
           </div>
         )}
       </div>
+
+      {/* MODAL WARNING STOK TIPIS (WHATSAPP ALERT) */}
+      {waAlertModal.isOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '16px' }}>
+          <div style={{ width: '100%', maxWidth: '360px', backgroundColor: '#ffffff', borderRadius: '20px', padding: '24px', textAlign: 'center', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+            <div style={{ width: '56px', height: '56px', backgroundColor: '#fef2f2', color: '#ef4444', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', marginBottom: '12px' }}>
+              ⚠️
+            </div>
+            <h3 style={{ margin: '0 0 8px 0', fontSize: '18px', fontWeight: '800', color: '#0f172a' }}>Peringatan Stok Menipis!</h3>
+            <p style={{ margin: '0 0 20px 0', fontSize: '13px', color: '#475569', lineHeight: '1.5' }}>
+              Sisa stok Papan Akrilik saat ini tinggal <strong>{waAlertModal.stockLeft} pcs</strong>.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <a
+                href={waAlertModal.waUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setWaAlertModal({ isOpen: false, stockLeft: 0, waUrl: '' })}
+                style={{ width: '100%', padding: '12px', backgroundColor: '#16a34a', color: '#ffffff', borderRadius: '12px', fontSize: '13px', fontWeight: '700', textDecoration: 'none', boxSizing: 'border-box' }}
+              >
+                💬 Kirim Laporan via WA
+              </a>
+              <button
+                onClick={() => setWaAlertModal({ isOpen: false, stockLeft: 0, waUrl: '' })}
+                style={{ width: '100%', padding: '10px', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '12px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL PIN & UPDATE STOK */}
       {modalState.isOpen && (
