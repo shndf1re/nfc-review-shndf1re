@@ -2,14 +2,13 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { Inter } from 'next/font/google';
 
 const inter = Inter({ subsets: ['latin'] });
 
 export default function AdminLayout({ children }) {
   const pathname = usePathname();
-  const router = Router();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const menuItems = [
@@ -22,11 +21,11 @@ export default function AdminLayout({ children }) {
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
   const handleLogout = () => {
-    // Hapus sesi autentikasi dari localStorage
+    // Hapus sesi dari localStorage
     localStorage.removeItem('nfc_admin_session');
     localStorage.removeItem('nfc_admin_last_activity');
     
-    // Redirect ke halaman utama / login
+    // Redirect langsung ke halaman login
     if (typeof window !== 'undefined') {
       window.location.href = '/admin';
     }
@@ -106,7 +105,7 @@ export default function AdminLayout({ children }) {
           })}
         </nav>
 
-        {/* Footer Sidebar (Tombol Logout & Beranda) */}
+        {/* Footer Sidebar (Logout & Navigasi) */}
         <div style={{ padding: '16px 20px', borderTop: '1px solid #1e293b', display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <button 
             onClick={handleLogout}
