@@ -11,7 +11,6 @@ const supabase = createClient(
 
 export default function SalesPage() {
   const [acrylicStock, setAcrylicStock] = useState(0);
-  const [stockItemId, setStockItemId] = useState(null);
   const [salesHistory, setSalesHistory] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -66,16 +65,15 @@ export default function SalesPage() {
   const fetchData = async () => {
     setLoading(true);
     
-    // Fetch Stok Papan Akrilik
-    const { data: invData, error: invError } = await supabase
+    // Fetch Stok Papan Akrilik Langsung via ID = 1 (Berdasarkan DB Supabase)
+    const { data: invData } = await supabase
       .from('inventory')
       .select('*')
-      .eq('item_name', 'Papan Akrilik')
+      .eq('id', 1)
       .maybeSingle();
 
     if (invData) {
-      setAcrylicStock(invData.stock_quantity ?? 0);
-      setStockItemId(invData.id);
+      setAcrylicStock(Number(invData.stock_quantity) || 0);
     }
 
     // Fetch Riwayat Penjualan
@@ -159,7 +157,7 @@ export default function SalesPage() {
     }
 
     const newStock = acrylicStock - qtyNumber;
-    await supabase.from('inventory').update({ stock_quantity: newStock }).eq('item_name', 'Papan Akrilik');
+    await supabase.from('inventory').update({ stock_quantity: newStock }).eq('id', 1);
 
     setSubmitStatus('✅ Penjualan berhasil dicatat!');
     setCustomerName('');
@@ -190,14 +188,14 @@ export default function SalesPage() {
 
     let newStockVal = 0;
     if (modalState.actionType === 'updateStock') {
-      newStockVal = parseInt(modalState.stockInput);
+      newStockVal = parseInt(modalState.stockInput, 10);
       if (isNaN(newStockVal) || newStockVal < 0) {
-        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Jumlah stok tidak valid!' }));
+        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Jumlah stok harus angka positif!' }));
         return;
       }
     }
 
-    // Verifikasi PIN via RPC Supabase
+    // Verifikasi PIN via RPC
     const { data: isValidPin, error: pinError } = await supabase.rpc('verify_sales_pin', {
       input_pin: modalState.pinInput.trim()
     });
@@ -212,12 +210,12 @@ export default function SalesPage() {
       return;
     }
 
-    // Eksekusi Berdasarkan Tipe Aksi
+    // Eksekusi Update ke Database
     if (modalState.actionType === 'updateStock') {
       const { error: updateErr } = await supabase
         .from('inventory')
         .update({ stock_quantity: newStockVal })
-        .eq('item_name', 'Papan Akrilik');
+        .eq('id', 1);
 
       if (updateErr) {
         setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ DB Error: ' + updateErr.message }));
@@ -232,8 +230,8 @@ export default function SalesPage() {
         return;
       }
 
-      const restoredStock = acrylicStock + (parseInt(sale.quantity) || 1);
-      await supabase.from('inventory').update({ stock_quantity: restoredStock }).eq('item_name', 'Papan Akrilik');
+      const restoredStock = acrylicStock + (parseInt(sale.quantity, 10) || 1);
+      await supabase.from('inventory').update({ stock_quantity: restoredStock }).eq('id', 1);
 
     } else if (modalState.actionType === 'updateStatus') {
       const sale = modalState.targetData;
@@ -404,19 +402,54 @@ export default function SalesPage() {
         )}
       </div>
 
+      {/* MODAL PIN & UPDATE STOK */}
       {modalState.isOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '16px' }}>
           <div style={{ width: '100%', maxWidth: '360px', backgroundColor: '#ffffff', borderRadius: '16px', padding: '24px', textAlign: 'center' }}>
-            <h3 style={{ margin: '0 0 6px 0', fontSize: '17px', fontWeight: '700' }}>Konfirmasi PIN Admin</h3>
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '17px', fontWeight: '700' }}>
+              {modalState.actionType === 'updateStock' ? '📦 Update Jumlah Stok' : '🔒 Konfirmasi PIN Admin'}
+            </h3>
             <form onSubmit={handleModalSubmit}>
               {modalState.actionType === 'updateStock' && (
-                <input type="number" min="0" required value={modalState.stockInput} onChange={(e) => setModalState(prev => ({ ...prev, stockInput: e.target.value }))} style={{ width: '100%', padding: '10px', fontSize: '14px', borderRadius: '8px', border: '1px solid #cbd5e1', marginBottom: '12px', boxSizing: 'border-box' }} />
+                <div style={{ marginBottom: '12px', textAlign: 'left' }}>
+                  <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b', display: 'block', marginBottom: '4px' }}>
+                    Sisa Stok Baru (Hanya Angka):
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    required
+                    placeholder="Contoh: 10"
+                    value={modalState.stockInput}
+                    onChange={(e) => setModalState(prev => ({ ...prev, stockInput: e.target.value }))}
+                    style={{ width: '100%', padding: '10px', fontSize: '14px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box', outline: 'none' }}
+                  />
+                </div>
               )}
-              <input type="password" required placeholder="PIN 6-digit" value={modalState.pinInput} onChange={(e) => setModalState(prev => ({ ...prev, pinInput: e.target.value }))} style={{ width: '100%', padding: '10px', fontSize: '15px', textAlign: 'center', letterSpacing: '3px', borderRadius: '8px', border: '1px solid #cbd5e1', marginBottom: '16px', boxSizing: 'border-box' }} />
-              {modalState.errorMsg && <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#ef4444' }}>{modalState.errorMsg}</p>}
+              
+              <div style={{ marginBottom: '16px', textAlign: 'left' }}>
+                <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b', display: 'block', marginBottom: '4px' }}>
+                  PIN Admin (6-Digit):
+                </label>
+                <input
+                  type="password"
+                  required
+                  maxLength={6}
+                  placeholder="••••••"
+                  value={modalState.pinInput}
+                  onChange={(e) => setModalState(prev => ({ ...prev, pinInput: e.target.value }))}
+                  style={{ width: '100%', padding: '10px', fontSize: '16px', textAlign: 'center', letterSpacing: '4px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box', outline: 'none' }}
+                />
+              </div>
+
+              {modalState.errorMsg && <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#ef4444', fontWeight: '600' }}>{modalState.errorMsg}</p>}
+              
               <div style={{ display: 'flex', gap: '8px' }}>
-                <button type="button" onClick={() => setModalState({ isOpen: false })} style={{ flex: 1, padding: '10px', backgroundColor: '#f1f5f9', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Batal</button>
-                <button type="submit" disabled={modalState.isVerifying} style={{ flex: 1, padding: '10px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Konfirmasi</button>
+                <button type="button" onClick={() => setModalState({ isOpen: false, actionType: null, targetData: null, stockInput: '', pinInput: '', errorMsg: '', isVerifying: false })} style={{ flex: 1, padding: '10px', backgroundColor: '#f1f5f9', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>Batal</button>
+                <button type="submit" disabled={modalState.isVerifying} style={{ flex: 1, padding: '10px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>
+                  {modalState.isVerifying ? 'Verifikasi...' : 'Konfirmasi'}
+                </button>
               </div>
             </form>
           </div>
