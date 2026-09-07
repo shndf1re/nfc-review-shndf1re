@@ -162,6 +162,8 @@ export default function AdminPage() {
       if (!lastActivity || (now - parseInt(lastActivity, 10)) > TIMEOUT_DURATION) {
         localStorage.removeItem('nfc_admin_session');
         localStorage.removeItem('nfc_admin_last_activity');
+        localStorage.removeItem('nfc_admin_role');
+        localStorage.removeItem('nfc_admin_pin');
         setIsAuthenticated(false);
         setLoginError('Sesi Anda telah berakhir. Silakan login kembali.');
       } else {
@@ -204,24 +206,36 @@ export default function AdminPage() {
     setLoginError('');
 
     try {
+      const cleanInput = passwordInput.trim();
       const { data: users, error } = await supabase.from('admin_users').select('*').eq('username', usernameInput.trim());
       let isSuccess = false;
+      let detectedRole = 'staff';
 
       if (!error && users && users.length > 0) {
-        const matchedUser = users.find(u => String(u.password).trim() === passwordInput.trim() || String(u.pin).trim() === passwordInput.trim());
-        if (matchedUser) isSuccess = true;
+        const matchedUser = users.find(u => String(u.password).trim() === cleanInput || String(u.pin).trim() === cleanInput);
+        if (matchedUser) {
+          isSuccess = true;
+          detectedRole = matchedUser.role || 'super_admin';
+        }
       }
 
       if (!isSuccess) {
-        const { data: verifyRes } = await supabase.rpc('verify_sales_pin', { input_pin: passwordInput.trim() });
-        if (verifyRes && verifyRes[0]?.is_valid) isSuccess = true;
+        const { data: verifyRes } = await supabase.rpc('verify_sales_pin', { input_pin: cleanInput });
+        if (verifyRes && verifyRes[0]?.is_valid) {
+          isSuccess = true;
+          detectedRole = verifyRes[0].user_role || 'staff';
+        }
       }
 
       if (isSuccess) {
         setIsAuthenticated(true);
         localStorage.setItem('nfc_admin_session', 'true');
         localStorage.setItem('nfc_admin_last_activity', Date.now().toString());
-        setUsernameInput(''); setPasswordInput('');
+        localStorage.setItem('nfc_admin_role', detectedRole);
+        localStorage.setItem('nfc_admin_pin', cleanInput);
+
+        setUsernameInput(''); 
+        setPasswordInput('');
         fetchDashboardData();
       } else {
         setLoginError('❌ Username atau Password/PIN Salah!');
@@ -234,9 +248,13 @@ export default function AdminPage() {
   };
 
   const handleLogout = (msg) => {
-    setIsAuthenticated(false); setUsernameInput(''); setPasswordInput('');
+    setIsAuthenticated(false); 
+    setUsernameInput(''); 
+    setPasswordInput('');
     localStorage.removeItem('nfc_admin_session');
     localStorage.removeItem('nfc_admin_last_activity');
+    localStorage.removeItem('nfc_admin_role');
+    localStorage.removeItem('nfc_admin_pin');
     if (typeof msg === 'string') showToast(msg, 'error');
   };
 
