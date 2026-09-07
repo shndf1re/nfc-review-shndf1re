@@ -4,15 +4,15 @@ const nextConfig = {
   async headers() {
     return [
       {
-        source: '/:(.*)',
+        source: '/:path*',
         headers: [
           {
             key: 'X-Frame-Options',
-            value: 'DENY', // Mencegah situs dibingkai iframe oleh web peretas (mencegah Clickjacking)
+            value: 'DENY',
           },
           {
             key: 'X-Content-Type-Options',
-            value: 'nosniff', // Mencegah browser menebak-nebak tipe file secara liar
+            value: 'nosniff',
           },
           {
             key: 'Referrer-Policy',
@@ -20,7 +20,7 @@ const nextConfig = {
           },
           {
             key: 'Permissions-Policy',
-            value: 'camera=(), microphone=(), geolocation=()', // Membatasi akses fitur perangkat yang tidak digunakan
+            value: 'camera=(), microphone=(), geolocation=()',
           },
         ],
       },
