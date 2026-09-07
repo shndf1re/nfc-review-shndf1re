@@ -2,13 +2,14 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Inter } from 'next/font/google';
 
 const inter = Inter({ subsets: ['latin'] });
 
 export default function AdminLayout({ children }) {
   const pathname = usePathname();
+  const router = Router();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const menuItems = [
@@ -19,6 +20,17 @@ export default function AdminLayout({ children }) {
   ];
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
+
+  const handleLogout = () => {
+    // Hapus sesi autentikasi dari localStorage
+    localStorage.removeItem('nfc_admin_session');
+    localStorage.removeItem('nfc_admin_last_activity');
+    
+    // Redirect ke halaman utama / login
+    if (typeof window !== 'undefined') {
+      window.location.href = '/admin';
+    }
+  };
 
   return (
     <div className={inter.className} style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#f8fafc' }}>
@@ -94,9 +106,30 @@ export default function AdminLayout({ children }) {
           })}
         </nav>
 
-        {/* Footer Sidebar */}
-        <div style={{ padding: '16px 20px', borderTop: '1px solid #1e293b' }}>
-          <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#94a3b8', textDecoration: 'none', fontSize: '12px', fontWeight: '600' }}>
+        {/* Footer Sidebar (Tombol Logout & Beranda) */}
+        <div style={{ padding: '16px 20px', borderTop: '1px solid #1e293b', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <button 
+            onClick={handleLogout}
+            style={{
+              width: '100%',
+              padding: '10px 14px',
+              backgroundColor: '#ef4444',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '10px',
+              fontSize: '13px',
+              fontWeight: '700',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justify: 'center',
+              gap: '8px'
+            }}
+          >
+            🚪 Keluar (Logout)
+          </button>
+          
+          <Link href="/" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: '#94a3b8', textDecoration: 'none', fontSize: '12px', fontWeight: '600' }}>
             ⬅️ Ke Beranda Utama
           </Link>
         </div>
@@ -139,6 +172,22 @@ export default function AdminLayout({ children }) {
           <span style={{ fontSize: '13px', fontWeight: '700', color: '#64748b' }}>
             {menuItems.find(m => m.path === pathname)?.name || 'Admin'}
           </span>
+
+          <button 
+            onClick={handleLogout}
+            style={{
+              padding: '6px 12px',
+              backgroundColor: '#fef2f2',
+              color: '#ef4444',
+              border: '1px solid #fca5a5',
+              borderRadius: '8px',
+              fontSize: '12px',
+              fontWeight: '700',
+              cursor: 'pointer'
+            }}
+          >
+            Logout
+          </button>
         </header>
 
         {/* Dynamic Page Content */}
