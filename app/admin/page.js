@@ -162,7 +162,6 @@ export default function AdminPage() {
     if (savedSession === 'true') {
       const now = Date.now();
       
-      // Validasi sesi: jika waktu diam melebihi 10 menit atau timestamp tidak ada
       if (!lastActivity || (now - parseInt(lastActivity, 10)) > TIMEOUT_DURATION) {
         localStorage.removeItem('nfc_admin_session');
         localStorage.removeItem('nfc_admin_last_activity');
@@ -217,8 +216,8 @@ export default function AdminPage() {
       }
 
       if (!isSuccess) {
-        const { data: isValidPin } = await supabase.rpc('verify_sales_pin', { input_pin: passwordInput.trim() });
-        if (isValidPin) isSuccess = true;
+        const { data: verifyRes } = await supabase.rpc('verify_sales_pin', { input_pin: passwordInput.trim() });
+        if (verifyRes && verifyRes[0]?.is_valid) isSuccess = true;
       }
 
       if (isSuccess) {
@@ -331,8 +330,8 @@ export default function AdminPage() {
     setPinModal(prev => ({ ...prev, isSubmitting: true, errorMsg: '' }));
 
     if (pinModal.actionType === 'bulkGenerate') {
-      const { data: isValidPin } = await supabase.rpc('verify_sales_pin', { input_pin: pinModal.pinInput.trim() });
-      if (!isValidPin) return setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: '❌ PIN Admin Salah!' }));
+      const { data: verifyRes } = await supabase.rpc('verify_sales_pin', { input_pin: pinModal.pinInput.trim() });
+      if (!verifyRes || !verifyRes[0]?.is_valid) return setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: '❌ PIN Admin Salah!' }));
       const count = parseInt(pinModal.bulkQty) || 1;
       const newDevices = Array.from({ length: count }, () => ({ id: generateUniqueCode(), pin: Math.floor(100000 + Math.random() * 900000).toString(), is_active: false }));
       const { error } = await supabase.from('devices').insert(newDevices);
@@ -343,8 +342,8 @@ export default function AdminPage() {
     }
 
     if (pinModal.actionType === 'bulkEditSave') {
-      const { data: isValidPin } = await supabase.rpc('verify_sales_pin', { input_pin: pinModal.pinInput.trim() });
-      if (!isValidPin) return setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: '❌ PIN Admin Salah!' }));
+      const { data: verifyRes } = await supabase.rpc('verify_sales_pin', { input_pin: pinModal.pinInput.trim() });
+      if (!verifyRes || !verifyRes[0]?.is_valid) return setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: '❌ PIN Admin Salah!' }));
       const formattedUrl = formatReviewUrl(bulkEditUrl);
       const { error } = await supabase.from('devices').update({ label_name: bulkEditLabel.trim() || null, target_url: formattedUrl || null, is_active: Boolean(formattedUrl) }).in('id', selectedDeviceIds);
       if (error) return setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: error.message }));
@@ -357,8 +356,8 @@ export default function AdminPage() {
     const inputPinClean = String(pinModal.pinInput).trim();
     let isPinValid = inputPinClean === String(device?.pin || '').trim();
     if (!isPinValid) {
-      const { data: isValidAdminPin } = await supabase.rpc('verify_sales_pin', { input_pin: inputPinClean });
-      if (isValidAdminPin) isPinValid = true;
+      const { data: verifyRes } = await supabase.rpc('verify_sales_pin', { input_pin: inputPinClean });
+      if (verifyRes && verifyRes[0]?.is_valid) isPinValid = true;
     }
     if (!isPinValid) return setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: '❌ PIN Konfirmasi Salah!' }));
 
@@ -447,6 +446,9 @@ export default function AdminPage() {
                 <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b' }}>Sistem Manajemen Terpusat</p>
               </div>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <Link href="/admin/users" style={{ padding: '8px 14px', backgroundColor: '#f8fafc', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: '10px', fontSize: '13px', fontWeight: '700', textDecoration: 'none' }}>
+                  👥 Kelola Tim
+                </Link>
                 <Link href="/admin/sales" style={{ padding: '8px 14px', backgroundColor: '#f0fdf4', color: '#15803d', borderRadius: '10px', fontSize: '13px', fontWeight: '700', textDecoration: 'none' }}>
                   💰 Penjualan
                 </Link>
