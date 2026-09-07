@@ -1,0 +1,7 @@
+User-agent: *
+Disallow: /admin
+Disallow: /admin/
+Disallow: /setup/
+Disallow: /r/
+
+Sitemap: https://reviewmaps.link/sitemap.xml
