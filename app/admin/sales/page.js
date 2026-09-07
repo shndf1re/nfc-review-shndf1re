@@ -111,6 +111,25 @@ export default function SalesPage() {
     setSelectedMonth(new Date().toISOString().substring(0, 7));
   };
 
+  // FUNGSI UNTUK MEMICU NOTIFIKASI STOK RENDAH VIA WHATSAPP
+  const checkAndNotifyLowStock = async () => {
+    try {
+      const res = await fetch('/api/notify-stock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemName: 'Papan Akrilik' })
+      });
+      const data = await res.json();
+
+      if (data.isLowStock && data.waUrl) {
+        // Buka tab baru ke WhatsApp untuk mengirim notifikasi peringatan stok
+        window.open(data.waUrl, '_blank');
+      }
+    } catch (err) {
+      console.error('Gagal mengirim pemicu notifikasi stok:', err);
+    }
+  };
+
   const handleAddSale = async (e) => {
     e.preventDefault();
     setSubmitStatus('');
@@ -152,6 +171,10 @@ export default function SalesPage() {
     setTotalPrice('');
     setDeviceId('');
     setNotes('');
+
+    // Jalankan Pengecekan Peringatan Stok
+    await checkAndNotifyLowStock();
+    
     fetchData();
   };
 
@@ -207,6 +230,12 @@ export default function SalesPage() {
     }
 
     setModalState({ isOpen: false, actionType: null, targetData: null, stockInput: '', pinInput: '', errorMsg: '', isVerifying: false });
+    
+    // Jalankan Pengecekan Peringatan Stok setelah update manual stok
+    if (modalState.actionType === 'updateStock') {
+      await checkAndNotifyLowStock();
+    }
+
     fetchData();
   };
 
