@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Inter } from 'next/font/google';
 
-// Menggunakan Font Premium Inter
 const inter = Inter({ subsets: ['latin'] });
 
 const supabase = createClient(
@@ -29,11 +28,10 @@ export default function SetupPage({ params }) {
   const [submitting, setSubmitting] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
-  const [showGuideModal, setShowGuideModal] = useState(false); // State modal panduan video MP4
+  const [showGuideModal, setShowGuideModal] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [modalError, setModalError] = useState('');
 
-  // DEFAULT NOMOR WA ADMIN
   const waAdminNumber = '6285156534909'; 
   const waHelpMessage = `Halo Admin! Saya baru saja membeli Papan Review Akrilik.\n\nSaya ingin meminta PIN Akses untuk aktivasi:\n- ID Kartu: ${id || ''}\n\nMohon bantuannya ya, terima kasih!`;
   const waHelpUrl = `https://wa.me/${waAdminNumber}?text=${encodeURIComponent(waHelpMessage)}`;
@@ -193,7 +191,6 @@ export default function SetupPage({ params }) {
     }
   };
 
-  // PREMIUM LOADING SPINNER
   if (loading) {
     return (
       <div className={inter.className} style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc' }}>
@@ -209,17 +206,14 @@ export default function SetupPage({ params }) {
   return (
     <div className={inter.className} style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc', padding: '24px 16px', boxSizing: 'border-box' }}>
       
-      {/* MAIN CARD CONTAINER */}
       <div style={{ width: '100%', maxWidth: '440px', backgroundColor: '#ffffff', borderRadius: '24px', padding: '32px 28px', boxShadow: '0 20px 40px -15px rgba(0, 0, 0, 0.05)', border: '1px solid #f1f5f9', boxSizing: 'border-box' }}>
         
-        {/* TOMBOL BATAL & KEMBALI KE LANDING PAGE */}
         <div style={{ marginBottom: '24px', textAlign: 'left' }}>
           <Link href="/" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: '600', color: '#64748b', textDecoration: 'none', padding: '8px 12px', borderRadius: '10px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}>
             ⬅️ Batal &amp; Kembali
           </Link>
         </div>
 
-        {/* HEADER */}
         <div style={{ textAlign: 'center', marginBottom: '28px' }}>
           <div style={{ width: '60px', height: '60px', backgroundColor: '#0f172a', color: '#ffffff', borderRadius: '18px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', marginBottom: '16px', boxShadow: '0 10px 15px -3px rgba(15, 23, 42, 0.1)' }}>
             📲
@@ -237,7 +231,6 @@ export default function SetupPage({ params }) {
           </div>
         </div>
 
-        {/* NOTIFIKASI UTAMA */}
         {message.text && (
           <div style={{
             padding: '14px', borderRadius: '12px', fontSize: '13px', fontWeight: '600', marginBottom: '24px', textAlign: 'center',
@@ -252,7 +245,6 @@ export default function SetupPage({ params }) {
         {device ? (
           <form onSubmit={handleOpenPinModal} autoComplete="off" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             
-            {/* FIELD NAMA TOKO */}
             <div>
               <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#1e293b', marginBottom: '8px' }}>
                 🏪 Nama Toko / Usaha
@@ -267,7 +259,6 @@ export default function SetupPage({ params }) {
               />
             </div>
 
-            {/* INPUT LINK REVIEW + PANDUAN VISUAL */}
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                 <label style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', margin: 0 }}>
@@ -326,7 +317,6 @@ export default function SetupPage({ params }) {
               />
             </div>
 
-            {/* SUBMIT BUTTON PRIMARY */}
             <button
               type="submit"
               style={{
@@ -338,7 +328,6 @@ export default function SetupPage({ params }) {
               🚀 Simpan &amp; Aktifkan Papan
             </button>
 
-            {/* TOMBOL RESET KARTU (TAMPIL JIKA AKTIF) */}
             {device.is_active && (
               <button
                 type="button"
@@ -353,7 +342,6 @@ export default function SetupPage({ params }) {
               </button>
             )}
 
-            {/* HELP FOOTER */}
             <div style={{ marginTop: '16px', textAlign: 'center', paddingTop: '20px', borderTop: '1px solid #f1f5f9' }}>
               <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0', fontWeight: '500' }}>
                 Belum menerima PIN atau butuh bantuan?
@@ -393,7 +381,6 @@ export default function SetupPage({ params }) {
               <button onClick={() => setShowGuideModal(false)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#64748b' }}>✕</button>
             </div>
 
-            {/* VIDEO MP4 TUTORIAL */}
             <div style={{ backgroundColor: '#0f172a', borderRadius: '16px', overflow: 'hidden', marginBottom: '16px', border: '1px solid #e2e8f0' }}>
               <video 
                 src="/tutorial-google-review.MP4" 
@@ -405,7 +392,6 @@ export default function SetupPage({ params }) {
               />
             </div>
 
-            {/* LANGKAH TEKS RINGKAS */}
             <ol style={{ margin: '0 0 20px 0', paddingLeft: '20px', fontSize: '12px', color: '#334155', lineHeight: '1.6' }}>
               <li style={{ marginBottom: '6px' }}>Buka aplikasi <strong>Google Maps</strong> di HP Anda.</li>
               <li style={{ marginBottom: '6px' }}>Cari dan pilih nama <strong>Toko / Usaha</strong> Anda.</li>
@@ -465,7 +451,7 @@ export default function SetupPage({ params }) {
                 <button type="button" onClick={() => { setShowPinModal(false); setPinInput(''); setModalError(''); }} style={{ flex: 1, padding: '14px', backgroundColor: '#f8fafc', color: '#475569', border: '1px solid #e2e8f0', borderRadius: '12px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>
                   Batal
                 </button>
-                <button type="submit" disabled={submitting} style={{ flex: 1, padding: '14px', backgroundColor: submitting ? '#94a3b8' : '#2563eb', color: '#ffffff', border: 'none', borderRadius: '12px', fontSize: '14px', fontWeight: '700', cursor submitting ? 'not-allowed' : 'pointer' }}>
+                <button type="submit" disabled={submitting} style={{ flex: 1, padding: '14px', backgroundColor: submitting ? '#94a3b8' : '#2563eb', color: '#ffffff', border: 'none', borderRadius: '12px', fontSize: '14px', fontWeight: '700', cursor: submitting ? 'not-allowed' : 'pointer' }}>
                   {submitting ? 'Memproses' : 'Otorisasi'}
                 </button>
               </div>
