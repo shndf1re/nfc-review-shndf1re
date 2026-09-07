@@ -3,31 +3,36 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { createClient } from '@supabase/supabase-js';
 import { Inter } from 'next/font/google';
 
 const inter = Inter({ subsets: ['latin'] });
 
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+);
+
 export default function AdminLayout({ children }) {
   const pathname = usePathname();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userRole, setUserRole] = useState('staff'); // Default staff
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
 
-  const menuItems = [
-    { name: 'Dashboard', path: '/admin', icon: '📱' },
-    { name: 'Penjualan', path: '/admin/sales', icon: '💰' },
-    { name: 'Statistik', path: '/admin/stats', icon: '📊' },
-    { name: 'Kelola Tim', path: '/admin/users', icon: '👥' },
+  // Master Menu List
+  const allMenuItems = [
+    { name: 'Dashboard', path: '/admin', icon: '📱', roles: ['super_admin', 'staff'] },
+    { name: 'Penjualan', path: '/admin/sales', icon: '💰', roles: ['super_admin', 'staff'] },
+    { name: 'Statistik', path: '/admin/stats', icon: '📊', roles: ['super_admin', 'staff'] },
+    { name: 'Kelola Tim', path: '/admin/users', icon: '👥', roles: ['super_admin'] }, // Khusus Super Admin
   ];
 
   useEffect(() => {
     checkSession();
     
-    // Cek perubahan session
     const handleStorageChange = () => checkSession();
     window.addEventListener('storage', handleStorageChange);
-    
-    // Polling ringan untuk deteksi login/logout di tab yang sama
     const interval = setInterval(() => checkSession(), 1000);
 
     return () => {
@@ -36,10 +41,29 @@ export default function AdminLayout({ children }) {
     };
   }, []);
 
-  const checkSession = () => {
+  const checkSession = async () => {
     if (typeof window !== 'undefined') {
       const savedSession = localStorage.getItem('nfc_admin_session');
-      setIsAuthenticated(savedSession === 'true');
+      const isAuth = savedSession === 'true';
+      setIsAuthenticated(isAuth);
+
+      if (isAuth) {
+        // Ambil data role pengguna dari localStorage jika disimpan, atau fetch dari Supabase
+        const savedRole = localStorage.getItem('nfc_admin_role');
+        if (savedRole) {
+          setUserRole(savedRole);
+        } else {
+          // Fallback: Cek RPC / Database untuk memastikan role pengguna
+          const activePin = localStorage.getItem('nfc_admin_pin') || '';
+          if (activePin) {
+            const { data } = await supabase.rpc('verify_sales_pin', { input_pin: activePin });
+            if (data && data[0]?.user_role) {
+              setUserRole(data[0].user_role);
+              localStorage.setItem('nfc_admin_role', data[0].user_role);
+            }
+          }
+        }
+      }
       setIsCheckingSession(false);
     }
   };
@@ -47,18 +71,21 @@ export default function AdminLayout({ children }) {
   const handleLogout = () => {
     localStorage.removeItem('nfc_admin_session');
     localStorage.removeItem('nfc_admin_last_activity');
+    localStorage.removeItem('nfc_admin_role');
+    localStorage.removeItem('nfc_admin_pin');
     setIsAuthenticated(false);
     if (typeof window !== 'undefined') {
       window.location.href = '/admin';
     }
   };
 
-  // 1. Jika masih loading cek session, tampilkan layar kosong sebentar
+  // Filter menu berdasarkan role yang sedang aktif
+  const filteredMenuItems = allMenuItems.filter(item => item.roles.includes(userRole));
+
   if (isCheckingSession) {
     return <div className={inter.className} style={{ minHeight: '100vh', backgroundColor: '#f8fafc' }} />;
   }
 
-  // 2. Jika BELUM LOGIN, tampilkan form login MURNI tanpa Sidebar / Topbar
   if (!isAuthenticated) {
     return (
       <div className={inter.className} style={{ minHeight: '100vh', backgroundColor: '#f8fafc' }}>
@@ -67,7 +94,6 @@ export default function AdminLayout({ children }) {
     );
   }
 
-  // 3. Jika SUDAH LOGIN, tampilkan Layout Sidebar Profesional
   return (
     <div className={inter.className} style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#f8fafc' }}>
       
@@ -116,10 +142,10 @@ export default function AdminLayout({ children }) {
           </button>
         </div>
 
-        {/* Navigation Menu */}
+        {/* Navigation Menu (Filtered by Role) */}
         <nav style={{ flex: 1, padding: '20px 12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
           <span style={{ fontSize: '10px', fontWeight: '700', color: '#475569', letterSpacing: '0.8px', padding: '0 12px 8px 12px' }}>MENU UTAMA</span>
-          {menuItems.map((item) => {
+          {filteredMenuItems.map((item) => {
             const isActive = pathname === item.path;
             return (
               <Link
@@ -151,10 +177,12 @@ export default function AdminLayout({ children }) {
         <div style={{ padding: '16px', borderTop: '1px solid #1e293b', backgroundColor: '#090d16' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
             <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#334155', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: '700', color: '#f8fafc' }}>
-              A
+              {userRole === 'super_admin' ? '👑' : '👤'}
             </div>
             <div style={{ flex: 1, overflow: 'hidden' }}>
-              <strong style={{ fontSize: '12px', color: '#f8fafc', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Administrator</strong>
+              <strong style={{ fontSize: '12px', color: '#f8fafc', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {userRole === 'super_admin' ? 'Super Admin' : 'Staff Admin'}
+              </strong>
               <span style={{ fontSize: '10px', color: '#22c55e', display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#22c55e' }} /> Sesi Aktif
               </span>
@@ -187,7 +215,7 @@ export default function AdminLayout({ children }) {
       {/* Main Content Area */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         
-        {/* Topbar Clean (Hanya Tombol Toggle Sidebar & Judul Halaman) */}
+        {/* Topbar Clean */}
         <header style={{
           backgroundColor: '#ffffff',
           borderBottom: '1px solid #e2e8f0',
@@ -219,7 +247,7 @@ export default function AdminLayout({ children }) {
               ☰ Menu
             </button>
             <span style={{ fontSize: '14px', fontWeight: '700', color: '#0f172a' }}>
-              {menuItems.find(m => m.path === pathname)?.name || 'Admin'}
+              {allMenuItems.find(m => m.path === pathname)?.name || 'Admin'}
             </span>
           </div>
 
