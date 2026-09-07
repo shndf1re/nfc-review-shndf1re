@@ -48,7 +48,6 @@ export default function SalesPage() {
   useEffect(() => {
     fetchData();
 
-    // Dengarkan perubahan pada tabel sales dan inventory secara REALTIME
     const channel = supabase
       .channel('sales-page-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, () => {
@@ -68,14 +67,14 @@ export default function SalesPage() {
     setLoading(true);
     
     // Fetch Stok Papan Akrilik
-    const { data: invData } = await supabase
+    const { data: invData, error: invError } = await supabase
       .from('inventory')
       .select('*')
       .eq('item_name', 'Papan Akrilik')
-      .single();
+      .maybeSingle();
 
     if (invData) {
-      setAcrylicStock(invData.stock_quantity);
+      setAcrylicStock(invData.stock_quantity ?? 0);
       setStockItemId(invData.id);
     }
 
@@ -111,7 +110,7 @@ export default function SalesPage() {
     setSelectedMonth(new Date().toISOString().substring(0, 7));
   };
 
-  // FUNGSI UNTUK MEMICU NOTIFIKASI STOK RENDAH VIA WHATSAPP
+  // PEMICU NOTIFIKASI STOK RENDAH VIA WHATSAPP
   const checkAndNotifyLowStock = async () => {
     try {
       const res = await fetch('/api/notify-stock', {
@@ -122,11 +121,10 @@ export default function SalesPage() {
       const data = await res.json();
 
       if (data.isLowStock && data.waUrl) {
-        // Buka tab baru ke WhatsApp untuk mengirim notifikasi peringatan stok
         window.open(data.waUrl, '_blank');
       }
     } catch (err) {
-      console.error('Gagal mengirim pemicu notifikasi stok:', err);
+      console.error('Gagal memicu notifikasi stok:', err);
     }
   };
 
@@ -160,10 +158,8 @@ export default function SalesPage() {
       return;
     }
 
-    if (stockItemId) {
-      const newStock = acrylicStock - qtyNumber;
-      await supabase.from('inventory').update({ stock_quantity: newStock }).eq('id', stockItemId);
-    }
+    const newStock = acrylicStock - qtyNumber;
+    await supabase.from('inventory').update({ stock_quantity: newStock }).eq('item_name', 'Papan Akrilik');
 
     setSubmitStatus('✅ Penjualan berhasil dicatat!');
     setCustomerName('');
@@ -172,9 +168,7 @@ export default function SalesPage() {
     setDeviceId('');
     setNotes('');
 
-    // Jalankan Pengecekan Peringatan Stok
     await checkAndNotifyLowStock();
-    
     fetchData();
   };
 
@@ -203,40 +197,62 @@ export default function SalesPage() {
       }
     }
 
+    // Verifikasi PIN via RPC Supabase
     const { data: isValidPin, error: pinError } = await supabase.rpc('verify_sales_pin', {
       input_pin: modalState.pinInput.trim()
     });
 
-    if (pinError || !isValidPin) {
+    if (pinError) {
+      setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ RPC Error: ' + pinError.message }));
+      return;
+    }
+
+    if (!isValidPin) {
       setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ PIN Admin Salah!' }));
       return;
     }
 
+    // Eksekusi Berdasarkan Tipe Aksi
     if (modalState.actionType === 'updateStock') {
-      if (stockItemId) {
-        await supabase.from('inventory').update({ stock_quantity: newStockVal }).eq('id', stockItemId);
+      const { error: updateErr } = await supabase
+        .from('inventory')
+        .update({ stock_quantity: newStockVal })
+        .eq('item_name', 'Papan Akrilik');
+
+      if (updateErr) {
+        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ DB Error: ' + updateErr.message }));
+        return;
       }
     } else if (modalState.actionType === 'delete') {
       const sale = modalState.targetData;
-      await supabase.from('sales').delete().eq('id', sale.id);
-      if (stockItemId) {
-        const restoredStock = acrylicStock + (parseInt(sale.quantity) || 1);
-        await supabase.from('inventory').update({ stock_quantity: restoredStock }).eq('id', stockItemId);
+      const { error: delErr } = await supabase.from('sales').delete().eq('id', sale.id);
+      
+      if (delErr) {
+        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Gagal Hapus: ' + delErr.message }));
+        return;
       }
+
+      const restoredStock = acrylicStock + (parseInt(sale.quantity) || 1);
+      await supabase.from('inventory').update({ stock_quantity: restoredStock }).eq('item_name', 'Papan Akrilik');
+
     } else if (modalState.actionType === 'updateStatus') {
       const sale = modalState.targetData;
-      await supabase.from('sales').update({ payment_status: selectedNewStatus }).eq('id', sale.id);
+      const { error: statusErr } = await supabase.from('sales').update({ payment_status: selectedNewStatus }).eq('id', sale.id);
+      
+      if (statusErr) {
+        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Gagal Status: ' + statusErr.message }));
+        return;
+      }
       setEditingSaleId(null);
     }
 
     setModalState({ isOpen: false, actionType: null, targetData: null, stockInput: '', pinInput: '', errorMsg: '', isVerifying: false });
     
-    // Jalankan Pengecekan Peringatan Stok setelah update manual stok
+    await fetchData();
+
     if (modalState.actionType === 'updateStock') {
       await checkAndNotifyLowStock();
     }
-
-    fetchData();
   };
 
   const totalOmzetTotal = salesHistory.reduce((acc, curr) => acc + (parseFloat(curr.total_price) || 0), 0);
