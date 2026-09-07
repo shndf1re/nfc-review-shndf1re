@@ -16,7 +16,8 @@ export default function ManageUsersPage() {
   // Form State
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
-  const [pin, setPin] = useState('');
+  const [password, setPassword] = useState(''); // Password Login (Bebas)
+  const [pin, setPin] = useState('');           // PIN Transaksi (Maks 6 Angka)
   const [role, setRole] = useState('staff');
   const [permissions, setPermissions] = useState({
     sales: true,
@@ -30,7 +31,7 @@ export default function ManageUsersPage() {
   // Modal Verifikasi Super Admin
   const [pinModal, setPinModal] = useState({
     isOpen: false,
-    actionType: null, // 'save' atau 'delete'
+    actionType: null,
     targetUser: null,
     superPinInput: '',
     errorMsg: '',
@@ -57,6 +58,7 @@ export default function ManageUsersPage() {
   const resetForm = () => {
     setName('');
     setUsername('');
+    setPassword('');
     setPin('');
     setRole('staff');
     setPermissions({ sales: true, inventory: false, stats_reset: false });
@@ -68,12 +70,13 @@ export default function ManageUsersPage() {
     setEditingUserId(user.id);
     setName(user.name || '');
     setUsername(user.username || '');
+    setPassword(''); 
     setPin(''); 
     setRole(user.role || 'staff');
     setPermissions(
       user.permissions || { sales: true, inventory: false, stats_reset: false }
     );
-    setStatusMsg('ℹ️ Kosongkan PIN/Password jika tidak ingin mengubahnya.');
+    setStatusMsg('ℹ️ Kosongkan Password / PIN jika tidak ingin mengubahnya.');
   };
 
   const handleOpenPinModal = (actionType, targetUser = null) => {
@@ -82,8 +85,12 @@ export default function ManageUsersPage() {
         setStatusMsg('❌ Harap isi Nama dan Username!');
         return;
       }
-      if (!editingUserId && !pin) {
-        setStatusMsg('❌ Harap isi PIN/Password untuk akun baru!');
+      if (!editingUserId && (!password || !pin)) {
+        setStatusMsg('❌ Harap isi Password dan PIN untuk akun baru!');
+        return;
+      }
+      if (pin && pin.length > 6) {
+        setStatusMsg('❌ PIN maksimal 6 digit angka!');
         return;
       }
     }
@@ -119,7 +126,7 @@ export default function ManageUsersPage() {
       return;
     }
 
-    // Eksekusi Tindakan Simpan / Edit / Hapus
+    // Eksekusi Simpan / Edit / Hapus
     if (pinModal.actionType === 'save') {
       const payload = {
         name,
@@ -128,10 +135,8 @@ export default function ManageUsersPage() {
         permissions
       };
 
-      if (pin.trim()) {
-        payload.pin = pin.trim();
-        payload.password = pin.trim();
-      }
+      if (password.trim()) payload.password = password.trim();
+      if (pin.trim()) payload.pin = pin.trim();
 
       if (editingUserId) {
         const { error: updateErr } = await supabase
@@ -200,16 +205,30 @@ export default function ManageUsersPage() {
             <input type="text" placeholder="Contoh: Budi Santoso" value={name} onChange={(e) => setName(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
           </div>
 
+          <div>
+            <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b', display: 'block', marginBottom: '4px' }}>Username Login:</label>
+            <input type="text" placeholder="budi_sales" value={username} onChange={(e) => setUsername(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+          </div>
+
           <div style={{ display: 'flex', gap: '10px' }}>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b', display: 'block', marginBottom: '4px' }}>Username:</label>
-              <input type="text" placeholder="budi_sales" value={username} onChange={(e) => setUsername(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+              <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b', display: 'block', marginBottom: '4px' }}>
+                {editingUserId ? 'Password Login Baru:' : 'Password Login (Bebas):'}
+              </label>
+              <input type="password" placeholder="Password Login" value={password} onChange={(e) => setPassword(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
             </div>
             <div style={{ flex: 1 }}>
               <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b', display: 'block', marginBottom: '4px' }}>
-                {editingUserId ? 'PIN Baru (Opsional):' : 'PIN / Password:'}
+                {editingUserId ? 'PIN Baru (Maks 6 Angka):' : 'PIN Otorisasi (Maks 6 Angka):'}
               </label>
-              <input type="password" placeholder="••••••" value={pin} onChange={(e) => setPin(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+              <input 
+                type="password" 
+                maxLength={6}
+                placeholder="••••••" 
+                value={pin} 
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} // Hanya menerima angka
+                style={{ width: '100%', padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} 
+              />
             </div>
           </div>
 
