@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import Link from 'next/link';
+import { hashPin, comparePin } from '@/lib/auth-crypto';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -68,18 +69,24 @@ export default function ManageUsersPage() {
     setEditingUserId(user.id);
     setName(user.name || '');
     setUsername(user.username || '');
-    setPin(user.pin || user.password || '');
+    setPin(''); // Dikosongkan demi keamanan, diisi hanya jika ingin ganti PIN baru
     setRole(user.role || 'staff');
     setPermissions(
       user.permissions || { sales: true, inventory: false, stats_reset: false }
     );
-    setStatusMsg('');
+    setStatusMsg('ℹ️ Kosongkan PIN/Password jika tidak ingin mengubahnya.');
   };
 
   const handleOpenPinModal = (actionType, targetUser = null) => {
-    if (actionType === 'save' && (!name || !username || !pin)) {
-      setStatusMsg('❌ Harap isi Nama, Username, dan PIN/Password!');
-      return;
+    if (actionType === 'save') {
+      if (!name || !username) {
+        setStatusMsg('❌ Harap isi Nama dan Username!');
+        return;
+      }
+      if (!editingUserId && !pin) {
+        setStatusMsg('❌ Harap isi PIN/Password untuk akun baru!');
+        return;
+      }
     }
     setPinModal({
       isOpen: true,
@@ -95,32 +102,67 @@ export default function ManageUsersPage() {
     e.preventDefault();
     setPinModal(prev => ({ ...prev, isVerifying: true, errorMsg: '' }));
 
-    // Verifikasi apakah PIN yang dimasukkan milik Super Admin
-    const { data: verifyRes, error: rpcErr } = await supabase.rpc('verify_sales_pin', {
-      input_pin: pinModal.superPinInput.trim()
+    const inputPinClean = pinModal.superPinInput.trim();
+
+    // 1. Ambil data Super Admin dari RPC / Supabase untuk perbandingan Hash
+    const { data: userCandidates, error: rpcErr } = await supabase.rpc('get_user_by_pin_or_username', {
+      input_identifier: inputPinClean
     });
 
-    const isSuperAdmin = verifyRes && verifyRes[0]?.user_role === 'super_admin';
+    // Jika RPC belum diperbarui, lakukan fallback fetch akun super_admin
+    let candidateList = userCandidates;
+    if (rpcErr || !candidateList) {
+      const { data: dbAdmins } = await supabase
+        .from('admin_users')
+        .select('*')
+        .eq('role', 'super_admin');
+      candidateList = dbAdmins || [];
+    }
 
-    if (rpcErr || !isSuperAdmin) {
+    let isAuthorizedSuperAdmin = false;
+
+    // Verifikasi input PIN menggunakan comparePin (Mendukung Hash & Plaintext)
+    for (const adminCandidate of candidateList) {
+      const storedHash = adminCandidate.pin_hash || adminCandidate.pin || adminCandidate.password;
+      const isRoleSuper = adminCandidate.role === 'super_admin' || adminCandidate.user_role === 'super_admin';
+
+      if (isRoleSuper && storedHash) {
+        const isMatch = await comparePin(inputPinClean, storedHash);
+        if (isMatch) {
+          isAuthorizedSuperAdmin = true;
+          break;
+        }
+      }
+    }
+
+    if (!isAuthorizedSuperAdmin) {
       setPinModal(prev => ({
         ...prev,
         isVerifying: false,
-        errorMsg: '❌ Akses Ditolak: Membutuhkan PIN/Password Super Admin!'
+        errorMsg: '❌ Akses Ditolak: Membutuhkan PIN/Password Super Admin yang Valid!'
       }));
       return;
     }
 
-    // Eksekusi Tindakan
+    // 2. Eksekusi Tindakan Simpan / Edit / Hapus
     if (pinModal.actionType === 'save') {
+      let hashedPin = null;
+      if (pin.trim()) {
+        hashedPin = await hashPin(pin.trim());
+      }
+
       const payload = {
         name,
         username,
-        pin,
-        password: pin,
         role,
         permissions
       };
+
+      // Hanya masukkan password/pin jika user mengisi PIN baru
+      if (hashedPin) {
+        payload.pin = hashedPin;
+        payload.password = hashedPin;
+      }
 
       if (editingUserId) {
         // Update Akun
@@ -144,7 +186,7 @@ export default function ManageUsersPage() {
           setPinModal(prev => ({ ...prev, isVerifying: false, errorMsg: 'Gagal simpan: ' + insertErr.message }));
           return;
         }
-        setStatusMsg('✅ Akun baru berhasil ditambahkan!');
+        setStatusMsg('✅ Akun baru terenkripsi berhasil ditambahkan!');
       }
       resetForm();
     } else if (pinModal.actionType === 'delete') {
@@ -172,7 +214,7 @@ export default function ManageUsersPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <div>
           <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '700', color: '#0f172a' }}>👥 Manajemen Akun Admin</h2>
-          <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Kelola Tim &amp; Hak Akses Fitur</p>
+          <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Kelola Tim &amp; Hak Akses Fitur (Secured with Bcrypt)</p>
         </div>
         <Link href="/admin" style={{ padding: '8px 14px', backgroundColor: '#2563eb', color: '#fff', textDecoration: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '600' }}>
           ⬅️ Dashboard
@@ -197,7 +239,9 @@ export default function ManageUsersPage() {
               <input type="text" placeholder="budi_sales" value={username} onChange={(e) => setUsername(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
             </div>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b', display: 'block', marginBottom: '4px' }}>PIN / Password (6 Digit):</label>
+              <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b', display: 'block', marginBottom: '4px' }}>
+                {editingUserId ? 'PIN Baru (Opsional):' : 'PIN / Password:'}
+              </label>
               <input type="password" placeholder="••••••" value={pin} onChange={(e) => setPin(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
             </div>
           </div>
@@ -238,12 +282,12 @@ export default function ManageUsersPage() {
               </button>
             )}
             <button type="button" onClick={() => handleOpenPinModal('save')} style={{ flex: 2, padding: '12px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '700', fontSize: '13px', cursor: 'pointer' }}>
-              💾 {editingUserId ? 'Simpan Perubahan' : 'Tambah Akun Staff'}
+              🔒 {editingUserId ? 'Simpan Perubahan' : 'Tambah Akun Terenkripsi'}
             </button>
           </div>
         </div>
 
-        {statusMsg && <p style={{ marginTop: '12px', fontSize: '12px', color: statusMsg.startsWith('❌') ? '#dc2626' : '#16a34a', textAlign: 'center', fontWeight: '600' }}>{statusMsg}</p>}
+        {statusMsg && <p style={{ marginTop: '12px', fontSize: '12px', color: statusMsg.startsWith('❌') ? '#dc2626' : statusMsg.startsWith('ℹ️') ? '#2563eb' : '#16a34a', textAlign: 'center', fontWeight: '600' }}>{statusMsg}</p>}
       </div>
 
       {/* List Daftar User */}
@@ -254,30 +298,38 @@ export default function ManageUsersPage() {
           <p style={{ textAlign: 'center', color: '#64748b', fontSize: '13px' }}>Memuat daftar akun...</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {users.map((u) => (
-              <div key={u.id} style={{ padding: '12px 14px', borderRadius: '12px', border: '1px solid #f1f5f9', backgroundColor: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <strong style={{ fontSize: '14px', color: '#0f172a' }}>{u.name}</strong>
-                    <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', backgroundColor: u.role === 'super_admin' ? '#fef3c7' : '#e0f2fe', color: u.role === 'super_admin' ? '#b45309' : '#0369a1', fontWeight: '700' }}>
-                      {u.role === 'super_admin' ? '👑 Super Admin' : '👤 Staff'}
-                    </span>
+            {users.map((u) => {
+              const isHashed = String(u.pin || u.password || '').startsWith('$2');
+              return (
+                <div key={u.id} style={{ padding: '12px 14px', borderRadius: '12px', border: '1px solid #f1f5f9', backgroundColor: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <strong style={{ fontSize: '14px', color: '#0f172a' }}>{u.name}</strong>
+                      <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', backgroundColor: u.role === 'super_admin' ? '#fef3c7' : '#e0f2fe', color: u.role === 'super_admin' ? '#b45309' : '#0369a1', fontWeight: '700' }}>
+                        {u.role === 'super_admin' ? '👑 Super Admin' : '👤 Staff'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '2px' }}>
+                      <span style={{ fontSize: '11px', color: '#64748b' }}>Username: <strong>@{u.username}</strong></span>
+                      <span style={{ fontSize: '10px', color: isHashed ? '#16a34a' : '#d97706', fontWeight: '600' }}>
+                        {isHashed ? '🔒 Encrypted' : '⚠️ Plaintext'}
+                      </span>
+                    </div>
                   </div>
-                  <span style={{ fontSize: '11px', color: '#64748b' }}>Username: <strong>@{u.username}</strong></span>
-                </div>
 
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={() => handleEditClick(u)} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
-                    ✏️ Edit
-                  </button>
-                  {u.role !== 'super_admin' && (
-                    <button onClick={() => handleOpenPinModal('delete', u)} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
-                      🗑️ Hapus
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button onClick={() => handleEditClick(u)} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                      ✏️ Edit
                     </button>
-                  )}
+                    {u.role !== 'super_admin' && (
+                      <button onClick={() => handleOpenPinModal('delete', u)} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                        🗑️ Hapus
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -287,11 +339,11 @@ export default function ManageUsersPage() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '16px' }}>
           <div style={{ width: '100%', maxWidth: '360px', backgroundColor: '#ffffff', borderRadius: '18px', padding: '24px', textAlign: 'center' }}>
             <div style={{ width: '44px', height: '44px', backgroundColor: '#fef3c7', color: '#b45309', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', marginBottom: '10px' }}>
-              👑
+              🔐
             </div>
             <h3 style={{ margin: '0 0 6px 0', fontSize: '17px', fontWeight: '700' }}>Otorisasi Super Admin</h3>
             <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#64748b', lineHeight: '1.4' }}>
-              Masukkan <strong>PIN / Password Super Admin</strong> Anda untuk mengonfirmasi perubahan akun ini.
+              Masukkan <strong>PIN / Password Super Admin</strong> untuk mengonfirmasi perubahan akun ini.
             </p>
 
             <form onSubmit={handleConfirmSuperAdminAction}>
