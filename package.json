@@ -7,11 +7,12 @@
     "build": "next build",
     "start": "next start"
   },
-"dependencies": {
-    "next": "14.x.x",
-    "react": "^18",
-    "react-dom": "^18",
-    "@supabase/supabase-js": "^2.x.x",
+  "dependencies": {
+    "next": "14.x",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
+    "@supabase/supabase-js": "^2.0.0",
+    "bcryptjs": "^2.4.3",
     "jszip": "^3.10.1"
   }
 }
