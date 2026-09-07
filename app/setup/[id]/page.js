@@ -29,6 +29,7 @@ export default function SetupPage({ params }) {
   const [showPinModal, setShowPinModal] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
   const [showGuideModal, setShowGuideModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false); // Modal Sukses Baru
   const [message, setMessage] = useState({ type: '', text: '' });
   const [modalError, setModalError] = useState('');
 
@@ -133,10 +134,12 @@ export default function SetupPage({ params }) {
         setModalError('❌ Gagal memperbarui data: ' + error.message);
       } else {
         setShowPinModal(false);
-        setMessage({ type: 'success', text: '🎉 Papan Akrilik Anda Berhasil Diaktifkan!' });
+        setShowSuccessModal(true); // Tampilkan Pop-Up Sukses
+
+        // Pengalihan Otomatis ke Landing Page Utama setelah 2.5 Detik
         setTimeout(() => {
-          router.push(`/r/${id}`);
-        }, 1800);
+          router.push('/');
+        }, 2500);
       }
     } catch (err) {
       setModalError('❌ Terjadi kesalahan saat menyimpan.');
@@ -370,6 +373,37 @@ export default function SetupPage({ params }) {
         )}
 
       </div>
+
+      {/* MODAL POP-UP SUKSES AKTIVASI (BARU) */}
+      {showSuccessModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '16px' }}>
+          <div style={{ width: '100%', maxWidth: '360px', backgroundColor: '#ffffff', borderRadius: '24px', padding: '32px 24px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.2)', textAlign: 'center' }}>
+            
+            <div style={{ width: '64px', height: '64px', backgroundColor: '#dcfce7', color: '#16a34a', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '32px', marginBottom: '16px', boxShadow: '0 10px 15px -3px rgba(22,163,74,0.2)' }}>
+              🎉
+            </div>
+
+            <h3 style={{ margin: '0 0 8px 0', fontSize: '20px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.5px' }}>
+              Aktivasi Berhasil!
+            </h3>
+            
+            <p style={{ margin: '0 0 20px 0', fontSize: '13px', color: '#475569', lineHeight: '1.6' }}>
+              Papan Google Review untuk <strong>{storeName}</strong> siap digunakan! Pelanggan kini dapat langsung melakukan tap NFC atau scan QR.
+            </p>
+
+            <div style={{ backgroundColor: '#f8fafc', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '20px', fontSize: '12px', color: '#64748b' }}>
+              ⏳ Mengalihkan ke Halaman Utama...
+            </div>
+
+            <button
+              onClick={() => router.push('/')}
+              style={{ width: '100%', padding: '14px', backgroundColor: '#0f172a', color: '#ffffff', border: 'none', borderRadius: '12px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}
+            >
+              Ke Halaman Utama
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* MODAL PANDUAN VISUAL VIDEO MP4 */}
       {showGuideModal && (
