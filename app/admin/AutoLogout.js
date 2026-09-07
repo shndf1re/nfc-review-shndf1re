@@ -13,43 +13,47 @@ export default function AutoLogout({ children, isAuthenticated, onLogout }) {
   const lastActivityTimeRef = useRef(Date.now());
 
   const handleLogout = useCallback(() => {
-    // 1. Hapus semua kredensial session dari browser (sesuai kode original Anda)
+    // 1. Hapus semua kredensial session dari browser
     localStorage.removeItem('nfc_admin_session');
     localStorage.removeItem('admin_token');
-    localStorage.removeItem('nfc_admin_last_activity'); // Bersihkan memori aktivitas
+    localStorage.removeItem('nfc_admin_last_activity');
     sessionStorage.clear();
     document.cookie = 'auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
 
-    // 2. Panggil callback logout ke parent (page.js)
+    // 2. Panggil callback logout ke parent
     if (typeof onLogout === 'function') {
       onLogout('Session expired karena tidak ada aktivitas.');
     }
 
-    // 3. Redirect halaman
+    // 3. Redirect ke halaman login
     router.push('/admin?reason=expired');
   }, [onLogout, router]);
 
   const checkActivity = useCallback(() => {
     if (!isAuthenticated) return;
-    
-    // Ambil waktu terakhir admin bergerak dari memori penyimpanan lokal browser
+
     const lastActivityStr = localStorage.getItem('nfc_admin_last_activity');
-    if (lastActivityStr) {
-      const now = Date.now();
-      const timeSinceLastActivity = now - parseInt(lastActivityStr, 10);
-      
-      // Jika waktu diam melebihi batas (baik di background, tab tertutup, atau diam saja)
-      if (timeSinceLastActivity > TIMEOUT_DURATION) {
-        handleLogout();
-      }
+
+    // Jika tidak ada catatan aktivitas terakhir, paksa logout
+    if (!lastActivityStr) {
+      handleLogout();
+      return;
+    }
+
+    const now = Date.now();
+    const timeSinceLastActivity = now - parseInt(lastActivityStr, 10);
+
+    // Jika waktu diam melebihi batas, jalankan fungsi logout
+    if (timeSinceLastActivity > TIMEOUT_DURATION) {
+      handleLogout();
     }
   }, [isAuthenticated, handleLogout]);
 
   const updateActivity = useCallback(() => {
     if (!isAuthenticated) return;
-    
+
     const now = Date.now();
-    // Throttle 1 detik agar tidak memberatkan CPU & akses penulisan localStorage berlebihan
+    // Throttle 1 detik agar tidak memberatkan CPU
     if (now - lastActivityTimeRef.current > 1000) {
       lastActivityTimeRef.current = now;
       localStorage.setItem('nfc_admin_last_activity', now.toString());
@@ -59,17 +63,27 @@ export default function AutoLogout({ children, isAuthenticated, onLogout }) {
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    // 1. Cek langsung saat pertama kali dirender (contoh: buka ulang browser setelah ditutup)
-    checkActivity();
+    // 1. Cek langsung waktu diam sebelum melakukan apa pun
+    const lastActivityStr = localStorage.getItem('nfc_admin_last_activity');
+    const now = Date.now();
 
-    // 2. Simpan waktu awal saat baru login / membuka dashboard
-    localStorage.setItem('nfc_admin_last_activity', Date.now().toString());
-    lastActivityTimeRef.current = Date.now();
+    if (lastActivityStr) {
+      const timeSinceLastActivity = now - parseInt(lastActivityStr, 10);
+      if (timeSinceLastActivity > TIMEOUT_DURATION) {
+        handleLogout();
+        return;
+      }
+    } else {
+      // Jika baru pertama kali login (belum ada timestamp), buat timestamp baru
+      localStorage.setItem('nfc_admin_last_activity', now.toString());
+    }
 
-    // 3. Jalankan interval pengecekan otomatis setiap 5 detik di belakang layar
+    lastActivityTimeRef.current = now;
+
+    // 2. Pengecekan berkala setiap 5 detik
     const interval = setInterval(checkActivity, 5000);
 
-    // 4. Daftarkan deteksi aktivitas fisik user (sama dengan kode original Anda)
+    // 3. Pasang event listener aktivitas pengguna (mouse, keyboard, scroll, touch)
     const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
     const handleUserActivity = () => updateActivity();
 
@@ -83,9 +97,9 @@ export default function AutoLogout({ children, isAuthenticated, onLogout }) {
         window.removeEventListener(evt, handleUserActivity);
       });
     };
-  }, [isAuthenticated, checkActivity, updateActivity]);
+  }, [isAuthenticated, checkActivity, updateActivity, handleLogout]);
 
-  // Cek aktivitas segera setelah tab kembali aktif / difokuskan (pindah antar tab)
+  // Cek aktivitas begitu tab kembali difokuskan
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
