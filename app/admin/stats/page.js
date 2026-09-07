@@ -14,12 +14,13 @@ const supabase = createClient(
 
 export default function StatsPage() {
   const [stats, setStats] = useState([]);
+  const [topDevices, setTopDevices] = useState([]); // State Top 5 Devices
   const [totalScans, setTotalScans] = useState(0);
   const [nfcCount, setNfcCount] = useState(0);
   const [qrCount, setQrCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  // State untuk Toast & Modal Konfirmasi Password/PIN Admin
+  // State Toast & Modal Konfirmasi PIN Admin
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
   const [pinModal, setPinModal] = useState({
     isOpen: false,
@@ -35,7 +36,7 @@ export default function StatsPage() {
     setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 3000);
   };
 
-  // REALTIME LISTENER STATISTIK SUPABASE
+  // REALTIME LISTENER SUPABASE
   useEffect(() => {
     fetchStats();
 
@@ -108,11 +109,20 @@ export default function StatsPage() {
         return acc;
       }, {});
 
+      const allStatsList = Object.values(grouped);
+
+      // Urutkan berdasarkan interaksi terbanyak untuk Widget Top 5
+      const sortedTop = [...allStatsList]
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 5);
+
       setNfcCount(totalNfc);
       setQrCount(totalQr);
-      setStats(Object.values(grouped));
+      setStats(allStatsList);
+      setTopDevices(sortedTop);
     } else {
       setStats([]);
+      setTopDevices([]);
       setTotalScans(0);
       setNfcCount(0);
       setQrCount(0);
@@ -121,14 +131,12 @@ export default function StatsPage() {
     setLoading(false);
   };
 
-  // Handler untuk mengeksekusi Reset setelah PIN diverifikasi via RPC
   const handleModalAction = async (e) => {
     e.preventDefault();
     setPinModal(prev => ({ ...prev, isSubmitting: true, errorMsg: '' }));
 
     const inputPin = pinModal.pinInput.trim();
 
-    // 1. Verifikasi PIN admin terlebih dahulu
     const { data: isValidPin, error: rpcErr } = await supabase.rpc('verify_sales_pin', {
       input_pin: inputPin
     });
@@ -138,7 +146,6 @@ export default function StatsPage() {
       return;
     }
 
-    // 2. Eksekusi fungsi reset via RPC Supabase
     if (pinModal.actionType === 'resetAll') {
       const { error } = await supabase.rpc('reset_device_stats');
       if (error) {
@@ -188,6 +195,46 @@ export default function StatsPage() {
           <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '600', display: 'block' }}>📷 QR Scan</span>
           <strong style={{ fontSize: '20px', color: '#d97706' }}>{qrCount}</strong>
         </div>
+      </div>
+
+      {/* WIDGET TOP PERFORMING DEVICES (BARU) */}
+      <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
+        <h3 style={{ margin: '0 0 14px 0', fontSize: '15px', fontWeight: '700', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          🏆 Top Performing Devices (Toko Teraktif)
+        </h3>
+
+        {loading ? (
+          <p style={{ textAlign: 'center', color: '#64748b', fontSize: '12px' }}>Menghitung peringkat...</p>
+        ) : topDevices.length > 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {topDevices.map((dev, idx) => {
+              const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
+              return (
+                <div key={dev.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #f1f5f9' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '14px', fontWeight: '700', width: '24px', textAlign: 'center' }}>{medal}</span>
+                    <div>
+                      <strong style={{ fontSize: '13px', color: '#0f172a', display: 'block' }}>
+                        {dev.labelName ? `🏪 ${dev.labelName}` : dev.id}
+                      </strong>
+                      <span style={{ fontSize: '11px', color: '#64748b' }}>
+                        ID: {dev.id}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ textAlign: 'right' }}>
+                    <span style={{ fontSize: '13px', fontWeight: '800', color: '#2563eb' }}>
+                      {dev.total} Tap/Scan
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p style={{ textAlign: 'center', fontSize: '12px', color: '#94a3b8', margin: 0 }}>Belum ada data interaksi untuk diperingkatkan.</p>
+        )}
       </div>
 
       {/* Details List */}
