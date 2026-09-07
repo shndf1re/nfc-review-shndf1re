@@ -29,6 +29,7 @@ export default function SetupPage({ params }) {
   const [submitting, setSubmitting] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
+  const [showGuideModal, setShowGuideModal] = useState(false); // State modal panduan video MP4
   const [message, setMessage] = useState({ type: '', text: '' });
   const [modalError, setModalError] = useState('');
 
@@ -214,7 +215,7 @@ export default function SetupPage({ params }) {
         {/* TOMBOL BATAL & KEMBALI KE LANDING PAGE */}
         <div style={{ marginBottom: '24px', textAlign: 'left' }}>
           <Link href="/" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: '600', color: '#64748b', textDecoration: 'none', padding: '8px 12px', borderRadius: '10px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}>
-            ⬅️ Batal & Kembali
+            ⬅️ Batal &amp; Kembali
           </Link>
         </div>
 
@@ -228,7 +229,6 @@ export default function SetupPage({ params }) {
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
             <span style={{ fontSize: '13px', color: '#64748b', fontFamily: 'monospace', fontWeight: '500' }}>{id}</span>
             
-            {/* PENYESUAIAN TEKS STATUS */}
             {device && (
               <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '20px', backgroundColor: device.is_active ? '#ecfdf5' : '#f8fafc', color: device.is_active ? '#059669' : '#64748b', fontWeight: '700', letterSpacing: '0.3px' }}>
                 {device.is_active ? 'Aktif' : 'Belum Aktivasi'}
@@ -252,7 +252,7 @@ export default function SetupPage({ params }) {
         {device ? (
           <form onSubmit={handleOpenPinModal} autoComplete="off" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             
-            {/* JUDUL FIELD SESUAI REQUEST: TANPA KATA "KAKAK" */}
+            {/* FIELD NAMA TOKO */}
             <div>
               <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#1e293b', marginBottom: '8px' }}>
                 🏪 Nama Toko / Usaha
@@ -267,30 +267,53 @@ export default function SetupPage({ params }) {
               />
             </div>
 
-            {/* INPUT LINK REVIEW */}
+            {/* INPUT LINK REVIEW + PANDUAN VISUAL */}
             <div>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#1e293b', marginBottom: '8px' }}>
-                🔗 Link Direct Google Review
-              </label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <label style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', margin: 0 }}>
+                  🔗 Link Direct Google Review
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowGuideModal(true)}
+                  style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', fontWeight: '700', cursor: 'pointer', padding: 0 }}
+                >
+                  🎬 Panduan Video
+                </button>
+              </div>
 
               <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', padding: '16px', borderRadius: '12px', marginBottom: '12px' }}>
                 <div style={{ fontSize: '12px', color: '#475569', lineHeight: '1.5', marginBottom: '12px' }}>
                   💡 <strong>Belum punya link direct review?</strong><br />
                   Klik tombol di bawah untuk cari nama toko Anda di Productmate, lalu <strong>salin link</strong> yang muncul.
                 </div>
-                <a 
-                  href="https://productmate.com/google-review-link-generator" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                    width: '100%', padding: '10px 12px', backgroundColor: '#ffffff', color: '#0f172a',
-                    borderRadius: '10px', fontSize: '13px', fontWeight: '700', textDecoration: 'none',
-                    boxSizing: 'border-box', border: '1px solid #cbd5e1'
-                  }}
-                >
-                  🔍 Cari di Productmate ↗
-                </a>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <a 
+                    href="https://productmate.com/google-review-link-generator" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    style={{
+                      flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                      padding: '10px 12px', backgroundColor: '#ffffff', color: '#0f172a',
+                      borderRadius: '10px', fontSize: '12px', fontWeight: '700', textDecoration: 'none',
+                      boxSizing: 'border-box', border: '1px solid #cbd5e1'
+                    }}
+                  >
+                    🔍 Productmate ↗
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setShowGuideModal(true)}
+                    style={{
+                      flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                      padding: '10px 12px', backgroundColor: '#eff6ff', color: '#2563eb',
+                      borderRadius: '10px', fontSize: '12px', fontWeight: '700',
+                      boxSizing: 'border-box', border: '1px solid #bfdbfe', cursor: 'pointer'
+                    }}
+                  >
+                    📹 Cara Ambil Link
+                  </button>
+                </div>
               </div>
 
               <input
@@ -360,7 +383,48 @@ export default function SetupPage({ params }) {
 
       </div>
 
-      {/* MODAL KONFIRMASI PIN AKTIVASI (GLASSMORPHISM) */}
+      {/* MODAL PANDUAN VISUAL VIDEO MP4 */}
+      {showGuideModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '16px' }}>
+          <div style={{ width: '100%', maxWidth: '380px', backgroundColor: '#ffffff', borderRadius: '24px', padding: '24px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.2)', textAlign: 'left', maxHeight: '90vh', overflowY: 'auto' }}>
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: '#0f172a' }}>📖 Cara Dapatkan Link Review</h3>
+              <button onClick={() => setShowGuideModal(false)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#64748b' }}>✕</button>
+            </div>
+
+            {/* VIDEO MP4 TUTORIAL */}
+            <div style={{ backgroundColor: '#0f172a', borderRadius: '16px', overflow: 'hidden', marginBottom: '16px', border: '1px solid #e2e8f0' }}>
+              <video 
+                src="/tutorial-google-review.MP4" 
+                autoPlay 
+                loop 
+                muted 
+                playsInline 
+                style={{ width: '100%', height: 'auto', display: 'block', borderRadius: '16px' }}
+              />
+            </div>
+
+            {/* LANGKAH TEKS RINGKAS */}
+            <ol style={{ margin: '0 0 20px 0', paddingLeft: '20px', fontSize: '12px', color: '#334155', lineHeight: '1.6' }}>
+              <li style={{ marginBottom: '6px' }}>Buka aplikasi <strong>Google Maps</strong> di HP Anda.</li>
+              <li style={{ marginBottom: '6px' }}>Cari dan pilih nama <strong>Toko / Usaha</strong> Anda.</li>
+              <li style={{ marginBottom: '6px' }}>Geser ke tab <strong>Ulasan (Reviews)</strong>.</li>
+              <li style={{ marginBottom: '6px' }}>Klik tombol <strong>Bagikan Form Ulasan</strong>.</li>
+              <li>Pilih <strong>Salin Link</strong> lalu tempelkan di kolom input ini.</li>
+            </ol>
+
+            <button
+              onClick={() => setShowGuideModal(false)}
+              style={{ width: '100%', padding: '12px', backgroundColor: '#0f172a', color: '#ffffff', border: 'none', borderRadius: '12px', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}
+            >
+              Saya Mengerti
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL KONFIRMASI PIN AKTIVASI */}
       {showPinModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.45)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '16px' }}>
           <div style={{ width: '100%', maxWidth: '340px', backgroundColor: '#ffffff', borderRadius: '24px', padding: '32px 24px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.15)', textAlign: 'center' }}>
@@ -401,7 +465,7 @@ export default function SetupPage({ params }) {
                 <button type="button" onClick={() => { setShowPinModal(false); setPinInput(''); setModalError(''); }} style={{ flex: 1, padding: '14px', backgroundColor: '#f8fafc', color: '#475569', border: '1px solid #e2e8f0', borderRadius: '12px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>
                   Batal
                 </button>
-                <button type="submit" disabled={submitting} style={{ flex: 1, padding: '14px', backgroundColor: submitting ? '#94a3b8' : '#2563eb', color: '#ffffff', border: 'none', borderRadius: '12px', fontSize: '14px', fontWeight: '700', cursor: submitting ? 'not-allowed' : 'pointer' }}>
+                <button type="submit" disabled={submitting} style={{ flex: 1, padding: '14px', backgroundColor: submitting ? '#94a3b8' : '#2563eb', color: '#ffffff', border: 'none', borderRadius: '12px', fontSize: '14px', fontWeight: '700', cursor submitting ? 'not-allowed' : 'pointer' }}>
                   {submitting ? 'Memproses' : 'Otorisasi'}
                 </button>
               </div>
