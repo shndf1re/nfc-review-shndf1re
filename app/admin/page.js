@@ -247,15 +247,23 @@ export default function AdminPage() {
     }
   };
 
-  const handleLogout = (msg) => {
-    setIsAuthenticated(false); 
-    setUsernameInput(''); 
-    setPasswordInput('');
+const handleLogout = (msg) => {
+    // 1. Bersihkan semua memori autentikasi di browser
     localStorage.removeItem('nfc_admin_session');
     localStorage.removeItem('nfc_admin_last_activity');
     localStorage.removeItem('nfc_admin_role');
     localStorage.removeItem('nfc_admin_pin');
-    if (typeof msg === 'string') showToast(msg, 'error');
+
+    // 2. Reset state lokal (sebagai formalitas sebelum browser reload)
+    setIsAuthenticated(false); 
+    setUsernameInput(''); 
+    setPasswordInput('');
+
+    // 3. HARD REDIRECT: Paksa lempar ke /admin
+    // Ini memastikan seluruh DOM, State, dan Sidebar di-destroy secara paksa
+    if (typeof window !== 'undefined') {
+      window.location.href = '/admin';
+    }
   };
 
   const generateUniqueCode = () => {
