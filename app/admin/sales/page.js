@@ -279,9 +279,11 @@ export default function SalesPage() {
     fetchData();
   };
 
+  // RUMUS PERHITUNGAN RINGKASAN
   const totalOmzetTotal = salesHistory.reduce((acc, curr) => acc + (parseFloat(curr.total_price) || 0), 0);
   const totalOmzetLunas = salesHistory.filter(s => s.payment_status === 'Lunas').reduce((acc, curr) => acc + (parseFloat(curr.total_price) || 0), 0);
   const totalPiutang = totalOmzetTotal - totalOmzetLunas;
+  const totalPapanTerjual = salesHistory.reduce((acc, curr) => acc + (parseInt(curr.quantity, 10) || 0), 0);
 
   return (
     <div style={{ maxWidth: '600px', margin: '0 auto', padding: '24px 16px', fontFamily: '-apple-system, sans-serif' }}>
@@ -352,6 +354,12 @@ export default function SalesPage() {
 
       <div style={{ backgroundColor: '#ffffff', padding: '16px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
         <div style={{ backgroundColor: '#f8fafc', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+          
+          <div style={{ gridColumn: 'span 2', paddingBottom: '8px', borderBottom: '1px dashed #cbd5e1' }}>
+            <span style={{ fontSize: '10px', color: '#64748b', fontWeight: '600', display: 'block' }}>🏷️ Total Papan Terjual</span>
+            <strong style={{ fontSize: '16px', color: '#0f172a' }}>{totalPapanTerjual} <span style={{ fontSize: '12px', fontWeight: '500', color: '#64748b' }}>pcs</span></strong>
+          </div>
+
           <div>
             <span style={{ fontSize: '10px', color: '#64748b', fontWeight: '600', display: 'block' }}>💵 Total Omzet Tercatat</span>
             <strong style={{ fontSize: '14px', color: '#0f172a' }}>Rp {totalOmzetTotal.toLocaleString('id-ID')}</strong>
