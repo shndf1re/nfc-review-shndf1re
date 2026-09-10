@@ -37,7 +37,7 @@ export default function AdminLayout({ children }) {
     
     // HARD REDIRECT
     if (typeof window !== 'undefined') {
-      window.location.href = '/admin';
+      window.location.href = '/';
     }
   };
 
