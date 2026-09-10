@@ -16,7 +16,7 @@ const supabase = createClient(
 export default function AdminLayout({ children }) {
   const pathname = usePathname();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [userRole, setUserRole] = useState('staff'); // Default staff
+  const [userRole, setUserRole] = useState('staff'); 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
 
@@ -25,21 +25,21 @@ export default function AdminLayout({ children }) {
     { name: 'Dashboard', path: '/admin', icon: '📱', roles: ['super_admin', 'staff'] },
     { name: 'Penjualan', path: '/admin/sales', icon: '💰', roles: ['super_admin', 'staff'] },
     { name: 'Statistik', path: '/admin/stats', icon: '📊', roles: ['super_admin', 'staff'] },
-    { name: 'Kelola Tim', path: '/admin/users', icon: '👥', roles: ['super_admin'] }, // Khusus Super Admin
+    { name: 'Kelola Tim', path: '/admin/users', icon: '👥', roles: ['super_admin'] }, 
   ];
 
-  useEffect(() => {
-    checkSession();
+  const handleLogout = () => {
+    localStorage.removeItem('nfc_admin_session');
+    localStorage.removeItem('nfc_admin_last_activity');
+    localStorage.removeItem('nfc_admin_role');
+    localStorage.removeItem('nfc_admin_pin');
+    setIsAuthenticated(false);
     
-    const handleStorageChange = () => checkSession();
-    window.addEventListener('storage', handleStorageChange);
-    const interval = setInterval(() => checkSession(), 1000);
-
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      clearInterval(interval);
-    };
-  }, []);
+    // HARD REDIRECT
+    if (typeof window !== 'undefined') {
+      window.location.href = '/admin';
+    }
+  };
 
   const checkSession = async () => {
     if (typeof window !== 'undefined') {
@@ -48,12 +48,10 @@ export default function AdminLayout({ children }) {
       setIsAuthenticated(isAuth);
 
       if (isAuth) {
-        // Ambil data role pengguna dari localStorage jika disimpan, atau fetch dari Supabase
         const savedRole = localStorage.getItem('nfc_admin_role');
         if (savedRole) {
           setUserRole(savedRole);
         } else {
-          // Fallback: Cek RPC / Database untuk memastikan role pengguna
           const activePin = localStorage.getItem('nfc_admin_pin') || '';
           if (activePin) {
             const { data } = await supabase.rpc('verify_sales_pin', { input_pin: activePin });
@@ -68,18 +66,59 @@ export default function AdminLayout({ children }) {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('nfc_admin_session');
-    localStorage.removeItem('nfc_admin_last_activity');
-    localStorage.removeItem('nfc_admin_role');
-    localStorage.removeItem('nfc_admin_pin');
-    setIsAuthenticated(false);
-    if (typeof window !== 'undefined') {
-      window.location.href = '/admin';
-    }
-  };
+  useEffect(() => {
+    checkSession();
+    
+    // 1. UPDATE WAKTU AKTIVITAS (Mouse, Keyboard, Scroll)
+    const updateActivity = () => {
+      if (localStorage.getItem('nfc_admin_session') === 'true') {
+        localStorage.setItem('nfc_admin_last_activity', Date.now().toString());
+      }
+    };
 
-  // Filter menu berdasarkan role yang sedang aktif
+    // Throttle agar tidak spam write localStorage saat mouse bergerak
+    let throttleTimer;
+    const handleActivity = () => {
+      if (throttleTimer) return;
+      throttleTimer = setTimeout(() => {
+        updateActivity();
+        throttleTimer = null;
+      }, 1000); 
+    };
+
+    // Pasang Event Listener ke seluruh Window
+    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+    events.forEach(event => window.addEventListener(event, handleActivity));
+    
+    // 2. CEK SESI & IDLE TIMEOUT
+    const handleStorageChange = () => checkSession();
+    window.addEventListener('storage', handleStorageChange);
+    
+    const interval = setInterval(() => {
+      checkSession();
+      
+      // Cek Idle Timeout (10 Menit) secara global
+      const lastActivity = localStorage.getItem('nfc_admin_last_activity');
+      const isSessionActive = localStorage.getItem('nfc_admin_session') === 'true';
+      
+      if (isSessionActive && lastActivity) {
+        const now = Date.now();
+        const TIMEOUT_DURATION = 10 * 60 * 1000; // 10 menit
+        
+        if (now - parseInt(lastActivity, 10) > TIMEOUT_DURATION) {
+          handleLogout(); // Langsung auto-logout dan lempar ke login
+        }
+      }
+    }, 1000);
+
+    return () => {
+      events.forEach(event => window.removeEventListener(event, handleActivity));
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(interval);
+      if (throttleTimer) clearTimeout(throttleTimer);
+    };
+  }, []);
+
   const filteredMenuItems = allMenuItems.filter(item => item.roles.includes(userRole));
 
   if (isCheckingSession) {
@@ -126,7 +165,6 @@ export default function AdminLayout({ children }) {
         zIndex: 50,
         borderRight: '1px solid #1e293b'
       }}>
-        {/* Brand Logo */}
         <div style={{ padding: '24px 20px', borderBottom: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{ width: '36px', height: '36px', backgroundColor: '#2563eb', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800', fontSize: '18px' }}>
@@ -142,7 +180,6 @@ export default function AdminLayout({ children }) {
           </button>
         </div>
 
-        {/* Navigation Menu (Filtered by Role) */}
         <nav style={{ flex: 1, padding: '20px 12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
           <span style={{ fontSize: '10px', fontWeight: '700', color: '#475569', letterSpacing: '0.8px', padding: '0 12px 8px 12px' }}>MENU UTAMA</span>
           {filteredMenuItems.map((item) => {
@@ -173,7 +210,6 @@ export default function AdminLayout({ children }) {
           })}
         </nav>
 
-        {/* User Status & Logout */}
         <div style={{ padding: '16px', borderTop: '1px solid #1e293b', backgroundColor: '#090d16' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
             <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#334155', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: '700', color: '#f8fafc' }}>
@@ -212,10 +248,8 @@ export default function AdminLayout({ children }) {
         </div>
       </aside>
 
-      {/* Main Content Area */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         
-        {/* Topbar Clean */}
         <header style={{
           backgroundColor: '#ffffff',
           borderBottom: '1px solid #e2e8f0',
@@ -256,7 +290,6 @@ export default function AdminLayout({ children }) {
           </Link>
         </header>
 
-        {/* Dynamic Page Content */}
         <main style={{ flex: 1 }}>
           {children}
         </main>
