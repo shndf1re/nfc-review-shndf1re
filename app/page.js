@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
@@ -37,7 +37,26 @@ export default function LandingPage() {
   const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
   const [orderError, setOrderError] = useState('');
 
-  const PRICE_PER_ITEM = 150000;
+  // Timer Hitung Mundur Promo (Waktu Terbatas)
+  const [timeLeft, setTimeLeft] = useState((SITE_CONFIG.pricing?.timerMinutes || 15) * 60);
+
+  useEffect(() => {
+    if (!showOrderModal) return;
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [showOrderModal]);
+
+  const formatTimer = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
+  const ORIGINAL_PRICE = SITE_CONFIG.pricing?.originalPrice || 150000;
+  const DISCOUNT_PRICE = SITE_CONFIG.pricing?.discountPrice || 60000;
+  const PROMO_TAG = SITE_CONFIG.pricing?.promoTag || '🔥 PROMO SPESIAL 60% OFF';
 
   // Handler Aktivasi Kartu
   const handleVerifyAndRedirect = async (e) => {
@@ -102,7 +121,6 @@ export default function LandingPage() {
         throw new Error(data.error || 'Gagal memproses transaksi.');
       }
 
-      // Panggil Pop-up Midtrans Snap jika SDK berhasil di-load
       if (window.snap && data.token) {
         setShowOrderModal(false);
         window.snap.pay(data.token, {
@@ -183,62 +201,70 @@ export default function LandingPage() {
         </div>
       )}
 
-      {/* MODAL PEMESANAN & CHECKOUT MIDTRANS */}
+      {/* MODAL PEMESANAN & CHECKOUT MIDTRANS (DESAIN PROMO DISKON) */}
       {showOrderModal && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1100, backgroundColor: 'rgba(15, 23, 42, 0.5)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-          <div style={{ width: '100%', maxWidth: '440px', backgroundColor: '#ffffff', borderRadius: '24px', padding: '32px 24px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.2)', maxHeight: '90vh', overflowY: 'auto' }}>
-            <h3 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: '800', color: '#0f172a' }}>🛍️ Formulir Pemesanan Akrilik</h3>
-            <p style={{ margin: '0 0 20px 0', fontSize: '13px', color: '#64748b' }}>Bayar mudah & cepat dengan QRIS atau Virtual Account.</p>
+          <div style={{ width: '100%', maxWidth: '440px', backgroundColor: '#ffffff', borderRadius: '24px', padding: '28px 24px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.2)', maxHeight: '90vh', overflowY: 'auto' }}>
+            
+            {/* TIMER PERINGATAN WAKTU TERBATAS */}
+            <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '12px', padding: '10px 14px', marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: '12px', fontWeight: '700', color: '#dc2626' }}>⏰ Promo Berakhir Dalam:</span>
+              <span style={{ fontSize: '14px', fontWeight: '800', color: '#b91c1c', fontFamily: 'monospace' }}>{formatTimer(timeLeft)}</span>
+            </div>
 
-            <form onSubmit={handleProcessCheckout} autoComplete="off" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <h3 style={{ margin: '0 0 4px 0', fontSize: '20px', fontWeight: '800', color: '#0f172a' }}>🛍️ Formulir Pemesanan Akrilik</h3>
+            <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#64748b' }}>Isi data lengkap pengiriman di bawah ini.</p>
+
+            <form onSubmit={handleProcessCheckout} autoComplete="off" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div>
                 <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', display: 'block', marginBottom: '4px' }}>Nama Lengkap Pembeli *</label>
-                <input type="text" required placeholder="Contoh: Budi Santoso" value={customerName} onChange={(e) => setCustomerName(e.target.value)} style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box', outline: 'none' }} />
+                <input type="text" required placeholder="Contoh: Budi Santoso" value={customerName} onChange={(e) => setCustomerName(e.target.value)} style={{ width: '100%', padding: '10px 12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box', outline: 'none' }} />
               </div>
 
               <div>
                 <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', display: 'block', marginBottom: '4px' }}>No. WhatsApp / Telepon *</label>
-                <input type="tel" required placeholder="08xxxxxxxxxx" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box', outline: 'none' }} />
+                <input type="tel" required placeholder="08xxxxxxxxxx" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} style={{ width: '100%', padding: '10px 12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box', outline: 'none' }} />
               </div>
 
               <div>
                 <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', display: 'block', marginBottom: '4px' }}>Alamat Pengiriman Lengkap *</label>
-                <textarea required placeholder="Jln. Ahmad Yani No. 12, Samarinda..." value={shippingAddress} onChange={(e) => setShippingAddress(e.target.value)} style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box', outline: 'none', height: '60px', fontFamily: 'inherit' }} />
+                <textarea required placeholder="Jln. Ahmad Yani No. 12, Samarinda..." value={shippingAddress} onChange={(e) => setShippingAddress(e.target.value)} style={{ width: '100%', padding: '10px 12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box', outline: 'none', height: '55px', fontFamily: 'inherit' }} />
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', display: 'block', marginBottom: '4px' }}>Nama Toko (Opsional)</label>
-                  <input type="text" placeholder="Kopi Sedap" value={storeName} onChange={(e) => setStoreName(e.target.value)} style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box', outline: 'none' }} />
+                  <input type="text" placeholder="Kopi Sedap" value={storeName} onChange={(e) => setStoreName(e.target.value)} style={{ width: '100%', padding: '10px 12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box', outline: 'none' }} />
                 </div>
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', display: 'block', marginBottom: '4px' }}>Jumlah (Pcs)</label>
-                  <input type="number" min="1" max="50" required value={orderQty} onChange={(e) => setOrderQty(parseInt(e.target.value) || 1)} style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box', outline: 'none' }} />
+                  <input type="number" min="1" max="50" required value={orderQty} onChange={(e) => setOrderQty(parseInt(e.target.value) || 1)} style={{ width: '100%', padding: '10px 12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box', outline: 'none' }} />
                 </div>
               </div>
 
               <div>
                 <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', display: 'block', marginBottom: '4px' }}>Link Google Maps / Review (Opsional)</label>
-                <input type="url" placeholder="https://maps.app.goo.gl/..." value={targetUrl} onChange={(e) => setTargetUrl(e.target.value)} style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box', outline: 'none' }} />
+                <input type="url" placeholder="https://maps.app.goo.gl/..." value={targetUrl} onChange={(e) => setTargetUrl(e.target.value)} style={{ width: '100%', padding: '10px 12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box', outline: 'none' }} />
               </div>
 
+              {/* RINCIAN HARGA PROMO CORET */}
               <div style={{ padding: '14px', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', marginTop: '4px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#64748b', marginBottom: '4px' }}>
-                  <span>Harga per pcs:</span>
-                  <span>Rp {PRICE_PER_ITEM.toLocaleString('id-ID')}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: '800', color: '#dc2626', backgroundColor: '#fee2e2', padding: '2px 8px', borderRadius: '6px' }}>{PROMO_TAG}</span>
+                  <span style={{ fontSize: '12px', color: '#94a3b8', textDecoration: 'line-through', fontWeight: '600' }}>Rp {(orderQty * ORIGINAL_PRICE).toLocaleString('id-ID')}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', fontWeight: '800', color: '#0f172a' }}>
-                  <span>Total Tagihan:</span>
-                  <span style={{ color: '#16a34a' }}>Rp {(orderQty * PRICE_PER_ITEM).toLocaleString('id-ID')}</span>
+                  <span>Total Bayar:</span>
+                  <span style={{ color: '#16a34a', fontSize: '18px' }}>Rp {(orderQty * DISCOUNT_PRICE).toLocaleString('id-ID')}</span>
                 </div>
               </div>
 
               {orderError && <p style={{ margin: 0, fontSize: '12px', color: '#ef4444', fontWeight: '600', textAlign: 'center' }}>{orderError}</p>}
 
-              <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
-                <button type="button" onClick={() => setShowOrderModal(false)} style={{ flex: 1, padding: '14px', backgroundColor: '#f8fafc', color: '#475569', border: '1px solid #e2e8f0', borderRadius: '12px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>Batal</button>
-                <button type="submit" disabled={isCheckoutLoading} style={{ flex: 2, padding: '14px', backgroundColor: isCheckoutLoading ? '#94a3b8' : '#16a34a', color: '#ffffff', border: 'none', borderRadius: '12px', fontSize: '14px', fontWeight: '700', cursor: isCheckoutLoading ? 'not-allowed' : 'pointer' }}>
-                  {isCheckoutLoading ? 'Memproses...' : '💳 Lanjut Pembayaran'}
+              <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+                <button type="button" onClick={() => setShowOrderModal(false)} style={{ flex: 1, padding: '12px', backgroundColor: '#f8fafc', color: '#475569', border: '1px solid #e2e8f0', borderRadius: '12px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>Batal</button>
+                <button type="submit" disabled={isCheckoutLoading} style={{ flex: 2, padding: '12px', backgroundColor: isCheckoutLoading ? '#94a3b8' : '#16a34a', color: '#ffffff', border: 'none', borderRadius: '12px', fontSize: '14px', fontWeight: '700', cursor: isCheckoutLoading ? 'not-allowed' : 'pointer' }}>
+                  {isCheckoutLoading ? 'Memproses...' : '💳 Bayar Sekarang'}
                 </button>
               </div>
             </form>
@@ -268,17 +294,24 @@ export default function LandingPage() {
         </div>
       )}
 
-      {/* HERO SECTION */}
+      {/* HERO SECTION DENGAN SPESIAL PRICE BANNER */}
       <section style={{ padding: '80px 24px 60px 24px', textAlign: 'center', maxWidth: '850px', margin: '0 auto' }}>
-        <div style={{ display: 'inline-block', padding: '6px 16px', backgroundColor: '#eff6ff', color: '#1d4ed8', fontSize: '13px', fontWeight: '700', borderRadius: '24px', marginBottom: '24px', border: '1px solid #bfdbfe' }}>
-          ✨ Inovasi Review Google Terbaru
+        <div style={{ display: 'inline-block', padding: '6px 16px', backgroundColor: '#fee2e2', color: '#dc2626', fontSize: '13px', fontWeight: '800', borderRadius: '24px', marginBottom: '24px', border: '1px solid #fecaca' }}>
+          {PROMO_TAG}
         </div>
         <h1 style={{ fontSize: '46px', fontWeight: '800', lineHeight: '1.15', margin: '0 0 20px 0', color: '#0f172a' }}>
           Tingkatkan Reputasi Bisnis Anda Dengan <span style={{ color: '#2563eb' }}>Sekali Sentuh</span>
         </h1>
-        <p style={{ fontSize: '17px', color: '#475569', lineHeight: '1.6', margin: '0 auto 36px auto', maxWidth: '650px' }}>
+        <p style={{ fontSize: '17px', color: '#475569', lineHeight: '1.6', margin: '0 auto 28px auto', maxWidth: '650px' }}>
           Kumpulkan ulasan Bintang 5 di Google Maps 10x lebih cepat. Pelanggan cukup tap HP ke papan pintar kami tanpa perlu mengetik nama toko Anda.
         </p>
+
+        {/* PRICE TAG HERO */}
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '12px', backgroundColor: '#ffffff', padding: '12px 24px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', marginBottom: '32px' }}>
+          <span style={{ fontSize: '16px', color: '#94a3b8', textDecoration: 'line-through', fontWeight: '600' }}>Rp {ORIGINAL_PRICE.toLocaleString('id-ID')}</span>
+          <span style={{ fontSize: '26px', color: '#16a34a', fontWeight: '900' }}>Rp {DISCOUNT_PRICE.toLocaleString('id-ID')}</span>
+          <span style={{ fontSize: '11px', color: '#dc2626', backgroundColor: '#fee2e2', fontWeight: '700', padding: '2px 8px', borderRadius: '6px' }}>HEMAT 60%</span>
+        </div>
 
         <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', flexWrap: 'wrap' }}>
           <button onClick={() => setShowOrderModal(true)} style={{ padding: '16px 32px', backgroundColor: '#16a34a', color: '#ffffff', fontWeight: '700', fontSize: '15px', border: 'none', borderRadius: '14px', boxShadow: '0 10px 25px -5px rgba(22, 163, 74, 0.4)', cursor: 'pointer', minWidth: '200px' }}>
