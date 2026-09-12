@@ -8,8 +8,20 @@ export const metadata = {
 };
 
 export default function RootLayout({ children }) {
+  const clientKey = process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY || '';
+
   return (
     <html lang="id">
+      <head>
+        {/* SDK Midtrans Snap (Sandbox Mode) untuk Pop-up QRIS & Virtual Account */}
+        {clientKey && (
+          <script
+            type="text/javascript"
+            src="https://app.sandbox.midtrans.com/snap/snap.js"
+            data-client-key={clientKey}
+          />
+        )}
+      </head>
       <body
         style={{
           margin: 0,
