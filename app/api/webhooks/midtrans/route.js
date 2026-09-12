@@ -22,7 +22,7 @@ export async function POST(req) {
 
     const serverKey = process.env.MIDTRANS_SERVER_KEY || '';
 
-    // PROTEKSI SIBER: Verifikasi Signature Hash Key SHA-512
+    // VERIFIKASI SIGNATURE KEY SHA-512
     const hashPayload = `${orderId}${statusCode}${grossAmount}${serverKey}`;
     const expectedSignature = crypto.createHash('sha512').update(hashPayload).digest('hex');
 
@@ -30,7 +30,7 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Invalid Signature Key. Akses ditolak!' }, { status: 403 });
     }
 
-    // Tentukan Status Pembayaran
+    // TENTUKAN STATUS PEMBAYARAN
     let newPaymentStatus = 'pending';
 
     if (transactionStatus === 'capture' || transactionStatus === 'settlement') {
@@ -41,7 +41,7 @@ export async function POST(req) {
       newPaymentStatus = 'Gagal';
     }
 
-    // Update Status di Database Orders
+    // UPDATE DATABASE ORDERS
     const { data: orderData, error: updateErr } = await supabase
       .from('orders')
       .update({ payment_status: newPaymentStatus })
@@ -53,14 +53,13 @@ export async function POST(req) {
       return NextResponse.json({ error: 'DB Update Error: ' + updateErr.message }, { status: 500 });
     }
 
-    // JIKA PEMBAYARAN SUKSES (LUNAS): MASUKKAN KE SALES & POTONG STOK
+    // JIKA LUNAS: SIMPAN PENJUALAN, POTONG STOK, & KIRIM WA AUTOMATIC
     if (newPaymentStatus === 'Lunas' && orderData) {
       
-      // Ambil total nominal aktual yang dibayar di transaksi Midtrans/Orders (Rp 60.000 x Qty)
       const actualTotalPrice = parseFloat(orderData.total_price) || parseFloat(grossAmount) || 0;
       const actualQty = parseInt(orderData.quantity, 10) || 1;
 
-      // 1. Tambahkan ke Laporan Penjualan (sales) dengan nominal aktual (Rp 60.000 / pcs)
+      // 1. Simpan ke Sales
       await supabase.from('sales').insert([
         {
           customer_name: orderData.customer_name,
@@ -71,7 +70,7 @@ export async function POST(req) {
         }
       ]);
 
-      // 2. Ambil Stok saat ini & potong otomatis
+      // 2. Potong Stok Inventory
       const { data: invData } = await supabase
         .from('inventory')
         .select('*')
@@ -88,9 +87,9 @@ export async function POST(req) {
           .eq('id', invData.id);
       }
 
-      // 3. KIRIM NOTIFIKASI OTOMATIS KE WA HP ADMIN VIA FONNTE
+      // 3. KIRIM WA VIA FONNTE
       const fonnteToken = process.env.FONNTE_TOKEN;
-      const targetPhone = '6285156534909'; // Nomor WA Admin
+      const targetPhone = '085156534909'; // Nomor WA Admin
 
       if (fonnteToken) {
         const messageText = 
@@ -104,15 +103,16 @@ export async function POST(req) {
           `🏠 *Alamat:* ${orderData.shipping_address}\n\n` +
           `✅ *Stok akrilik otomatis terpotong di database.*`;
 
+        const formData = new URLSearchParams();
+        formData.append('target', targetPhone);
+        formData.append('message', messageText);
+
         await fetch('https://api.fonnte.com/send', {
           method: 'POST',
           headers: {
             'Authorization': fonnteToken,
           },
-          body: new URLSearchParams({
-            target: targetPhone,
-            message: messageText,
-          }),
+          body: formData,
         });
       }
     }
