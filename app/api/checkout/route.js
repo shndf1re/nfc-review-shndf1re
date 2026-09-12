@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server';
 import midtransClient from 'midtrans-client';
 import { createClient } from '@supabase/supabase-js';
+import { SITE_CONFIG } from '../../../lib/config';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 );
 
-// Inisialisasi Midtrans Snap SDK (Mode Sandbox)
 const snap = new midtransClient.Snap({
   isProduction: false,
   serverKey: process.env.MIDTRANS_SERVER_KEY || '',
@@ -18,7 +18,7 @@ export async function POST(req) {
     const body = await req.json();
     const { customerName, customerPhone, shippingAddress, storeName, targetUrl, qty } = body;
 
-    // VALIDASI INPUT (Anti-Malicious/XSS Input)
+    // VALIDASI INPUT
     const cleanName = String(customerName || '').trim();
     const cleanPhone = String(customerPhone || '').trim();
     const cleanAddress = String(shippingAddress || '').trim();
@@ -33,13 +33,12 @@ export async function POST(req) {
       );
     }
 
-    // PROTEKSI HARGA (Backend Price Guard - Anti Tampering)
-    // Harga per papan ditetapkan Rp 150.000 di server (Tidak bisa dicolong/diubah dari frontend)
-    const PRICE_PER_ITEM = 150000;
+    // MEMBACA HARGA DISKON DARI CONFIG (Dinamis Rp 60.000)
+    const PRICE_PER_ITEM = SITE_CONFIG.pricing?.discountPrice || 60000;
     const totalPrice = parsedQty * PRICE_PER_ITEM;
     const orderId = `NFC-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
-    // 1. Simpan Transaksi ke Database Supabase dengan status "pending"
+    // 1. Simpan Transaksi ke Database Supabase (status pending)
     const { error: dbError } = await supabase.from('orders').insert([
       {
         order_id: orderId,
@@ -58,7 +57,7 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Gagal membuat pesanan di database: ' + dbError.message }, { status: 500 });
     }
 
-    // 2. Buat Parameter Transaksi Midtrans
+    // 2. Buat Transaksi Midtrans dengan Harga Rp 60.000 / pcs
     const parameter = {
       transaction_details: {
         order_id: orderId,
@@ -73,17 +72,13 @@ export async function POST(req) {
           id: 'PAPAN-NFC-AKRILIK',
           price: PRICE_PER_ITEM,
           quantity: parsedQty,
-          name: 'Papan Akrilik NFC Google Review',
+          name: 'Papan Akrilik NFC Google Review (Promo)',
         },
       ],
-      // Mengizinkan QRIS dan Virtual Account (BCA, Mandiri, BNI, BRI, Permata)
       enabled_payments: ['qris', 'gopay', 'shopeepay', 'bca_va', 'bni_va', 'bri_va', 'mandiri_va', 'permata_va'],
     };
 
-    // 3. Request Snap Token dari Midtrans
     const transaction = await snap.createTransaction(parameter);
-
-    // 4. Update Token Snap ke Supabase
     await supabase.from('orders').update({ snap_token: transaction.token }).eq('order_id', orderId);
 
     return NextResponse.json({
