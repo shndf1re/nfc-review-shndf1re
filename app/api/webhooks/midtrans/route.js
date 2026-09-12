@@ -53,7 +53,7 @@ export async function POST(req) {
       return NextResponse.json({ error: 'DB Update Error: ' + updateErr.message }, { status: 500 });
     }
 
-    // JIKA PEMBAYARAN SUKSES (LUNAS): MASUKKAN KE SALES & POTONG STOK
+    // JIKA PEMBAYARAN SUKSES (LUNAS): MASUKKAN KE SALES, POTONG STOK, & KIRIM WA AUTOMATIC
     if (newPaymentStatus === 'Lunas' && orderData) {
       
       // 1. Tambahkan ke Laporan Penjualan (sales)
@@ -82,6 +82,34 @@ export async function POST(req) {
           .from('inventory')
           .update({ stock_quantity: updatedStock })
           .eq('id', invData.id);
+      }
+
+      // 3. KIRIM NOTIFIKASI OTOMATIS KE WA HP ADMIN VIA FONNTE
+      const fonnteToken = process.env.FONNTE_TOKEN;
+      const targetPhone = '08123456789'; // Ganti dengan nomor WA kamu
+
+      if (fonnteToken) {
+        const messageText = 
+          `🔔 *ORDERAN BARU LUNAS!*\n\n` +
+          `📦 *ID Order:* ${orderId}\n` +
+          `👤 *Nama:* ${orderData.customer_name}\n` +
+          `📞 *WA:* ${orderData.customer_phone}\n` +
+          `🛍️ *Jumlah:* ${orderData.quantity} Pcs\n` +
+          `💰 *Total:* Rp ${Number(orderData.total_price).toLocaleString('id-ID')}\n` +
+          `🏪 *Toko:* ${orderData.store_name || '-'}\n` +
+          `🏠 *Alamat:* ${orderData.shipping_address}\n\n` +
+          `✅ *Stok akrilik otomatis terpotong di database.*`;
+
+        await fetch('https://api.fonnte.com/send', {
+          method: 'POST',
+          headers: {
+            'Authorization': fonnteToken,
+          },
+          body: new URLSearchParams({
+            target: targetPhone,
+            message: messageText,
+          }),
+        });
       }
     }
 
