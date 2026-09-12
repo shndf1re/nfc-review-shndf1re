@@ -86,7 +86,7 @@ export async function POST(req) {
 
       // 3. KIRIM NOTIFIKASI OTOMATIS KE WA HP ADMIN VIA FONNTE
       const fonnteToken = process.env.FONNTE_TOKEN;
-      const targetPhone = '08123456789'; // Ganti dengan nomor WA kamu
+      const targetPhone = '085156534909'; // Ganti dengan nomor WA kamu
 
       if (fonnteToken) {
         const messageText = 
