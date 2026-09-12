@@ -13,7 +13,7 @@
     "react-dom": "^18.0.0",
     "@supabase/supabase-js": "^2.0.0",
     "bcryptjs": "^2.4.3",
-    "jszip": "^3.10.1"
-    "midtrans-client": "^1.4.2",
+    "jszip": "^3.10.1",
+    "midtrans-client": "^1.4.2"
   }
 }
