@@ -53,17 +53,21 @@ export async function POST(req) {
       return NextResponse.json({ error: 'DB Update Error: ' + updateErr.message }, { status: 500 });
     }
 
-    // JIKA PEMBAYARAN SUKSES (LUNAS): MASUKKAN KE SALES, POTONG STOK, & KIRIM WA AUTOMATIC
+    // JIKA PEMBAYARAN SUKSES (LUNAS): MASUKKAN KE SALES & POTONG STOK
     if (newPaymentStatus === 'Lunas' && orderData) {
       
-      // 1. Tambahkan ke Laporan Penjualan (sales)
+      // Ambil total nominal aktual yang dibayar di transaksi Midtrans/Orders (Rp 60.000 x Qty)
+      const actualTotalPrice = parseFloat(orderData.total_price) || parseFloat(grossAmount) || 0;
+      const actualQty = parseInt(orderData.quantity, 10) || 1;
+
+      // 1. Tambahkan ke Laporan Penjualan (sales) dengan nominal aktual (Rp 60.000 / pcs)
       await supabase.from('sales').insert([
         {
           customer_name: orderData.customer_name,
-          quantity: orderData.quantity,
-          total_price: orderData.total_price,
+          quantity: actualQty,
+          total_price: actualTotalPrice,
           payment_status: 'Lunas',
-          notes: `Web Order: ${orderData.store_name || '-'} (ID: ${orderId})`
+          notes: `Web Order Promo: ${orderData.store_name || '-'} (ID: ${orderId})`
         }
       ]);
 
@@ -76,7 +80,7 @@ export async function POST(req) {
 
       if (invData) {
         const currentStock = Number(invData.stock_quantity) || 0;
-        const updatedStock = Math.max(0, currentStock - Number(orderData.quantity));
+        const updatedStock = Math.max(0, currentStock - actualQty);
 
         await supabase
           .from('inventory')
@@ -86,16 +90,16 @@ export async function POST(req) {
 
       // 3. KIRIM NOTIFIKASI OTOMATIS KE WA HP ADMIN VIA FONNTE
       const fonnteToken = process.env.FONNTE_TOKEN;
-      const targetPhone = '085156534909'; // Ganti dengan nomor WA kamu
+      const targetPhone = '6285156534909'; // Nomor WA Admin
 
       if (fonnteToken) {
         const messageText = 
-          `🔔 *ORDERAN BARU LUNAS!*\n\n` +
+          `🔔 *ORDERAN BARU LUNAS (PROMO)!*\n\n` +
           `📦 *ID Order:* ${orderId}\n` +
           `👤 *Nama:* ${orderData.customer_name}\n` +
           `📞 *WA:* ${orderData.customer_phone}\n` +
-          `🛍️ *Jumlah:* ${orderData.quantity} Pcs\n` +
-          `💰 *Total:* Rp ${Number(orderData.total_price).toLocaleString('id-ID')}\n` +
+          `🛍️ *Jumlah:* ${actualQty} Pcs\n` +
+          `💰 *Total Bayar:* Rp ${actualTotalPrice.toLocaleString('id-ID')}\n` +
           `🏪 *Toko:* ${orderData.store_name || '-'}\n` +
           `🏠 *Alamat:* ${orderData.shipping_address}\n\n` +
           `✅ *Stok akrilik otomatis terpotong di database.*`;
