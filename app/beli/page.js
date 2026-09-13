@@ -28,7 +28,7 @@ export default function BeliPage() {
   const [qty, setQty] = useState(1);
   const [googleMapsUrl, setGoogleMapsUrl] = useState('');
 
-  // === STEP 2: ALAMAT PENGIRIMAN (FULL DROPDOWN) ===
+  // === STEP 2: ALAMAT PENGIRIMAN ===
   const [provinces, setProvinces] = useState([]);
   const [regencies, setRegencies] = useState([]);
   const [districts, setDistricts] = useState([]);
@@ -54,7 +54,7 @@ export default function BeliPage() {
   const shippingCost = selectedCourier ? selectedCourier.cost : 0;
   const totalAmount = subtotal + shippingCost;
 
-  // === LOAD PROVINSI (EMSIFA API) ===
+  // === LOAD PROVINSI ===
   useEffect(() => {
     fetch('https://www.emsifa.com/api-wilayah-indonesia/api/provinces.json')
       .then((res) => res.json())
@@ -99,32 +99,32 @@ export default function BeliPage() {
   const handleDistrictChange = (e) => {
     const distId = e.target.value;
     const distObj = districts.find((d) => d.id === distId);
-    setSelectedDistrict(distObj ? distObj.name : '');
+    const distName = distObj ? distObj.name : '';
+    setSelectedDistrict(distName);
     setPostalCode('');
     setPostalCodesList([]);
 
     if (distId) {
-      // Ambil data kelurahan untuk mengekstrak kode pos resmi dari API emsifa
-      fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/villages/${distId}.json`)
+      // Ambil kode pos via API alternatif pencarian berdasarkan nama kecamatan agar selalu akurat
+      fetch(`https://kodepos.now.sh/search?q=${encodeURIComponent(distName)}`)
         .then((res) => res.json())
-        .then((villages) => {
-          if (villages && villages.length > 0) {
-            // Ambil unique postal code dari data kelurahan
-            const codes = [...new Set(villages.map((v) => v.postal_code).filter(Boolean))];
+        .then((resData) => {
+          if (resData && resData.data && resData.data.length > 0) {
+            const codes = [...new Set(resData.data.map((item) => item.postalcode))];
             setPostalCodesList(codes);
-            if (codes.length > 0) {
-              setPostalCode(codes[0]); // Auto-select kode pos pertama
-            }
+            if (codes.length > 0) setPostalCode(codes[0]);
           }
         })
-        .catch((err) => console.error('Gagal load kode pos kelurahan:', err));
+        .catch(() => {
+          setPostalCodesList([]);
+        });
     }
   };
 
   // === CEK ONGKIR BITESHIP ===
   const handleCekOngkir = async () => {
     if (!selectedCity || !postalCode) {
-      setErrorMessage('Pilih wilayah lengkap dan kode pos terlebih dahulu.');
+      setErrorMessage('Pilih wilayah dan masukkan Kode Pos terlebih dahulu.');
       return;
     }
 
@@ -528,20 +528,30 @@ export default function BeliPage() {
               ))}
             </select>
 
-            {/* KODE POS FULL DROPDOWN OTOMATIS */}
+            {/* KODE POS: OTOMATIS DROPDOWN JIKA ADA, ATAU INPUT MANUAL */}
             <label style={styles.label}>Kode Pos *</label>
             <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
-              <select
-                value={postalCode}
-                onChange={(e) => setPostalCode(e.target.value)}
-                disabled={!postalCodesList.length}
-                style={{ ...styles.select, marginBottom: 0, flex: 1, backgroundColor: postalCodesList.length ? '#ffffff' : '#f1f5f9' }}
-              >
-                <option value="">{postalCodesList.length ? '-- Pilih Kode Pos --' : '-- Pilih Kecamatan Dulu --'}</option>
-                {postalCodesList.map((code) => (
-                  <option key={code} value={code}>{code}</option>
-                ))}
-              </select>
+              {postalCodesList.length > 0 ? (
+                <select
+                  value={postalCode}
+                  onChange={(e) => setPostalCode(e.target.value)}
+                  style={{ ...styles.select, marginBottom: 0, flex: 1 }}
+                >
+                  {postalCodesList.map((code) => (
+                    <option key={code} value={code}>{code}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  maxLength={5}
+                  placeholder="Ketik / Otomatis Terisi"
+                  value={postalCode}
+                  onChange={(e) => setPostalCode(e.target.value.replace(/\D/g, ''))}
+                  style={{ ...styles.input, marginBottom: 0, flex: 1 }}
+                />
+              )}
 
               <button
                 type="button"
@@ -609,7 +619,7 @@ export default function BeliPage() {
                 <span>{isFreeShipping ? 'FREE (Lokal Samarinda)' : `Rp ${shippingCost.toLocaleString('id-ID')}`}</span>
               </div>
               <div style={styles.totalRow}>
-                <span>Total Bayar:</span>
+                <span>Total Bayar: `</span>
                 <span>Rp {totalAmount.toLocaleString('id-ID')}</span>
               </div>
             </div>
