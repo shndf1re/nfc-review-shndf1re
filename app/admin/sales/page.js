@@ -311,41 +311,20 @@ export default function SalesPage() {
     } else if (modalState.actionType === 'delete') {
       const sale = modalState.targetData;
       const isOnline = sale.source === 'online';
+      const targetTable = isOnline ? 'orders' : 'sales';
       
-      let deletedData = null;
-      let delErr = null;
-
-      if (isOnline) {
-        // Hapus Web Online PASTI menggunakan UUID primary key tabel orders
-        const res = await supabase
-          .from('orders')
-          .delete()
-          .eq('id', sale.primary_id)
-          .select();
-        deletedData = res.data;
-        delErr = res.error;
-      } else {
-        // Hapus Offline PASTI menggunakan ID BigInt tabel sales
-        const res = await supabase
-          .from('sales')
-          .delete()
-          .eq('id', sale.primary_id)
-          .select();
-        deletedData = res.data;
-        delErr = res.error;
-      }
+      // Hapus TANPA .select() agar tidak terhalang oleh izin SELECT RLS
+      const { error: delErr } = await supabase
+        .from(targetTable)
+        .delete()
+        .eq('id', sale.primary_id);
 
       if (delErr) {
         setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Error Supabase: ' + delErr.message }));
         return;
       }
 
-      if (!deletedData || deletedData.length === 0) {
-        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Data tidak ditemukan di DB / Gagal terhapus!' }));
-        return;
-      }
-
-      // HANYA JIKA BERHASIL TERHAPUS DARI DATABASE, KEMBALIKAN STOK AKRILIK
+      // Jika berhasil dihapus (tidak ada error), langsung kembalikan stok
       const restoredStock = acrylicStock + (parseInt(sale.quantity, 10) || 1);
       await supabase.from('inventory').update({ stock_quantity: restoredStock }).eq('id', targetId);
 
