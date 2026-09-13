@@ -131,7 +131,7 @@ export default function SalesPage() {
       customer_name: s.customer_name,
       quantity: parseInt(s.quantity, 10) || 1,
       total_price: parseFloat(s.total_price) || 0,
-      shipping_cost: parseFloat(s.shipping_cost) || 0,
+      shipping_cost: parseFloat(s.shipping_cost || 0),
       payment_status: s.payment_status || 'Lunas',
       notes: s.notes,
       created_at: s.created_at
@@ -208,23 +208,32 @@ export default function SalesPage() {
 
     setSubmitStatus('Menyimpan transaksi...');
 
-    const { error: saleError } = await supabase.from('sales').insert([
-      {
-        customer_name: customerName,
-        quantity: qtyNumber,
-        total_price: priceNumber,
-        shipping_cost: 0,
-        device_id: deviceId || null,
-        payment_status: paymentStatus,
-        notes: notes || null
-      }
+    // 1. Coba Insert Data Penjualan Manual
+    const insertPayload = {
+      customer_name: customerName,
+      quantity: qtyNumber,
+      total_price: priceNumber,
+      device_id: deviceId || null,
+      payment_status: paymentStatus,
+      notes: notes || null
+    };
+
+    let { error: saleError } = await supabase.from('sales').insert([
+      { ...insertPayload, shipping_cost: 0 }
     ]);
+
+    // Fallback jika kolom shipping_cost belum dibuat di Supabase
+    if (saleError && saleError.message.includes('shipping_cost')) {
+      const fallbackRes = await supabase.from('sales').insert([insertPayload]);
+      saleError = fallbackRes.error;
+    }
 
     if (saleError) {
       setSubmitStatus('❌ Gagal mencatat: ' + saleError.message);
       return;
     }
 
+    // 2. Potong Stok
     const newStock = Math.max(0, acrylicStock - qtyNumber);
     const targetId = stockItemRecord?.id || 1;
 
@@ -315,7 +324,7 @@ export default function SalesPage() {
       const targetTable = sale.source === 'online' ? 'orders' : 'sales';
       const idCol = sale.source === 'online' ? 'order_id' : 'id';
 
-      // 1. Hapus data dari database terlebih dahulu dengan aman
+      // 1. Hapus data dari database Supabase
       const { error: delErr } = await supabase.from(targetTable).delete().eq(idCol, sale.id);
       
       if (delErr) {
@@ -323,7 +332,7 @@ export default function SalesPage() {
         return;
       }
 
-      // 2. Jika penghapusan database sukses, baru kembalikan stok akrilik
+      // 2. KEMBALIKAN STOK HANYA JIKA HAPUS DARI DATABASE BERHASIL
       const restoredStock = acrylicStock + (parseInt(sale.quantity, 10) || 1);
       const { error: stockErr } = await supabase.from('inventory').update({ stock_quantity: restoredStock }).eq('id', targetId);
 
@@ -493,7 +502,7 @@ export default function SalesPage() {
               const subtotalBarang = sale.total_price - sale.shipping_cost;
 
               return (
-                <div key={sale.id} style={{ padding: '12px', borderRadius: '10px', border: '1px solid #f1f5f9', backgroundColor: '#f8fafc' }}>
+                <div key={`${sale.source}-${sale.id}`} style={{ padding: '12px', borderRadius: '10px', border: '1px solid #f1f5f9', backgroundColor: '#f8fafc' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                     <div>
                       <strong style={{ fontSize: '14px' }}>{sale.customer_name}</strong>
