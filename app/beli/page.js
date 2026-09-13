@@ -148,7 +148,7 @@ export default function BeliPage() {
     setStep(2);
   };
 
-  // === PROSES BAYAR SESUAI PAYLOAD BACKEND APP/API/CHECKOUT/ROUTE.JS ===
+  // === PROSES BAYAR MIDTRANS SNAP ===
   const handlePay = async () => {
     if (!selectedCourier || !streetAddress) {
       alert('Lengkapi alamat dan pilih kurir terlebih dahulu.');
@@ -158,7 +158,6 @@ export default function BeliPage() {
     setLoadingPay(true);
 
     try {
-      // Body payload disesuaikan 100% dengan backend Supabase & Midtrans kamu
       const res = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -168,7 +167,7 @@ export default function BeliPage() {
           shippingAddress: streetAddress,
           destinationCity: `${selectedDistrict}, ${selectedCity}, ${selectedProvince}`,
           postalCode: postalCode,
-          storeName: buyerName, // Digunakan untuk label nama toko
+          storeName: buyerName,
           targetUrl: googleMapsUrl,
           qty: currentQty,
           courierName: selectedCourier.courierName,
@@ -184,7 +183,6 @@ export default function BeliPage() {
         return;
       }
 
-      // Memanggil Pop-up Snap Midtrans asli
       if (typeof window !== 'undefined' && window.snap) {
         window.snap.pay(data.token, {
           onSuccess: function (result) {
@@ -494,8 +492,9 @@ export default function BeliPage() {
             <select onChange={handleCityChange} disabled={!regencies.length} style={styles.select}>
               <option value="">-- Pilih Kota / Kabupaten --</option>
               {regencies.map((r) => (
-                <option key={r.id} value={r.id}>{r.name}</option>)}
-              </select>
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </select>
 
             <label style={styles.label}>Kecamatan Tujuan *</label>
             <select onChange={handleDistrictChange} disabled={!districts.length} style={styles.select}>
