@@ -28,13 +28,12 @@ export default function BeliPage() {
   const [qty, setQty] = useState(1);
   const [googleMapsUrl, setGoogleMapsUrl] = useState('');
 
-  // === STEP 2: ALAMAT PENGIRIMAN ===
-  const [provinces, setProvinces] = useState([]);
-  const [regencies, setRegencies] = useState([]);
-  const [districts, setDistricts] = useState([]);
-  
-  // Master Data JSON Sooluh Kodepos Asli
+  // === STEP 2: ALAMAT PENGIRIMAN MURNI SOOLUH JSON ===
   const [rawPostalData, setRawPostalData] = useState([]);
+  
+  const [provincesList, setProvincesList] = useState([]);
+  const [regenciesList, setRegenciesList] = useState([]);
+  const [districtsList, setDistrictsList] = useState([]);
   const [postalCodesList, setPostalCodesList] = useState([]);
 
   const [selectedProvince, setSelectedProvince] = useState('');
@@ -57,82 +56,82 @@ export default function BeliPage() {
   const shippingCost = selectedCourier ? selectedCourier.cost : 0;
   const totalAmount = subtotal + shippingCost;
 
-  // === LOAD PROVINSI & MASTER KODEPOS SOOLUH ===
+  // === LOAD MASTER DATA KODEPOS SOOLUH SEPENUHNYA ===
   useEffect(() => {
-    // 1. Load Provinsi Emsifa
-    fetch('https://www.emsifa.com/api-wilayah-indonesia/api/provinces.json')
-      .then((res) => res.json())
-      .then((data) => setProvinces(data || []))
-      .catch((err) => console.error('Gagal load provinsi:', err));
-
-    // 2. Load Master Database Kodepos dari Sooluh GitHub secara utuh
     fetch('https://raw.githubusercontent.com/sooluh/kodepos/refs/heads/main/data/kodepos.json')
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data)) {
           setRawPostalData(data);
+          // Ekstrak daftar provinsi unik dari file Sooluh
+          const provs = [...new Set(data.map((item) => item.provinsi || item.province).filter(Boolean))].sort();
+          setProvincesList(provs);
         }
       })
       .catch((err) => console.error('Gagal load database kodepos sooluh:', err));
   }, []);
 
   const handleProvinceChange = (e) => {
-    const provId = e.target.value;
-    const provObj = provinces.find((p) => p.id === provId);
-    setSelectedProvince(provObj ? provObj.name : '');
+    const provName = e.target.value;
+    setSelectedProvince(provName);
     setSelectedCity('');
     setSelectedDistrict('');
     setPostalCode('');
-    setRegencies([]);
-    setDistricts([]);
+    setRegenciesList([]);
+    setDistrictsList([]);
     setPostalCodesList([]);
 
-    if (provId) {
-      fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/regencies/${provId}.json`)
-        .then((res) => res.json())
-        .then((data) => setRegencies(data || []));
+    if (provName && rawPostalData.length > 0) {
+      // Filter Kota/Kabupaten berdasarkan Provinsi yang dipilih
+      const cities = [...new Set(
+        rawPostalData
+          .filter((item) => (item.provinsi || item.province) === provName)
+          .map((item) => item.kabupaten || item.city)
+          .filter(Boolean)
+      )].sort();
+      setRegenciesList(cities);
     }
   };
 
   const handleCityChange = (e) => {
-    const regId = e.target.value;
-    const regObj = regencies.find((r) => r.id === regId);
-    setSelectedCity(regObj ? regObj.name : '');
+    const cityName = e.target.value;
+    setSelectedCity(cityName);
     setSelectedDistrict('');
     setPostalCode('');
-    setDistricts([]);
+    setDistrictsList([]);
     setPostalCodesList([]);
 
-    if (regId) {
-      fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/districts/${regId}.json`)
-        .then((res) => res.json())
-        .then((data) => setDistricts(data || []));
+    if (cityName && rawPostalData.length > 0) {
+      // Filter Kecamatan berdasarkan Kota/Kabupaten yang dipilih
+      const districts = [...new Set(
+        rawPostalData
+          .filter((item) => (item.kabupaten || item.city) === cityName)
+          .map((item) => item.kecamatan || item.subdistrict)
+          .filter(Boolean)
+      )].sort();
+      setDistrictsList(districts);
     }
   };
 
   const handleDistrictChange = (e) => {
-    const distId = e.target.value;
-    const distObj = districts.find((d) => d.id === distId);
-    const distName = distObj ? distObj.name.toUpperCase().trim() : '';
-    setSelectedDistrict(distObj ? distObj.name : '');
+    const distName = e.target.value;
+    setSelectedDistrict(distName);
     setPostalCode('');
     setPostalCodesList([]);
 
     if (distName && rawPostalData.length > 0) {
-      // Filter murni dari JSON Sooluh berdasarkan nama kecamatan
+      // Filter Kode Pos berdasarkan Kecamatan yang dipilih
       const matches = rawPostalData.filter((item) => {
-        const itemKecamatan = (item.kecamatan || item.subdistrict || '').toUpperCase().trim();
-        return itemKecamatan === distName;
+        const itemKec = (item.kecamatan || item.subdistrict || '').trim();
+        const itemKab = (item.kabupaten || item.city || '').trim();
+        return itemKec === distName && itemKab === selectedCity;
       });
 
-      // Ambil kode pos unik yang ditemukan
       const codes = [...new Set(matches.map((item) => item.kodepos || item.postalcode || item.postal_code).filter(Boolean))];
 
       if (codes.length > 0) {
         setPostalCodesList(codes);
-        setPostalCode(codes[0]); // Auto-select kode pos pertama yang valid
-      } else {
-        setPostalCodesList([]);
+        setPostalCode(codes[0]); // Auto-select kode pos pertama
       }
     }
   };
@@ -520,31 +519,34 @@ export default function BeliPage() {
               </button>
             </div>
 
+            {/* PROVINSI MURNI SOOLUH */}
             <label style={styles.label}>Provinsi Tujuan *</label>
-            <select onChange={handleProvinceChange} style={styles.select}>
+            <select value={selectedProvince} onChange={handleProvinceChange} style={styles.select}>
               <option value="">-- Pilih Provinsi --</option>
-              {provinces.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
+              {provincesList.map((prov) => (
+                <option key={prov} value={prov}>{prov}</option>
               ))}
             </select>
 
+            {/* KOTA / KABUPATEN MURNI SOOLUH */}
             <label style={styles.label}>Kota / Kabupaten Tujuan *</label>
-            <select onChange={handleCityChange} disabled={!regencies.length} style={styles.select}>
+            <select value={selectedCity} onChange={handleCityChange} disabled={!regenciesList.length} style={styles.select}>
               <option value="">-- Pilih Kota / Kabupaten --</option>
-              {regencies.map((r) => (
-                <option key={r.id} value={r.id}>{r.name}</option>
+              {regenciesList.map((city) => (
+                <option key={city} value={city}>{city}</option>
               ))}
             </select>
 
+            {/* KECAMATAN MURNI SOOLUH */}
             <label style={styles.label}>Kecamatan Tujuan *</label>
-            <select onChange={handleDistrictChange} disabled={!districts.length} style={styles.select}>
+            <select value={selectedDistrict} onChange={handleDistrictChange} disabled={!districtsList.length} style={styles.select}>
               <option value="">-- Pilih Kecamatan --</option>
-              {districts.map((d) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
+              {districtsList.map((dist) => (
+                <option key={dist} value={dist}>{dist}</option>
               ))}
             </select>
 
-            {/* KODE POS MURNI DARI DATABASE SOOLUH */}
+            {/* KODE POS MURNI SOOLUH */}
             <label style={styles.label}>Kode Pos *</label>
             <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
               <select
