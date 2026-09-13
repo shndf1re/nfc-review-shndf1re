@@ -31,7 +31,7 @@ export async function POST(req) {
 
     const apiKey = process.env.BITESHIP_API_KEY;
     if (!apiKey) {
-      return NextResponse.json({ error: 'API Key Biteship belum dipasang di Vercel.' }, { status: 500 });
+      return NextResponse.json({ error: 'API Key Biteship belum dipasang.' }, { status: 500 });
     }
 
     const parsedQty = Math.max(1, parseInt(qty, 10) || 1);
@@ -39,7 +39,7 @@ export async function POST(req) {
 
     // 2. PAYLOAD STABIL (MURNI KODE POS)
     const payload = {
-      origin_postal_code: 75125,              // Samarinda Ulu
+      origin_postal_code: 75125,              // Kode Pos Gudang Samarinda Ulu
       destination_postal_code: postalCodeNum,
       couriers: 'jne,jnt,sicepat',
       items: [
@@ -76,7 +76,7 @@ export async function POST(req) {
       .filter((item) => {
         const serviceName = String(item.courier_service_name || '').toLowerCase();
         const serviceCode = String(item.courier_service_code || '').toLowerCase();
-        // Memfilter out layanan yang mengandung kata "trucking", "jtr", atau "cargo"
+        // Membuang layanan kargo/trucking
         return !serviceName.includes('trucking') && !serviceCode.includes('jtr') && !serviceName.includes('cargo');
       })
       .map((item) => ({
