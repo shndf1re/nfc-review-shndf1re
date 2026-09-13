@@ -8,7 +8,7 @@ export async function POST(req) {
     const cleanDistrict = String(destinationDistrictName || '').trim();
     const postalCodeNum = parseInt(destinationPostalCode, 10);
 
-    // 1. FREE ONGKIR LOKAL SAMARINDA
+    // 1. GRATIS ONGKIR LOKAL SAMARINDA
     const isSamarinda = cleanCity.toLowerCase().includes('samarinda') || 
                         cleanDistrict.toLowerCase().includes('samarinda') || 
                         (postalCodeNum >= 75000 && postalCodeNum <= 75258);
@@ -37,10 +37,23 @@ export async function POST(req) {
     }
 
     const parsedQty = Math.max(1, parseInt(qty, 10) || 1);
-    // Berat: 1-50 Pcs = 1000g (1 kg)
     const weightGrams = Math.ceil(parsedQty / 50) * 1000;
 
-    // STEP A: AMBIL AREA ID TUJUAN DARI MAPS BITESHIP
+    // STEP A: CARI ORIGIN AREA ID RESMI (SAMARINDA ULU) DARI BITESHIP MAPS
+    let originAreaId = null;
+    try {
+      const originRes = await fetch(`https://api.biteship.com/v1/maps/areas?countries=ID&input=Samarinda%20Ulu`, {
+        headers: { 'Authorization': `Bearer ${apiKey}` },
+      });
+      const originData = await originRes.json();
+      if (originData.areas && originData.areas.length > 0) {
+        originAreaId = originData.areas[0].id;
+      }
+    } catch (e) {
+      console.error('Origin area search error:', e);
+    }
+
+    // STEP B: CARI DESTINATION AREA ID RESMI DARI BITESHIP MAPS
     let destinationAreaId = null;
     const searchQuery = `${cleanDistrict} ${cleanCity}`;
 
@@ -56,9 +69,8 @@ export async function POST(req) {
       console.error('Dest area search error:', e);
     }
 
-    // STEP B: PAYLOAD DENGAN KURIR SPESIFIK JNE, J&T, SICEPAT
+    // STEP C: SUSUN PAYLOAD RESMI DENGAN AREA ID LENGKAP
     const payload = {
-      origin_postal_code: 75125, // Samarinda Ulu
       couriers: 'jne,jnt,sicepat',
       items: [
         {
@@ -72,6 +84,12 @@ export async function POST(req) {
       ],
     };
 
+    if (originAreaId) {
+      payload.origin_area_id = originAreaId;
+    } else {
+      payload.origin_postal_code = 75125;
+    }
+
     if (destinationAreaId) {
       payload.destination_area_id = destinationAreaId;
     } else if (postalCodeNum && !isNaN(postalCodeNum)) {
@@ -82,7 +100,7 @@ export async function POST(req) {
       }, { status: 400 });
     }
 
-    // STEP C: REQUEST KE API RATES BITESHIP
+    // STEP D: REQUEST KE API RATES BITESHIP
     const rateRes = await fetch('https://api.biteship.com/v1/rates/couriers', {
       method: 'POST',
       headers: {
