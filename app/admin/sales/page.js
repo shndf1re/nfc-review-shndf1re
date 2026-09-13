@@ -147,6 +147,8 @@ export default function SalesPage() {
 
       return {
         id: o.order_id || o.id,
+        raw_id: o.id,
+        order_id: o.order_id,
         source: 'online',
         customer_name: o.customer_name || 'Pembeli Online',
         quantity: parseInt(o.quantity, 10) || 1,
@@ -267,6 +269,11 @@ export default function SalesPage() {
     setModalState({ isOpen: true, actionType: 'updateStatus', targetData: sale, stockInput: '', pinInput: '', errorMsg: '', isVerifying: false });
   };
 
+  const isUuidFormat = (str) => {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(str);
+  };
+
   const handleModalSubmit = async (e) => {
     e.preventDefault();
     setModalState(prev => ({ ...prev, isVerifying: true, errorMsg: '' }));
@@ -313,16 +320,26 @@ export default function SalesPage() {
       let delErr = null;
 
       if (isOnline) {
-        // Fallback 1: Hapus menggunakan kolom order_id
-        const res1 = await supabase.from('orders').delete().eq('order_id', String(sale.id)).select();
-        
-        if (res1.data && res1.data.length > 0) {
-          deletedData = res1.data;
-        } else {
-          // Fallback 2: Hapus menggunakan kolom id
-          const res2 = await supabase.from('orders').delete().eq('id', sale.id).select();
-          deletedData = res2.data;
-          delErr = res2.error;
+        // Coba 1: Hapus berdasarkan order_id (string custom)
+        if (sale.order_id || sale.id) {
+          const searchOrderVal = String(sale.order_id || sale.id);
+          const res1 = await supabase.from('orders').delete().eq('order_id', searchOrderVal).select();
+          if (res1.data && res1.data.length > 0) {
+            deletedData = res1.data;
+          } else {
+            delErr = res1.error;
+          }
+        }
+
+        // Coba 2: Hapus berdasarkan id (HANYA jika nilainya format UUID valid)
+        if (!deletedData && sale.raw_id && isUuidFormat(sale.raw_id)) {
+          const res2 = await supabase.from('orders').delete().eq('id', sale.raw_id).select();
+          if (res2.data && res2.data.length > 0) {
+            deletedData = res2.data;
+            delErr = null;
+          } else {
+            delErr = res2.error;
+          }
         }
       } else {
         // Untuk transaksi manual offline (tabel sales)
@@ -331,7 +348,7 @@ export default function SalesPage() {
         delErr = res.error;
       }
 
-      if (delErr) {
+      if (delErr && !deletedData) {
         setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Error Supabase: ' + delErr.message }));
         return;
       }
@@ -348,14 +365,17 @@ export default function SalesPage() {
     } else if (modalState.actionType === 'updateStatus') {
       const sale = modalState.targetData;
       const isOnline = sale.source === 'online';
-      const targetTable = isOnline ? 'orders' : 'sales';
-      const idCol = isOnline ? 'order_id' : 'id';
-      const formattedId = isOnline ? String(sale.id) : Number(sale.id);
+      
+      let statusErr = null;
 
-      const { error: statusErr } = await supabase
-        .from(targetTable)
-        .update({ payment_status: selectedNewStatus })
-        .eq(idCol, formattedId);
+      if (isOnline) {
+        const searchOrderVal = String(sale.order_id || sale.id);
+        const res1 = await supabase.from('orders').update({ payment_status: selectedNewStatus }).eq('order_id', searchOrderVal);
+        statusErr = res1.error;
+      } else {
+        const res2 = await supabase.from('sales').update({ payment_status: selectedNewStatus }).eq('id', Number(sale.id));
+        statusErr = res2.error;
+      }
       
       if (statusErr) {
         setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Gagal Status: ' + statusErr.message }));
