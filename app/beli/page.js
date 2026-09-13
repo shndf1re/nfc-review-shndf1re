@@ -17,30 +17,33 @@ const supabase = createClient(
 export default function OrderPage() {
   const router = useRouter();
 
-  // State Order & Tracking Per-HP
   const [activeOrder, setActiveOrder] = useState(null);
   const [checkingOrder, setCheckingOrder] = useState(true);
 
-  // State Form Pemesanan
+  // Form State
   const [orderQty, setOrderQty] = useState(1);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [shippingAddress, setShippingAddress] = useState('');
-  const [destinationCity, setDestinationCity] = useState('Samarinda');
-  const [courier, setCourier] = useState('lokal');
+  const [destinationCity, setDestinationCity] = useState('');
+  const [postalCode, setPostalCode] = useState('');
   const [storeName, setStoreName] = useState('');
   const [targetUrl, setTargetUrl] = useState('');
+
+  // Biteship Ongkir State
+  const [isCheckingShipping, setIsCheckingShipping] = useState(false);
+  const [shippingOptions, setShippingOptions] = useState([]);
+  const [selectedShipping, setSelectedShipping] = useState(null);
+  const [shippingMessage, setShippingMessage] = useState('');
+
   const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
   const [orderError, setOrderError] = useState('');
-
-  // Timer Promo
   const [timeLeft, setTimeLeft] = useState((SITE_CONFIG.pricing?.timerMinutes || 15) * 60);
 
-  const ORIGINAL_PRICE = SITE_CONFIG.pricing?.originalPrice || 150000;
   const DISCOUNT_PRICE = SITE_CONFIG.pricing?.discountPrice || 60000;
   const PROMO_TAG = SITE_CONFIG.pricing?.promoTag || '🔥 PROMO SPESIAL 60% OFF';
 
-  const shippingCost = courier === 'lokal' ? 10000 : 25000;
+  const shippingCost = selectedShipping ? selectedShipping.cost : 0;
   const totalItemsPrice = orderQty * DISCOUNT_PRICE;
   const grandTotal = totalItemsPrice + shippingCost;
 
@@ -83,6 +86,49 @@ export default function OrderPage() {
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
+  // HANDLER CEK ONGKIR BITESHIP
+  const handleCheckShipping = async () => {
+    if (!destinationCity.trim()) {
+      alert('Silakan ketik Kota/Kecamatan Tujuan terlebih dahulu.');
+      return;
+    }
+
+    setIsCheckingShipping(true);
+    setShippingMessage('');
+    setShippingOptions([]);
+    setSelectedShipping(null);
+
+    try {
+      const res = await fetch('/api/shipping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          destinationCityName: destinationCity,
+          destinationPostalCode: postalCode,
+          weightGrams: orderQty * 500,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || 'Gagal menghitung ongkir.');
+
+      if (data.isFreeShipping) {
+        setShippingMessage('🎉 Selamat! Alamat Samarinda mendapatkan Gratis Ongkir.');
+        setSelectedShipping({ cost: 0, courierName: 'Kurir Lokal Samarinda (Free)' });
+      } else {
+        setShippingMessage(`📍 Berhasil mengambil tarif Biteship. Silakan pilih kurir:`);
+        setShippingOptions(data.results);
+        if (data.results.length > 0) {
+          setSelectedShipping({ cost: data.results[0].cost, courierName: data.results[0].courierName });
+        }
+      }
+    } catch (err) {
+      setShippingMessage('❌ Error: ' + err.message);
+    } finally {
+      setIsCheckingShipping(false);
+    }
+  };
+
   const handleCancelOrder = async () => {
     if (!activeOrder) return;
     if (!confirm('Batalkan pesanan ini?')) return;
@@ -121,6 +167,13 @@ export default function OrderPage() {
   const handleProcessCheckout = async (e) => {
     e.preventDefault();
     setOrderError('');
+
+    const isSamarinda = destinationCity.toLowerCase().includes('samarinda');
+    if (!selectedShipping && !isSamarinda) {
+      alert('Silakan klik "Cek Ongkir" dan pilih kurir pengiriman terlebih dahulu.');
+      return;
+    }
+
     setIsCheckoutLoading(true);
 
     try {
@@ -132,8 +185,9 @@ export default function OrderPage() {
           customerPhone,
           shippingAddress,
           destinationCity,
-          courier: courier === 'lokal' ? 'Kurir Lokal Samarinda' : 'Ekspedisi (JNE/J&T/POS)',
-          shippingCost,
+          postalCode,
+          courierName: selectedShipping?.courierName || 'Lokal Samarinda Free',
+          shippingCost: selectedShipping?.cost || 0,
           storeName,
           targetUrl,
           qty: orderQty,
@@ -169,7 +223,6 @@ export default function OrderPage() {
     <div className={inter.className} style={{ backgroundColor: '#f8fafc', color: '#0f172a', minHeight: '100vh', padding: '24px 16px' }}>
       <div style={{ maxWidth: '480px', margin: '0 auto', backgroundColor: '#ffffff', borderRadius: '24px', padding: '28px 24px', boxShadow: '0 20px 40px -15px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0' }}>
         
-        {/* TOP BAR BACK TO HOME */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
           <Link href="/" style={{ color: '#64748b', textDecoration: 'none', fontSize: '14px', fontWeight: '600' }}>
             ← Kembali ke Utama
@@ -203,7 +256,7 @@ export default function OrderPage() {
             </div>
 
             <h2 style={{ margin: '0 0 6px 0', fontSize: '22px', fontWeight: '800' }}>🛒 Order Papan Akrilik NFC</h2>
-            <p style={{ margin: '0 0 20px 0', fontSize: '13px', color: '#64748b' }}>Pengiriman langsung dari Samarinda Ulu (75125).</p>
+            <p style={{ margin: '0 0 20px 0', fontSize: '12px', color: '#64748b' }}>📍 Pengiriman Resmi dari Samarinda Ulu (75125).</p>
 
             <form onSubmit={handleProcessCheckout} autoComplete="off" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
@@ -219,20 +272,40 @@ export default function OrderPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', display: 'block', marginBottom: '4px' }}>Kota/Kecamatan *</label>
-                  <input type="text" required placeholder="Samarinda" value={destinationCity} onChange={(e) => setDestinationCity(e.target.value)} style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+                  <input type="text" required placeholder="Contoh: Tenggarong" value={destinationCity} onChange={(e) => setDestinationCity(e.target.value)} style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
                 </div>
                 <div>
-                  <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', display: 'block', marginBottom: '4px' }}>Kurir/Ongkir *</label>
-                  <select value={courier} onChange={(e) => setCourier(e.target.value)} style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box', backgroundColor: '#fff' }}>
-                    <option value="lokal">Lokal Samarinda (Rp 10.000)</option>
-                    <option value="ekspedisi">Luar Kota / JNE J&T (Rp 25.000)</option>
-                  </select>
+                  <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', display: 'block', marginBottom: '4px' }}>Kode Pos *</label>
+                  <input type="text" required maxLength={5} placeholder="Contoh: 75511" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
                 </div>
               </div>
 
+              <button type="button" onClick={handleCheckShipping} disabled={isCheckingShipping} style={{ width: '100%', padding: '12px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
+                {isCheckingShipping ? 'Memeriksa Tarif Biteship...' : '🔍 Cek Tarif Ekspedisi (Biteship)'}
+              </button>
+
+              {shippingMessage && <p style={{ margin: 0, fontSize: '12px', color: '#2563eb', fontWeight: '600' }}>{shippingMessage}</p>}
+
+              {/* DROPDOWN EXPEDITION RESULTS */}
+              {shippingOptions.length > 0 && (
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', display: 'block', marginBottom: '4px' }}>Pilih Kurir Ekspedisi *</label>
+                  <select onChange={(e) => {
+                    const selected = shippingOptions[e.target.value];
+                    if (selected) setSelectedShipping({ cost: selected.cost, courierName: selected.courierName });
+                  }} style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box', backgroundColor: '#fff' }}>
+                    {shippingOptions.map((opt, idx) => (
+                      <option key={idx} value={idx}>
+                        {opt.courierName} - Rp {opt.cost.toLocaleString('id-ID')} ({opt.etd})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div>
-                <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', display: 'block', marginBottom: '4px' }}>Alamat Lengkap *</label>
-                <textarea required placeholder="Jln. Ahmad Yani No. 12, Samarinda..." value={shippingAddress} onChange={(e) => setShippingAddress(e.target.value)} style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box', height: '60px', fontFamily: 'inherit' }} />
+                <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', display: 'block', marginBottom: '4px' }}>Alamat Lengkap Pengiriman *</label>
+                <textarea required placeholder="Jln. Ahmad Yani No. 12, Kel. Temindung Permai..." value={shippingAddress} onChange={(e) => setShippingAddress(e.target.value)} style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box', height: '55px', fontFamily: 'inherit' }} />
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
@@ -246,24 +319,29 @@ export default function OrderPage() {
                 </div>
               </div>
 
-              <div style={{ padding: '16px', backgroundColor: '#f8fafc', borderRadius: '14px', border: '1px solid #e2e8f0', marginTop: '6px' }}>
+              {/* RINCIAN PERHITUNGAN */}
+              <div style={{ padding: '16px', backgroundColor: '#f8fafc', borderRadius: '14px', border: '1px solid #e2e8f0', marginTop: '4px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#64748b', marginBottom: '6px' }}>
-                  <span>Harga Akrilik ({orderQty} Pcs):</span>
+                  <span>Subtotal ({orderQty} Pcs):</span>
                   <span>Rp {totalItemsPrice.toLocaleString('id-ID')}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#64748b', marginBottom: '10px' }}>
                   <span>Ongkos Kirim:</span>
-                  <span>Rp {shippingCost.toLocaleString('id-ID')}</span>
+                  {selectedShipping?.cost === 0 ? (
+                    <span style={{ color: '#16a34a', fontWeight: '800', backgroundColor: '#dcfce7', padding: '2px 8px', borderRadius: '6px' }}>🎉 FREE ONGKIR (Samarinda)</span>
+                  ) : (
+                    <span>Rp {shippingCost.toLocaleString('id-ID')}</span>
+                  )}
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '16px', fontWeight: '800', color: '#0f172a', borderTop: '1px dashed #cbd5e1', paddingTop: '10px' }}>
-                  <span>Total Tagihan:</span>
+                  <span>Total Bayar:</span>
                   <span style={{ color: '#16a34a', fontSize: '18px' }}>Rp {grandTotal.toLocaleString('id-ID')}</span>
                 </div>
               </div>
 
               {orderError && <p style={{ margin: 0, fontSize: '12px', color: '#ef4444', fontWeight: '600', textAlign: 'center' }}>{orderError}</p>}
 
-              <button type="submit" disabled={isCheckoutLoading} style={{ width: '100%', padding: '16px', backgroundColor: isCheckoutLoading ? '#94a3b8' : '#16a34a', color: '#ffffff', border: 'none', borderRadius: '14px', fontSize: '15px', fontWeight: '700', cursor: isCheckoutLoading ? 'not-allowed' : 'pointer', marginTop: '8px' }}>
+              <button type="submit" disabled={isCheckoutLoading} style={{ width: '100%', padding: '16px', backgroundColor: isCheckoutLoading ? '#94a3b8' : '#16a34a', color: '#ffffff', border: 'none', borderRadius: '14px', fontSize: '15px', fontWeight: '700', cursor: isCheckoutLoading ? 'not-allowed' : 'pointer', marginTop: '6px' }}>
                 {isCheckoutLoading ? 'Memproses Transaksi...' : '💳 Lanjut Pembayaran (QRIS / VA)'}
               </button>
             </form>
