@@ -271,14 +271,23 @@ export default function BeliPage() {
         return;
       }
 
+      // Simpan WA ke browser pembeli agar otomatis terlacak di halaman /track
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('last_customer_phone', waNumber);
+        if (data.orderId) {
+          localStorage.setItem('last_order_id', data.orderId);
+        }
+      }
+
       if (typeof window !== 'undefined' && window.snap) {
         window.snap.pay(data.token, {
           onSuccess: function () {
             alert('Pembayaran Berhasil!');
-            window.location.href = '/';
+            window.location.href = '/track'; // Arahkan langsung ke halaman lacak
           },
           onPending: function () {
             alert('Menunggu Pembayaran...');
+            window.location.href = '/track';
           },
           onError: function () {
             alert('Pembayaran Gagal!');
@@ -331,6 +340,16 @@ export default function BeliPage() {
       textDecoration: 'none',
       fontSize: '13px',
       fontWeight: '600',
+    },
+    trackLink: {
+      color: '#2563eb',
+      textDecoration: 'none',
+      fontSize: '12px',
+      fontWeight: '700',
+      backgroundColor: '#eff6ff',
+      padding: '4px 8px',
+      borderRadius: '8px',
+      border: '1px solid #bfdbfe'
     },
     badgePromo: {
       backgroundColor: isExpired ? '#f1f5f9' : '#fef2f2',
@@ -478,8 +497,12 @@ export default function BeliPage() {
     <div style={styles.pageContainer}>
       <div style={styles.card}>
         
+        {/* TOP HEADER DENGAN TOMBOL NAVIGASI TRACK ORDER */}
         <div style={styles.topHeader}>
-          <a href="/" style={styles.backLink}>← Utama</a>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <a href="/" style={styles.backLink}>← Utama</a>
+            <a href="/track" style={styles.trackLink}>📦 Lacak</a>
+          </div>
           <div style={styles.badgePromo}>
             {isExpired ? '⚠️ Waktu Promo Habis' : '🔥 PROMO SPESIAL 60% OFF'}
           </div>
@@ -738,4 +761,3 @@ export default function BeliPage() {
     </div>
   );
 }
-
