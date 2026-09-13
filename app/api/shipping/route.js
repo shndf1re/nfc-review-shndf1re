@@ -55,15 +55,12 @@ export async function POST(req) {
       console.error('Dest area search error:', e);
     }
 
-    // 3. SUSUN PAYLOAD RESMI BITESHIP
-    // Menggunakan origin_postal_code 75125 (Samarinda Ulu) & destination_area_id hasil Maps
+    // 3. SUSUN PAYLOAD BITESHIP (TANPA FILTER COURIERS AGAR OTOMATIS AMBIL SEMUA KURIR AKTIF)
     const payload = {
       origin_postal_code: 75125,
-      couriers: 'jne,jnt,sicepat,pos',
       items: [
         {
           name: 'Papan Akrilik NFC Google Review',
-          description: 'Papan Akrilik',
           value: Number(60000 * parsedQty),
           weight: Number(weightGrams),
           quantity: Number(parsedQty),
@@ -81,7 +78,7 @@ export async function POST(req) {
       }, { status: 400 });
     }
 
-    // 4. REQUEST KE BITESHIP RATES
+    // 4. REQUEST RATES
     const rateRes = await fetch('https://api.biteship.com/v1/rates/couriers', {
       method: 'POST',
       headers: {
