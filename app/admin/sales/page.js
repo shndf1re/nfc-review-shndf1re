@@ -208,7 +208,6 @@ export default function SalesPage() {
 
     setSubmitStatus('Menyimpan transaksi...');
 
-    // 1. Coba Insert Data Penjualan Manual
     const insertPayload = {
       customer_name: customerName,
       quantity: qtyNumber,
@@ -222,7 +221,6 @@ export default function SalesPage() {
       { ...insertPayload, shipping_cost: 0 }
     ]);
 
-    // Fallback jika kolom shipping_cost belum dibuat di Supabase
     if (saleError && saleError.message.includes('shipping_cost')) {
       const fallbackRes = await supabase.from('sales').insert([insertPayload]);
       saleError = fallbackRes.error;
@@ -233,7 +231,6 @@ export default function SalesPage() {
       return;
     }
 
-    // 2. Potong Stok
     const newStock = Math.max(0, acrylicStock - qtyNumber);
     const targetId = stockItemRecord?.id || 1;
 
@@ -287,13 +284,8 @@ export default function SalesPage() {
       input_pin: modalState.pinInput.trim()
     });
 
-    if (pinError) {
-      setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ RPC Error: ' + pinError.message }));
-      return;
-    }
-
-    if (!isValidPin) {
-      setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ PIN Admin Salah!' }));
+    if (pinError || !isValidPin) {
+      setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ PIN Admin Salah / Error!' }));
       return;
     }
 
@@ -306,13 +298,8 @@ export default function SalesPage() {
         .eq('id', targetId)
         .select();
 
-      if (updateErr) {
-        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ DB Error: ' + updateErr.message }));
-        return;
-      }
-
-      if (!updatedRows || updatedRows.length === 0) {
-        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Baris stok tidak ditemukan di database!' }));
+      if (updateErr || !updatedRows || updatedRows.length === 0) {
+        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Gagal update stok di database!' }));
         return;
       }
 
@@ -320,36 +307,47 @@ export default function SalesPage() {
 
     } else if (modalState.actionType === 'delete') {
       const sale = modalState.targetData;
+      const isOnline = sale.source === 'online';
       
-      const targetTable = sale.source === 'online' ? 'orders' : 'sales';
-      const idCol = sale.source === 'online' ? 'order_id' : 'id';
+      const targetTable = isOnline ? 'orders' : 'sales';
+      const idCol = isOnline ? 'order_id' : 'id';
+      
+      // Pastikan tipe data ID dikonversi dengan presisi
+      const formattedId = isOnline ? String(sale.id) : Number(sale.id);
 
-      // 1. Hapus data dari database Supabase
-      const { error: delErr } = await supabase.from(targetTable).delete().eq(idCol, sale.id);
+      // 1. Eksekusi Hapus & Verifikasi Baris Terhapus
+      const { data: deletedData, error: delErr } = await supabase
+        .from(targetTable)
+        .delete()
+        .eq(idCol, formattedId)
+        .select();
       
       if (delErr) {
-        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Gagal Hapus: ' + delErr.message }));
+        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Gagal Hapus DB: ' + delErr.message }));
         return;
       }
 
-      // 2. KEMBALIKAN STOK HANYA JIKA HAPUS DARI DATABASE BERHASIL
+      // 2. Jika DB gagal menghapus, JANGAN LAKUKAN PENAMBAHAN STOK
+      if (!deletedData || deletedData.length === 0) {
+        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Data tidak ditemukan di database / Gagal terhapus!' }));
+        return;
+      }
+
+      // 3. Hanya jika berhasil terhapus dari DB, kembalikan stok
       const restoredStock = acrylicStock + (parseInt(sale.quantity, 10) || 1);
-      const { error: stockErr } = await supabase.from('inventory').update({ stock_quantity: restoredStock }).eq('id', targetId);
-
-      if (stockErr) {
-        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '⚠️ Data terhapus, tapi gagal update stok: ' + stockErr.message }));
-        return;
-      }
+      await supabase.from('inventory').update({ stock_quantity: restoredStock }).eq('id', targetId);
 
     } else if (modalState.actionType === 'updateStatus') {
       const sale = modalState.targetData;
-      const targetTable = sale.source === 'online' ? 'orders' : 'sales';
-      const idCol = sale.source === 'online' ? 'order_id' : 'id';
+      const isOnline = sale.source === 'online';
+      const targetTable = isOnline ? 'orders' : 'sales';
+      const idCol = isOnline ? 'order_id' : 'id';
+      const formattedId = isOnline ? String(sale.id) : Number(sale.id);
 
       const { error: statusErr } = await supabase
         .from(targetTable)
         .update({ payment_status: selectedNewStatus })
-        .eq(idCol, sale.id);
+        .eq(idCol, formattedId);
       
       if (statusErr) {
         setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Gagal Status: ' + statusErr.message }));
