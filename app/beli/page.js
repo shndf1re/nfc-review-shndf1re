@@ -55,11 +55,6 @@ export default function BeliPage() {
     return () => clearInterval(timerInterval);
   }, []);
 
-  // Reset Timer khusus keperluan Testing
-  const handleResetTestTimer = () => {
-    localStorage.removeItem('promo_end_time_30m');
-    window.location.reload();
-  };
 
   // === STEP 1: DATA PEMBELI ===
   const [buyerName, setBuyerName] = useState('');
