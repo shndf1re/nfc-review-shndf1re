@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 export default function BeliPage() {
   const [step, setStep] = useState(1);
 
-  // Countdown Timer State (15 Menit / 900 Detik)
+  // === COUNTDOWN TIMER PROMO (15 Menit / 900 Detik) ===
   const [timeLeft, setTimeLeft] = useState(15 * 60);
 
   useEffect(() => {
@@ -22,13 +22,13 @@ export default function BeliPage() {
     return `${m}:${s}`;
   };
 
-  // Step 1: Data Pembeli
+  // === STEP 1: DATA PEMBELI ===
   const [buyerName, setBuyerName] = useState('');
   const [waNumber, setWaNumber] = useState('');
   const [qty, setQty] = useState(1);
   const [googleMapsUrl, setGoogleMapsUrl] = useState('');
 
-  // Step 2: Alamat Pengiriman
+  // === STEP 2: ALAMAT PENGIRIMAN ===
   const [provinces, setProvinces] = useState([]);
   const [regencies, setRegencies] = useState([]);
   const [districts, setDistricts] = useState([]);
@@ -39,21 +39,20 @@ export default function BeliPage() {
   const [postalCode, setPostalCode] = useState('');
   const [streetAddress, setStreetAddress] = useState('');
 
-  // Shipping Rates & Loading States
+  // === SHIPPING & PRICING ===
   const [loadingOngkir, setLoadingOngkir] = useState(false);
   const [shippingOptions, setShippingOptions] = useState([]);
   const [selectedCourier, setSelectedCourier] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [isFreeShipping, setIsFreeShipping] = useState(false);
 
-  // Perhitungan Harga
   const itemPrice = 60000;
   const currentQty = Math.max(1, parseInt(qty, 10) || 1);
   const subtotal = itemPrice * currentQty;
   const shippingCost = selectedCourier ? selectedCourier.cost : 0;
   const totalAmount = subtotal + shippingCost;
 
-  // Load Wilayah Indonesia (EMSIFA API)
+  // === LOAD WILAYAH INDONESIA (EMSIFA API) ===
   useEffect(() => {
     fetch('https://www.emsifa.com/api-wilayah-indonesia/api/provinces.json')
       .then((res) => res.json())
@@ -97,7 +96,7 @@ export default function BeliPage() {
     setSelectedDistrict(distObj ? distObj.name : '');
   };
 
-  // Cek Ongkir via API Biteship
+  // === CEK ONGKIR DENGAN AUTO-SELECT KURIR PERTAMA ===
   const handleCekOngkir = async () => {
     if (!selectedCity || !postalCode) {
       setErrorMessage('Pilih Kota dan masukkan Kode Pos terlebih dahulu.');
@@ -128,6 +127,8 @@ export default function BeliPage() {
       } else {
         setIsFreeShipping(data.isFreeShipping);
         setShippingOptions(data.results || []);
+        
+        // KRUSIAL: Pilih otomatis kurir pertama agar tombol "Lanjut Bayar" langsung aktif!
         if (data.results && data.results.length > 0) {
           setSelectedCourier(data.results[0]);
         }
@@ -139,7 +140,7 @@ export default function BeliPage() {
     }
   };
 
-  // Validasi Step 1
+  // === VALIDASI STEP 1 ===
   const handleNextStep1 = (e) => {
     e.preventDefault();
     if (waNumber.length < 8) {
@@ -149,7 +150,13 @@ export default function BeliPage() {
     setStep(2);
   };
 
-  // Styling Inline Murni
+  // === PROSES BAYAR MIDTRANS ===
+  const handlePay = () => {
+    alert(`Memproses pembayaran sebesar Rp ${totalAmount.toLocaleString('id-ID')}...`);
+    // Tambahkan trigger Snap Midtrans kamu di sini
+  };
+
+  // === INLINE STYLING MURNI PAS PRESIASI DENGAN LAYOUT PROYEK ===
   const styles = {
     pageContainer: {
       minHeight: '100vh',
@@ -286,18 +293,19 @@ export default function BeliPage() {
       cursor: 'pointer',
       boxShadow: '0 4px 12px rgba(37, 99, 235, 0.2)',
     },
-    btnGreen: {
-      width: '100%',
-      backgroundColor: '#16a34a',
+    btnGreen: (disabled) => ({
+      width: '65%',
+      backgroundColor: disabled ? '#94a3b8' : '#16a34a',
       color: '#ffffff',
       padding: '14px',
       borderRadius: '14px',
       border: 'none',
       fontSize: '15px',
       fontWeight: 'bold',
-      cursor: 'pointer',
-      boxShadow: '0 4px 12px rgba(22, 163, 74, 0.2)',
-    },
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      boxShadow: disabled ? 'none' : '0 4px 12px rgba(22, 163, 74, 0.2)',
+      transition: 'all 0.2s ease',
+    }),
     summaryCard: {
       backgroundColor: '#f8fafc',
       borderRadius: '16px',
@@ -328,7 +336,7 @@ export default function BeliPage() {
     <div style={styles.pageContainer}>
       <div style={styles.card}>
         
-        {/* Top Navigation & Promo Banner */}
+        {/* Navigasi Atas & Banner Promo */}
         <div style={styles.topHeader}>
           <a href="/" style={styles.backLink}>← Utama</a>
           <div style={styles.badgePromo}>🔥 PROMO SPESIAL 60% OFF</div>
@@ -353,7 +361,7 @@ export default function BeliPage() {
           </div>
         </div>
 
-        {/* STEP 1: FORM DATA PEMBELI */}
+        {/* STEP 1: DATA PEMBELI */}
         {step === 1 && (
           <form onSubmit={handleNextStep1}>
             <div style={styles.formTitle}>Langkah 1: Data Pemesan</div>
@@ -409,7 +417,7 @@ export default function BeliPage() {
           </form>
         )}
 
-        {/* STEP 2: FORM ALAMAT & ONGKIR */}
+        {/* STEP 2: ALAMAT & ONGKIR */}
         {step === 2 && (
           <div>
             <div style={styles.formTitle}>
@@ -453,7 +461,7 @@ export default function BeliPage() {
                 type="tel"
                 inputMode="numeric"
                 maxLength={5}
-                placeholder="11210"
+                placeholder="75325"
                 value={postalCode}
                 onChange={(e) => setPostalCode(e.target.value.replace(/\D/g, ''))}
                 style={{ ...styles.input, marginBottom: 0, flex: 1 }}
@@ -482,7 +490,7 @@ export default function BeliPage() {
             <textarea
               rows={2}
               required
-              placeholder="Jln. Ahmad Yani No. 12, RT 05..."
+              placeholder="JL Loktuan..."
               value={streetAddress}
               onChange={(e) => setStreetAddress(e.target.value)}
               style={{ ...styles.input, height: 'auto', fontFamily: 'inherit' }}
@@ -495,11 +503,12 @@ export default function BeliPage() {
               </div>
             )}
 
-            {/* Option Ongkir */}
+            {/* Pilihan Kurir */}
             {shippingOptions.length > 0 && (
               <div style={{ marginBottom: '14px' }}>
                 <label style={styles.label}>Pilih Kurir Ekspedisi *</label>
                 <select
+                  value={selectedCourier ? selectedCourier.courierCode + selectedCourier.service : ''}
                   onChange={(e) => {
                     const found = shippingOptions.find((opt) => opt.courierCode + opt.service === e.target.value);
                     if (found) setSelectedCourier(found);
@@ -550,15 +559,13 @@ export default function BeliPage() {
               >
                 ← Kembali
               </button>
+              
+              {/* Tombol Lanjut Bayar Aktif */}
               <button
                 type="button"
+                onClick={handlePay}
                 disabled={!selectedCourier || !streetAddress}
-                style={{
-                  ...styles.btnGreen,
-                  width: '65%',
-                  opacity: (!selectedCourier || !streetAddress) ? 0.5 : 1,
-                  cursor: (!selectedCourier || !streetAddress) ? 'not-allowed' : 'pointer',
-                }}
+                style={styles.btnGreen(!selectedCourier || !streetAddress)}
               >
                 💳 Lanjut Bayar
               </button>
