@@ -116,7 +116,7 @@ export default function OrderPage() {
         setShippingMessage('🎉 Selamat! Alamat Samarinda mendapatkan Gratis Ongkir.');
         setSelectedShipping({ cost: 0, courierName: 'Kurir Lokal Samarinda (Free)' });
       } else {
-        setShippingMessage(`📍 Berhasil mengambil tarif Biteship. Silakan pilih kurir:`);
+        setShippingMessage(`📍 Berhasil mengambil tarif ekspedisi. Silakan pilih kurir:`);
         setShippingOptions(data.results);
         if (data.results.length > 0) {
           setSelectedShipping({ cost: data.results[0].cost, courierName: data.results[0].courierName });
@@ -170,7 +170,7 @@ export default function OrderPage() {
 
     const isSamarinda = destinationCity.toLowerCase().includes('samarinda');
     if (!selectedShipping && !isSamarinda) {
-      alert('Silakan klik "Cek Ongkir" dan pilih kurir pengiriman terlebih dahulu.');
+      alert('Silakan klik "Cek Tarif Ekspedisi" dan pilih kurir pengiriman terlebih dahulu.');
       return;
     }
 
@@ -255,8 +255,7 @@ export default function OrderPage() {
               <span style={{ fontSize: '14px', fontWeight: '800', color: '#b91c1c', fontFamily: 'monospace' }}>{formatTimer(timeLeft)}</span>
             </div>
 
-            <h2 style={{ margin: '0 0 6px 0', fontSize: '22px', fontWeight: '800' }}>🛒 Order Papan Akrilik NFC</h2>
-            <p style={{ margin: '0 0 20px 0', fontSize: '12px', color: '#64748b' }}>📍 Pengiriman Resmi dari Samarinda Ulu (75125).</p>
+            <h2 style={{ margin: '0 0 16px 0', fontSize: '22px', fontWeight: '800' }}>🛒 Order Papan Akrilik NFC</h2>
 
             <form onSubmit={handleProcessCheckout} autoComplete="off" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
@@ -272,16 +271,16 @@ export default function OrderPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', display: 'block', marginBottom: '4px' }}>Kota/Kecamatan *</label>
-                  <input type="text" required placeholder="Contoh: Tenggarong" value={destinationCity} onChange={(e) => setDestinationCity(e.target.value)} style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+                  <input type="text" required placeholder="Contoh: Bandung" value={destinationCity} onChange={(e) => setDestinationCity(e.target.value)} style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
                 </div>
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', display: 'block', marginBottom: '4px' }}>Kode Pos *</label>
-                  <input type="text" required maxLength={5} placeholder="Contoh: 75511" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+                  <input type="text" required maxLength={5} placeholder="Contoh: 40111" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
                 </div>
               </div>
 
               <button type="button" onClick={handleCheckShipping} disabled={isCheckingShipping} style={{ width: '100%', padding: '12px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
-                {isCheckingShipping ? 'Memeriksa Tarif Biteship...' : '🔍 Cek Tarif Ekspedisi (Biteship)'}
+                {isCheckingShipping ? 'Memeriksa Tarif Ekspedisi...' : '🔍 Cek Tarif Ekspedisi'}
               </button>
 
               {shippingMessage && <p style={{ margin: 0, fontSize: '12px', color: '#2563eb', fontWeight: '600' }}>{shippingMessage}</p>}
