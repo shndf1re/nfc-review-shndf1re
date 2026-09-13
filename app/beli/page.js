@@ -4,22 +4,61 @@ import { useState, useEffect } from 'react';
 
 export default function BeliPage() {
   const [step, setStep] = useState(1);
+  const [isMounted, setIsMounted] = useState(false);
 
-  // === COUNTDOWN TIMER PROMO (15 Menit / 900 Detik) ===
-  const [timeLeft, setTimeLeft] = useState(15 * 60);
+  // === 1. COUNTDOWN TIMER PROMO PERSISTEN (30 Menit) ===
+  const PROMO_PRICE = 60000;   // Harga Promo per Pcs
+  const NORMAL_PRICE = 150000; // Harga Normal per Pcs (Setel habis 30 min)
+
+  const [timeLeft, setTimeLeft] = useState('30:00');
+  const [isExpired, setIsExpired] = useState(false);
+  const [itemPrice, setItemPrice] = useState(PROMO_PRICE);
 
   useEffect(() => {
-    if (timeLeft <= 0) return;
-    const timer = setInterval(() => {
-      setTimeLeft((prev) => prev - 1);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [timeLeft]);
+    setIsMounted(true);
 
-  const formatTime = (seconds) => {
-    const m = Math.floor(seconds / 60).toString().padStart(2, '0');
-    const s = (seconds % 60).toString().padStart(2, '0');
-    return `${m}:${s}`;
+    // Ambil atau set batas waktu promo di localStorage
+    let endTime = localStorage.getItem('promo_end_time_30m');
+
+    if (!endTime) {
+      // Waktu sekarang + 30 Menit (30 * 60 * 1000 milidetik)
+      endTime = Date.now() + 30 * 60 * 1000;
+      localStorage.setItem('promo_end_time_30m', endTime.toString());
+    } else {
+      endTime = parseInt(endTime, 10);
+    }
+
+    const timerInterval = setInterval(() => {
+      const now = Date.now();
+      const distance = endTime - now;
+
+      if (distance <= 0) {
+        // Waktu Habis!
+        clearInterval(timerInterval);
+        setTimeLeft('00:00');
+        setIsExpired(true);
+        setItemPrice(NORMAL_PRICE); // Kembalikan ke harga normal
+      } else {
+        // Masih Ada Waktu Promo
+        const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+        const formattedMin = minutes < 10 ? `0${minutes}` : minutes;
+        const formattedSec = seconds < 10 ? `0${seconds}` : seconds;
+
+        setTimeLeft(`${formattedMin}:${formattedSec}`);
+        setIsExpired(false);
+        setItemPrice(PROMO_PRICE);
+      }
+    }, 1000);
+
+    return () => clearInterval(timerInterval);
+  }, []);
+
+  // Reset Timer khusus keperluan Testing
+  const handleResetTestTimer = () => {
+    localStorage.removeItem('promo_end_time_30m');
+    window.location.reload();
   };
 
   // === STEP 1: DATA PEMBELI ===
@@ -54,7 +93,6 @@ export default function BeliPage() {
   const [isFreeShipping, setIsFreeShipping] = useState(false);
   const [loadingPay, setLoadingPay] = useState(false);
 
-  const itemPrice = 60000;
   const currentQty = Math.max(1, parseInt(qty, 10) || 1);
   const subtotal = itemPrice * currentQty;
   const shippingCost = selectedCourier ? selectedCourier.cost : 0;
@@ -265,6 +303,8 @@ export default function BeliPage() {
     }
   };
 
+  if (!isMounted) return null;
+
   // Styling Inline Murni
   const styles = {
     pageContainer: {
@@ -299,18 +339,18 @@ export default function BeliPage() {
       fontWeight: '600',
     },
     badgePromo: {
-      backgroundColor: '#fef2f2',
-      color: '#ef4444',
+      backgroundColor: isExpired ? '#f1f5f9' : '#fef2f2',
+      color: isExpired ? '#64748b' : '#ef4444',
       fontSize: '11px',
       fontWeight: 'bold',
       padding: '4px 10px',
       borderRadius: '20px',
-      border: '1px solid #fee2e2',
+      border: `1px solid ${isExpired ? '#cbd5e1' : '#fee2e2'}`,
     },
     timerBanner: {
-      backgroundColor: '#fff5f5',
-      border: '1px solid #fed7d7',
-      color: '#e53e3e',
+      backgroundColor: isExpired ? '#fef2f2' : '#fff5f5',
+      border: `1px solid ${isExpired ? '#fca5a5' : '#fed7d7'}`,
+      color: isExpired ? '#dc2626' : '#e53e3e',
       borderRadius: '14px',
       padding: '10px 14px',
       fontSize: '13px',
@@ -433,7 +473,7 @@ export default function BeliPage() {
       justifyContent: 'space-between',
       fontSize: '16px',
       fontWeight: 'bold',
-      color: '#16a34a',
+      color: isExpired ? '#0f172a' : '#16a34a',
       borderTop: '1px dashed #cbd5e1',
       paddingTop: '10px',
       marginTop: '10px',
@@ -446,12 +486,18 @@ export default function BeliPage() {
         
         <div style={styles.topHeader}>
           <a href="/" style={styles.backLink}>← Utama</a>
-          <div style={styles.badgePromo}>🔥 PROMO SPESIAL 60% OFF</div>
+          <div style={styles.badgePromo}>
+            {isExpired ? '️ Waktu Promo Habis' : '🔥 PROMO SPESIAL 60% OFF'}
+          </div>
         </div>
 
         <div style={styles.timerBanner}>
-          <span style={{ fontWeight: '600' }}>⏰ Promo Berakhir Dalam:</span>
-          <span style={{ fontWeight: 'bold' }}>{formatTime(timeLeft)}</span>
+          <span style={{ fontWeight: '600' }}>
+            {isExpired ? '⚠️ Waktu Promo Habis (Harga Normal):' : '⏰ Promo Berakhir Dalam:'}
+          </span>
+          <span style={{ fontWeight: 'bold', fontFamily: 'monospace', fontSize: '15px' }}>
+            {timeLeft}
+          </span>
         </div>
 
         <div style={styles.stepperContainer}>
@@ -643,6 +689,12 @@ export default function BeliPage() {
 
             <div style={styles.summaryCard}>
               <div style={styles.summaryRow}>
+                <span>Harga per Pcs:</span>
+                <span style={{ fontWeight: 'bold', color: isExpired ? '#dc2626' : '#16a34a' }}>
+                  Rp {itemPrice.toLocaleString('id-ID')} {isExpired ? '(Harga Normal)' : '(Promo)'}
+                </span>
+              </div>
+              <div style={styles.summaryRow}>
                 <span>Subtotal ({currentQty} Pcs):</span>
                 <span>Rp {subtotal.toLocaleString('id-ID')}</span>
               </div>
@@ -687,6 +739,23 @@ export default function BeliPage() {
 
           </div>
         )}
+
+        {/* TOMBOL TESTING DENGAN TULISAN KECIL KHUSUS UNTUK ADMIN */}
+        <div style={{ textAlign: 'center', marginTop: '24px' }}>
+          <button
+            onClick={handleResetTestTimer}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#94a3b8',
+              fontSize: '11px',
+              textDecoration: 'underline',
+              cursor: 'pointer'
+            }}
+          >
+            🔄 Reset Timer Promo 30 Menit (Khusus Testing)
+          </button>
+        </div>
 
       </div>
     </div>
