@@ -15,7 +15,7 @@ export default function SalesPage() {
   const [salesHistory, setSalesHistory] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Form State Penjualan Baru
+  // Form State Penjualan Baru (Input Manual)
   const [customerName, setCustomerName] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [totalPrice, setTotalPrice] = useState('');
@@ -60,6 +60,9 @@ export default function SalesPage() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, () => {
         fetchData();
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+        fetchData();
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => {
         fetchData();
       })
@@ -73,6 +76,7 @@ export default function SalesPage() {
   const fetchData = async () => {
     setLoading(true);
     
+    // 1. Fetch Stok Akrilik
     const { data: invData, error: invError } = await supabase
       .from('inventory')
       .select('*')
@@ -87,10 +91,11 @@ export default function SalesPage() {
       setStockItemRecord(invData);
     }
 
-    let query = supabase.from('sales').select('*').order('created_at', { ascending: false });
+    // 2. Fetch Data Transaksi dari Tabel 'sales'
+    let querySales = supabase.from('sales').select('*').order('created_at', { ascending: false });
 
     if (startDate && endDate) {
-      query = query.gte('created_at', `${startDate}T00:00:00`).lte('created_at', `${endDate}T23:59:59`);
+      querySales = querySales.gte('created_at', `${startDate}T00:00:00`).lte('created_at', `${endDate}T23:59:59`);
     } else if (selectedMonth) {
       const year = selectedMonth.split('-')[0];
       const month = selectedMonth.split('-')[1];
@@ -98,12 +103,66 @@ export default function SalesPage() {
       const lastDay = new Date(year, month, 0).getDate();
       const endOfMonth = `${year}-${month}-${lastDay}T23:59:59`;
 
-      query = query.gte('created_at', startOfMonth).lte('created_at', endOfMonth);
+      querySales = querySales.gte('created_at', startOfMonth).lte('created_at', endOfMonth);
     }
 
-    const { data: salesData } = await query;
-    if (salesData) setSalesHistory(salesData);
+    const { data: salesData } = await querySales;
 
+    // 3. Fetch Data Transaksi Web dari Tabel 'orders' (Jika ada)
+    let queryOrders = supabase.from('orders').select('*').order('created_at', { ascending: false });
+    if (startDate && endDate) {
+      queryOrders = queryOrders.gte('created_at', `${startDate}T00:00:00`).lte('created_at', `${endDate}T23:59:59`);
+    } else if (selectedMonth) {
+      const year = selectedMonth.split('-')[0];
+      const month = selectedMonth.split('-')[1];
+      const startOfMonth = `${year}-${month}-01T00:00:00`;
+      const lastDay = new Date(year, month, 0).getDate();
+      const endOfMonth = `${year}-${month}-${lastDay}T23:59:59`;
+
+      queryOrders = queryOrders.gte('created_at', startOfMonth).lte('created_at', endOfMonth);
+    }
+
+    const { data: ordersData } = await queryOrders;
+
+    // Format & Gabungkan Data dari kedua tabel
+    const formattedSales = (salesData || []).map(s => ({
+      id: s.id,
+      source: 'manual',
+      customer_name: s.customer_name,
+      quantity: parseInt(s.quantity, 10) || 1,
+      total_price: parseFloat(s.total_price) || 0,
+      shipping_cost: parseFloat(s.shipping_cost) || 0, // Ongkir manual (default 0)
+      payment_status: s.payment_status || 'Lunas',
+      notes: s.notes,
+      created_at: s.created_at
+    }));
+
+    const formattedOrders = (ordersData || []).map(o => {
+      let mappedStatus = 'Belum Bayar';
+      if (['settlement', 'paid', 'success', 'Lunas'].includes(o.payment_status)) {
+        mappedStatus = 'Lunas';
+      } else if (['pending'].includes(o.payment_status)) {
+        mappedStatus = 'Belum Bayar';
+      }
+
+      return {
+        id: o.order_id || o.id,
+        source: 'online',
+        customer_name: o.customer_name || 'Pembeli Online',
+        quantity: parseInt(o.quantity, 10) || 1,
+        total_price: parseFloat(o.total_price) || 0,
+        shipping_cost: parseFloat(o.shipping_cost) || 0, // Ongkir dari Biteship
+        payment_status: mappedStatus,
+        notes: o.courier ? `Kurir: ${o.courier}` : 'Order Web',
+        created_at: o.created_at
+      };
+    });
+
+    const combinedHistory = [...formattedSales, ...formattedOrders].sort(
+      (a, b) => new Date(b.created_at) - new Date(a.created_at)
+    );
+
+    setSalesHistory(combinedHistory);
     setLoading(false);
   };
 
@@ -118,7 +177,7 @@ export default function SalesPage() {
     setSelectedMonth(new Date().toISOString().substring(0, 7));
   };
 
-  // FUNGSI NOTIFIKASI STOK WA (DENGAN MODAL DIALOG)
+  // NOTIFIKASI STOK MENIPIS
   const checkAndTriggerLowStockModal = (currentStock) => {
     const LOW_STOCK_LIMIT = 5;
     const ADMIN_PHONE = '6285156534909';
@@ -154,6 +213,7 @@ export default function SalesPage() {
         customer_name: customerName,
         quantity: qtyNumber,
         total_price: priceNumber,
+        shipping_cost: 0, // Penjualan manual dianggap tanpa ongkir ekspedisi
         device_id: deviceId || null,
         payment_status: paymentStatus,
         notes: notes || null
@@ -185,9 +245,7 @@ export default function SalesPage() {
     setDeviceId('');
     setNotes('');
 
-    // Cek Peringatan Stok
     checkAndTriggerLowStockModal(newStock);
-
     fetchData();
   };
 
@@ -249,12 +307,14 @@ export default function SalesPage() {
         return;
       }
 
-      // Cek stok setelah update manual
       checkAndTriggerLowStockModal(newStockVal);
 
     } else if (modalState.actionType === 'delete') {
       const sale = modalState.targetData;
-      const { error: delErr } = await supabase.from('sales').delete().eq('id', sale.id);
+      const targetTable = sale.source === 'online' ? 'orders' : 'sales';
+      const idCol = sale.source === 'online' ? 'order_id' : 'id';
+
+      const { error: delErr } = await supabase.from(targetTable).delete().eq(idCol, sale.id);
       
       if (delErr) {
         setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Gagal Hapus: ' + delErr.message }));
@@ -266,7 +326,13 @@ export default function SalesPage() {
 
     } else if (modalState.actionType === 'updateStatus') {
       const sale = modalState.targetData;
-      const { error: statusErr } = await supabase.from('sales').update({ payment_status: selectedNewStatus }).eq('id', sale.id);
+      const targetTable = sale.source === 'online' ? 'orders' : 'sales';
+      const idCol = sale.source === 'online' ? 'order_id' : 'id';
+
+      const { error: statusErr } = await supabase
+        .from(targetTable)
+        .update({ payment_status: selectedNewStatus })
+        .eq(idCol, sale.id);
       
       if (statusErr) {
         setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Gagal Status: ' + statusErr.message }));
@@ -279,11 +345,34 @@ export default function SalesPage() {
     fetchData();
   };
 
-  // RUMUS PERHITUNGAN RINGKASAN
-  const totalOmzetTotal = salesHistory.reduce((acc, curr) => acc + (parseFloat(curr.total_price) || 0), 0);
-  const totalOmzetLunas = salesHistory.filter(s => s.payment_status === 'Lunas').reduce((acc, curr) => acc + (parseFloat(curr.total_price) || 0), 0);
-  const totalPiutang = totalOmzetTotal - totalOmzetLunas;
+  // =========================================================================
+  // RUMUS PERHITUNGAN KEUNTUNGAN MURNI (EKSKLUDING ONGKIR EKSPEDISI)
+  // =========================================================================
   const totalPapanTerjual = salesHistory.reduce((acc, curr) => acc + (parseInt(curr.quantity, 10) || 0), 0);
+  
+  // Total Biaya Ongkir Ekspedisi
+  const totalOngkirCollected = salesHistory
+    .filter(s => s.payment_status === 'Lunas')
+    .reduce((acc, curr) => acc + (parseFloat(curr.shipping_cost) || 0), 0);
+
+  // Keuntungan Murni Penjualan Produk (Total Bayar dikurangi Ongkir)
+  const totalKeuntunganLunas = salesHistory
+    .filter(s => s.payment_status === 'Lunas')
+    .reduce((acc, curr) => {
+      const subtotalBarang = (parseFloat(curr.total_price) || 0) - (parseFloat(curr.shipping_cost) || 0);
+      return acc + subtotalBarang;
+    }, 0);
+
+  // Total Kas Masuk Bruto (Produk + Ongkir)
+  const totalBrutoLunas = totalKeuntunganLunas + totalOngkirCollected;
+
+  // Total Piutang / Belum Bayar (Hanya Subtotal Produk)
+  const totalPiutang = salesHistory
+    .filter(s => s.payment_status !== 'Lunas')
+    .reduce((acc, curr) => {
+      const subtotalBarang = (parseFloat(curr.total_price) || 0) - (parseFloat(curr.shipping_cost) || 0);
+      return acc + subtotalBarang;
+    }, 0);
 
   return (
     <div style={{ maxWidth: '600px', margin: '0 auto', padding: '24px 16px', fontFamily: '-apple-system, sans-serif' }}>
@@ -309,8 +398,9 @@ export default function SalesPage() {
         </button>
       </div>
 
+      {/* FORM INPUT PENJUALAN MANUAL */}
       <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
-        <h3 style={{ margin: '0 0 16px 0', fontSize: '15px', fontWeight: '700' }}>➕ Input Penjualan Baru</h3>
+        <h3 style={{ margin: '0 0 16px 0', fontSize: '15px', fontWeight: '700' }}>➕ Input Penjualan Manual (Offline)</h3>
         <form onSubmit={handleAddSale} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <input type="text" required placeholder="Nama Pembeli / Toko" value={customerName} onChange={(e) => setCustomerName(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
           <div style={{ display: 'flex', gap: '10px' }}>
@@ -333,6 +423,7 @@ export default function SalesPage() {
         {submitStatus && <p style={{ marginTop: '12px', fontSize: '12px', color: submitStatus.startsWith('❌') ? '#dc2626' : '#2563eb', textAlign: 'center', fontWeight: '600' }}>{submitStatus}</p>}
       </div>
 
+      {/* FILTER PERIODE */}
       <div style={{ backgroundColor: '#ffffff', padding: '16px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
         <h3 style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: '700' }}>🔍 Filter Periode Income</h3>
         <div style={{ marginBottom: '12px' }}>
@@ -352,8 +443,9 @@ export default function SalesPage() {
         </form>
       </div>
 
+      {/* KARTU STATISTIK INCOME (EKSKLUDING ONGKIR) */}
       <div style={{ backgroundColor: '#ffffff', padding: '16px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
-        <div style={{ backgroundColor: '#f8fafc', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+        <div style={{ backgroundColor: '#f8fafc', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
           
           <div style={{ gridColumn: 'span 2', paddingBottom: '8px', borderBottom: '1px dashed #cbd5e1' }}>
             <span style={{ fontSize: '10px', color: '#64748b', fontWeight: '600', display: 'block' }}>🏷️ Total Papan Terjual</span>
@@ -361,13 +453,22 @@ export default function SalesPage() {
           </div>
 
           <div>
-            <span style={{ fontSize: '10px', color: '#64748b', fontWeight: '600', display: 'block' }}>💵 Total Omzet Tercatat</span>
-            <strong style={{ fontSize: '14px', color: '#0f172a' }}>Rp {totalOmzetTotal.toLocaleString('id-ID')}</strong>
+            <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: '700', display: 'block' }}>💰 Keuntungan Murni (Lunas)</span>
+            <strong style={{ fontSize: '15px', color: '#16a34a' }}>Rp {totalKeuntunganLunas.toLocaleString('id-ID')}</strong>
+            <span style={{ fontSize: '9px', color: '#64748b', display: 'block', marginTop: '2px' }}>*Tidak termasuk ongkir</span>
           </div>
+
           <div>
-            <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: '600', display: 'block' }}>✅ Uang Masuk (Lunas)</span>
-            <strong style={{ fontSize: '14px', color: '#16a34a' }}>Rp {totalOmzetLunas.toLocaleString('id-ID')}</strong>
+            <span style={{ fontSize: '10px', color: '#64748b', fontWeight: '600', display: 'block' }}>🚚 Biaya Ongkir Ekspedisi</span>
+            <strong style={{ fontSize: '14px', color: '#475569' }}>Rp {totalOngkirCollected.toLocaleString('id-ID')}</strong>
+            <span style={{ fontSize: '9px', color: '#64748b', display: 'block', marginTop: '2px' }}>*Titipan ekspedisi</span>
           </div>
+
+          <div style={{ gridColumn: 'span 2', borderTop: '1px dashed #cbd5e1', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '11px', color: '#334155', fontWeight: '600' }}>💵 Total Kas Masuk Bruto:</span>
+            <strong style={{ fontSize: '13px', color: '#0f172a' }}>Rp {totalBrutoLunas.toLocaleString('id-ID')}</strong>
+          </div>
+
           {totalPiutang > 0 && (
             <div style={{ gridColumn: 'span 2', borderTop: '1px dashed #cbd5e1', paddingTop: '6px' }}>
               <span style={{ fontSize: '10px', color: '#dc2626', fontWeight: '600' }}>⏳ Belum Dilunasi / Piutang: </span>
@@ -376,6 +477,7 @@ export default function SalesPage() {
           )}
         </div>
 
+        {/* DAFTAR TRANSAKSI */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
           <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '700' }}>Riwayat Transaksi ({salesHistory.length})</h3>
           <button onClick={fetchData} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>🔄 Refresh</button>
@@ -385,51 +487,69 @@ export default function SalesPage() {
           <p style={{ textAlign: 'center', color: '#64748b', fontSize: '13px' }}>Memuat data...</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {salesHistory.map((sale) => (
-              <div key={sale.id} style={{ padding: '12px', borderRadius: '10px', border: '1px solid #f1f5f9', backgroundColor: '#f8fafc' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                  <strong style={{ fontSize: '14px' }}>{sale.customer_name}</strong>
-                  <span style={{ fontSize: '13px', fontWeight: '700', color: '#2563eb' }}>
-                    Rp {parseFloat(sale.total_price).toLocaleString('id-ID')}
-                  </span>
-                </div>
+            {salesHistory.map((sale) => {
+              const subtotalBarang = sale.total_price - sale.shipping_cost;
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: '#64748b' }}>
-                  <span>
-                    📅 {new Date(sale.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} | Qty: {sale.quantity} Pcs
-                  </span>
-                  
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    {editingSaleId === sale.id ? (
-                      <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                        <select value={selectedNewStatus} onChange={(e) => setSelectedNewStatus(e.target.value)} style={{ fontSize: '11px', padding: '2px 4px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                          <option value="Lunas">✅ Lunas</option>
-                          <option value="DP 50%">⏳ DP 50%</option>
-                          <option value="Belum Bayar">❌ Belum Bayar</option>
-                        </select>
-                        <button onClick={() => openUpdateStatusModal(sale)} style={{ padding: '2px 6px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '10px', fontWeight: '600', cursor: 'pointer' }}>Simpan (PIN)</button>
-                        <button onClick={() => setEditingSaleId(null)} style={{ padding: '2px 6px', backgroundColor: '#cbd5e1', color: '#334155', border: 'none', borderRadius: '4px', fontSize: '10px', cursor: 'pointer' }}>X</button>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                        <span style={{ padding: '2px 6px', borderRadius: '4px', backgroundColor: sale.payment_status === 'Lunas' ? '#dcfce7' : sale.payment_status === 'DP 50%' ? '#fef3c7' : '#fee2e2', color: sale.payment_status === 'Lunas' ? '#15803d' : sale.payment_status === 'DP 50%' ? '#b45309' : '#dc2626', fontWeight: '700' }}>
-                          {sale.payment_status}
+              return (
+                <div key={sale.id} style={{ padding: '12px', borderRadius: '10px', border: '1px solid #f1f5f9', backgroundColor: '#f8fafc' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <div>
+                      <strong style={{ fontSize: '14px' }}>{sale.customer_name}</strong>
+                      {sale.source === 'online' && (
+                        <span style={{ marginLeft: '6px', fontSize: '10px', backgroundColor: '#eff6ff', color: '#2563eb', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
+                          WEB ONLINE
                         </span>
-                        <button onClick={() => { setEditingSaleId(sale.id); setSelectedNewStatus(sale.payment_status); }} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '11px', fontWeight: '600', cursor: 'pointer', padding: 0 }}>
-                          ✏️ Edit Status
-                        </button>
-                      </div>
-                    )}
-
-                    <button onClick={() => openDeleteSaleModal(sale)} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '11px', fontWeight: '600', cursor: 'pointer', padding: 0 }}>
-                      🗑️ Hapus
-                    </button>
+                      )}
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <span style={{ fontSize: '13px', fontWeight: '700', color: '#16a34a', display: 'block' }}>
+                        Rp {subtotalBarang.toLocaleString('id-ID')}
+                      </span>
+                      {sale.shipping_cost > 0 && (
+                        <span style={{ fontSize: '10px', color: '#64748b' }}>
+                          + Ongkir: Rp {sale.shipping_cost.toLocaleString('id-ID')}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
 
-                {sale.notes && <p style={{ margin: '6px 0 0 0', fontSize: '11px', color: '#475569', fontStyle: 'italic' }}>📝 {sale.notes}</p>}
-              </div>
-            ))}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: '#64748b' }}>
+                    <span>
+                      📅 {new Date(sale.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} | Qty: {sale.quantity} Pcs
+                    </span>
+                    
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      {editingSaleId === sale.id ? (
+                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                          <select value={selectedNewStatus} onChange={(e) => setSelectedNewStatus(e.target.value)} style={{ fontSize: '11px', padding: '2px 4px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                            <option value="Lunas">✅ Lunas</option>
+                            <option value="DP 50%">⏳ DP 50%</option>
+                            <option value="Belum Bayar">❌ Belum Bayar</option>
+                          </select>
+                          <button onClick={() => openUpdateStatusModal(sale)} style={{ padding: '2px 6px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '10px', fontWeight: '600', cursor: 'pointer' }}>Simpan (PIN)</button>
+                          <button onClick={() => setEditingSaleId(null)} style={{ padding: '2px 6px', backgroundColor: '#cbd5e1', color: '#334155', border: 'none', borderRadius: '4px', fontSize: '10px', cursor: 'pointer' }}>X</button>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                          <span style={{ padding: '2px 6px', borderRadius: '4px', backgroundColor: sale.payment_status === 'Lunas' ? '#dcfce7' : sale.payment_status === 'DP 50%' ? '#fef3c7' : '#fee2e2', color: sale.payment_status === 'Lunas' ? '#15803d' : sale.payment_status === 'DP 50%' ? '#b45309' : '#dc2626', fontWeight: '700' }}>
+                            {sale.payment_status}
+                          </span>
+                          <button onClick={() => { setEditingSaleId(sale.id); setSelectedNewStatus(sale.payment_status); }} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '11px', fontWeight: '600', cursor: 'pointer', padding: 0 }}>
+                            ✏️ Edit Status
+                          </button>
+                        </div>
+                      )}
+
+                      <button onClick={() => openDeleteSaleModal(sale)} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '11px', fontWeight: '600', cursor: 'pointer', padding: 0 }}>
+                        🗑️ Hapus
+                      </button>
+                    </div>
+                  </div>
+
+                  {sale.notes && <p style={{ margin: '6px 0 0 0', fontSize: '11px', color: '#475569', fontStyle: 'italic' }}>📝 {sale.notes}</p>}
+                </div>
+              );
+            })}
 
             {salesHistory.length === 0 && <p style={{ textAlign: 'center', fontSize: '13px', color: '#94a3b8' }}>Tidak ada transaksi pada periode ini.</p>}
           </div>
