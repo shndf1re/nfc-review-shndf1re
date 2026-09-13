@@ -27,22 +27,22 @@ export async function POST(req) {
       });
     }
 
-    // 2. LOGIKA BERAT (1-50 pcs = 1000g / 1 kg)
+    // 2. HITUNG BERAT (1-50 Pcs = 1000g / 1 kg)
     const parsedQty = Math.max(1, parseInt(qty, 10) || 1);
     const weightGrams = Math.ceil(parsedQty / 50) * 1000;
 
     const apiKey = process.env.BITESHIP_API_KEY;
     if (!apiKey) {
       return NextResponse.json({ 
-        error: 'Sistem ongkir Biteship belum terhubung. Konfigurasi API Key di Vercel terlebih dahulu.' 
+        error: 'API Key Biteship belum diset di Vercel.' 
       }, { status: 500 });
     }
 
     if (!postalCodeNum || isNaN(postalCodeNum)) {
-      return NextResponse.json({ error: 'Kode Pos tidak valid.' }, { status: 400 });
+      return NextResponse.json({ error: 'Kode Pos tidak valid. Harap pilih kecamatan yang sesuai.' }, { status: 400 });
     }
 
-    // 3. PANGGIL API BITESHIP SANGAT PRESISI (NO FALLBACK)
+    // 3. PANGGIL API BITESHIP (FORMAT ARRAY KURIR RESMI)
     const response = await fetch('https://api.biteship.com/v1/rates/couriers', {
       method: 'POST',
       headers: {
@@ -52,7 +52,7 @@ export async function POST(req) {
       body: JSON.stringify({
         origin_postal_code: 75125, // Samarinda Ulu
         destination_postal_code: postalCodeNum,
-        couriers: 'jne,sicepat,pos,anteraja',
+        couriers: ['jne', 'sicepat', 'pos', 'jnt'],
         items: [
           {
             name: 'Papan Akrilik NFC Google Review',
@@ -69,7 +69,7 @@ export async function POST(req) {
 
     if (!response.ok || !data.pricing || data.pricing.length === 0) {
       return NextResponse.json({ 
-        error: data.message || `Tarif pengiriman resmi dari Biteship tidak ditemukan untuk Kode Pos ${postalCodeNum}. Mohon periksa kembali alamat Anda.` 
+        error: data.message || `Tarif tidak ditemukan untuk Kode Pos ${postalCodeNum}. Pastikan API Key Biteship kamu aktif (Production/Test).` 
       }, { status: 400 });
     }
 
@@ -90,6 +90,6 @@ export async function POST(req) {
     });
 
   } catch (err) {
-    return NextResponse.json({ error: 'Gagal menghubungkan ke layanan kurir: ' + err.message }, { status: 500 });
+    return NextResponse.json({ error: 'Server Error: ' + err.message }, { status: 500 });
   }
 }
