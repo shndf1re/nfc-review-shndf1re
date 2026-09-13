@@ -9,14 +9,26 @@ const supabase = createClient(
 );
 
 const snap = new midtransClient.Snap({
-  isProduction: false,
+  isProduction: false, // Set ke true jika sudah live production Midtrans
   serverKey: process.env.MIDTRANS_SERVER_KEY || '',
 });
 
 export async function POST(req) {
   try {
     const body = await req.json();
-    const { customerName, customerPhone, shippingAddress, storeName, targetUrl, qty, courierName, shippingCost, destinationCity, postalCode } = body;
+    const {
+      customerName,
+      customerPhone,
+      shippingAddress,
+      storeName,
+      targetUrl,
+      qty,
+      courierName,
+      shippingCost,
+      destinationCity,
+      postalCode,
+      isExpiredPromo // Diterima dari client (status timer 30 menit)
+    } = body;
 
     const cleanName = String(customerName || '').trim();
     const cleanPhone = String(customerPhone || '').trim();
@@ -33,7 +45,13 @@ export async function POST(req) {
       );
     }
 
-    const PRICE_PER_ITEM = SITE_CONFIG.pricing?.discountPrice || 60000;
+    // === VALIDASI HARGA DI SISI SERVER ===
+    const PROMO_PRICE = SITE_CONFIG.pricing?.discountPrice || 60000;
+    const NORMAL_PRICE = SITE_CONFIG.pricing?.normalPrice || 150000;
+
+    // Tentukan harga satuan berdasarkan kondisi promo (tanpa percaya input total dari F12 client)
+    const PRICE_PER_ITEM = isExpiredPromo ? NORMAL_PRICE : PROMO_PRICE;
+    
     const itemsTotal = parsedQty * PRICE_PER_ITEM;
     const totalPrice = itemsTotal + parsedShippingCost;
     const orderId = `NFC-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -68,7 +86,7 @@ export async function POST(req) {
         id: 'PAPAN-NFC-AKRILIK',
         price: PRICE_PER_ITEM,
         quantity: parsedQty,
-        name: 'Papan Akrilik NFC Google Review',
+        name: `Papan Akrilik NFC (${isExpiredPromo ? 'Harga Normal' : 'Promo'})`,
       },
     ];
 
