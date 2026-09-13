@@ -8,7 +8,7 @@ export async function POST(req) {
     const cleanDistrict = String(destinationDistrictName || '').trim().toLowerCase();
     const postalCodeNum = parseInt(destinationPostalCode, 10);
 
-    // 1. CEK GRATIS ONGKIR SAMARINDA
+    // 1. GRATIS ONGKIR SAMARINDA (KOTA / KECAMATAN / KODEPOS)
     const isSamarinda = cleanCity.includes('samarinda') || cleanDistrict.includes('samarinda') || (postalCodeNum >= 75000 && postalCodeNum <= 75258);
 
     if (isSamarinda) {
@@ -32,17 +32,14 @@ export async function POST(req) {
     const weightGrams = Math.ceil(parsedQty / 50) * 1000;
 
     const apiKey = process.env.BITESHIP_API_KEY;
+
     if (!apiKey) {
       return NextResponse.json({ 
-        error: 'API Key Biteship belum diset di Vercel.' 
+        error: 'BITESHIP_API_KEY belum diset di Vercel.' 
       }, { status: 500 });
     }
 
-    if (!postalCodeNum || isNaN(postalCodeNum)) {
-      return NextResponse.json({ error: 'Kode Pos tidak valid. Harap pilih kecamatan yang sesuai.' }, { status: 400 });
-    }
-
-    // 3. PANGGIL API BITESHIP (FORMAT ARRAY KURIR RESMI)
+    // 3. PANGGIL API BITESHIP RATES
     const response = await fetch('https://api.biteship.com/v1/rates/couriers', {
       method: 'POST',
       headers: {
@@ -51,12 +48,11 @@ export async function POST(req) {
       },
       body: JSON.stringify({
         origin_postal_code: 75125, // Samarinda Ulu
-        destination_postal_code: postalCodeNum,
-        couriers: ['jne', 'sicepat', 'pos', 'jnt'],
+        destination_postal_code: postalCodeNum || 80232,
+        couriers: 'jne,sicepat,pos,jnt',
         items: [
           {
             name: 'Papan Akrilik NFC Google Review',
-            description: 'Produk Akrilik',
             value: 60000 * parsedQty,
             weight: weightGrams,
             quantity: parsedQty,
@@ -69,11 +65,11 @@ export async function POST(req) {
 
     if (!response.ok || !data.pricing || data.pricing.length === 0) {
       return NextResponse.json({ 
-        error: data.message || `Tarif tidak ditemukan untuk Kode Pos ${postalCodeNum}. Pastikan API Key Biteship kamu aktif (Production/Test).` 
+        error: data.message || `API Biteship terhubung tetapi tidak menemukan kurir aktif untuk Kode Pos ${destinationPostalCode}. Pastikan Kurir (JNE/SiCepat/POS) sudah diaktifkan di Dashboard Biteship.` 
       }, { status: 400 });
     }
 
-    // Format Opsi Kurir Resmi Biteship
+    // Format Opsi Kurir Resmi dari Biteship
     const shippingResults = data.pricing.map((item) => ({
       courierCode: String(item.courier_code || '').toUpperCase(),
       courierName: `${item.courier_name} (${item.courier_service_name || item.service_type || 'Reguler'})`,
