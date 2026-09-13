@@ -37,12 +37,11 @@ export async function POST(req) {
     }
 
     const parsedQty = Math.max(1, parseInt(qty, 10) || 1);
+    // Berat: 1-50 Pcs = 1000g (1 kg)
     const weightGrams = Math.ceil(parsedQty / 50) * 1000;
 
-    // STEP A: ORIGIN AREA ID (SAMARINDA ULU) & LOOKUP DESTINATION AREA ID
-    let originAreaId = 'IDNP19IDCD700IDD46977'; // Area ID Samarinda Ulu
+    // STEP A: AMBIL AREA ID TUJUAN DARI MAPS BITESHIP
     let destinationAreaId = null;
-
     const searchQuery = `${cleanDistrict} ${cleanCity}`;
 
     try {
@@ -57,10 +56,10 @@ export async function POST(req) {
       console.error('Dest area search error:', e);
     }
 
-    // STEP B: SUSUN PAYLOAD LENGKAP PARAMETER BITESHIP
+    // STEP B: PAYLOAD DENGAN KURIR SPESIFIK JNE, J&T, SICEPAT
     const payload = {
-      origin_area_id: originAreaId,
-      couriers: 'jne,jnt,sicepat,pos',
+      origin_postal_code: 75125, // Samarinda Ulu
+      couriers: 'jne,jnt,sicepat',
       items: [
         {
           name: 'Papan Akrilik NFC Google Review',
@@ -77,14 +76,13 @@ export async function POST(req) {
       payload.destination_area_id = destinationAreaId;
     } else if (postalCodeNum && !isNaN(postalCodeNum)) {
       payload.destination_postal_code = postalCodeNum;
-      payload.origin_postal_code = 75125;
     } else {
       return NextResponse.json({ 
         error: `Area tujuan (${cleanDistrict}, ${cleanCity}) tidak ditemukan di sistem Biteship.` 
       }, { status: 400 });
     }
 
-    // STEP C: REQUEST KE BITESHIP RATES
+    // STEP C: REQUEST KE API RATES BITESHIP
     const rateRes = await fetch('https://api.biteship.com/v1/rates/couriers', {
       method: 'POST',
       headers: {
