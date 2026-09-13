@@ -8,7 +8,7 @@ export default function BeliPage() {
 
   // === 1. COUNTDOWN TIMER PROMO PERSISTEN (30 Menit) ===
   const PROMO_PRICE = 60000;   // Harga Promo per Pcs
-  const NORMAL_PRICE = 150000; // Harga Normal per Pcs (Setel habis 30 min)
+  const NORMAL_PRICE = 150000; // Harga Normal per Pcs (setelah 30 menit)
 
   const [timeLeft, setTimeLeft] = useState('30:00');
   const [isExpired, setIsExpired] = useState(false);
@@ -54,7 +54,6 @@ export default function BeliPage() {
 
     return () => clearInterval(timerInterval);
   }, []);
-
 
   // === STEP 1: DATA PEMBELI ===
   const [buyerName, setBuyerName] = useState('');
@@ -482,7 +481,7 @@ export default function BeliPage() {
         <div style={styles.topHeader}>
           <a href="/" style={styles.backLink}>← Utama</a>
           <div style={styles.badgePromo}>
-            {isExpired ? '️ Waktu Promo Habis' : '🔥 PROMO SPESIAL 60% OFF'}
+            {isExpired ? '⚠️ Waktu Promo Habis' : '🔥 PROMO SPESIAL 60% OFF'}
           </div>
         </div>
 
@@ -735,24 +734,8 @@ export default function BeliPage() {
           </div>
         )}
 
-        {/* TOMBOL TESTING DENGAN TULISAN KECIL KHUSUS UNTUK ADMIN */}
-        <div style={{ textAlign: 'center', marginTop: '24px' }}>
-          <button
-            onClick={handleResetTestTimer}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: '#94a3b8',
-              fontSize: '11px',
-              textDecoration: 'underline',
-              cursor: 'pointer'
-            }}
-          >
-            🔄 Reset Timer Promo 30 Menit (Khusus Testing)
-          </button>
-        </div>
-
       </div>
     </div>
   );
 }
+
