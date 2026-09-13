@@ -126,7 +126,8 @@ export default function SalesPage() {
 
     // Format & Gabungkan Data
     const formattedSales = (salesData || []).map(s => ({
-      id: s.id,
+      id: s.id,               // ID Tampilan
+      primary_id: s.id,       // HANYA ID asli tabel sales (Integer)
       source: 'manual',
       customer_name: s.customer_name,
       quantity: parseInt(s.quantity, 10) || 1,
@@ -146,8 +147,8 @@ export default function SalesPage() {
       }
 
       return {
-        id: o.order_id || o.id,
-        raw_id: o.id,
+        id: o.order_id || o.id, // Nomor transaksi untuk tampilan
+        primary_id: o.id,       // HANYA UUID asli tabel orders! (UUID Supabase)
         order_id: o.order_id,
         source: 'online',
         customer_name: o.customer_name || 'Pembeli Online',
@@ -269,11 +270,6 @@ export default function SalesPage() {
     setModalState({ isOpen: true, actionType: 'updateStatus', targetData: sale, stockInput: '', pinInput: '', errorMsg: '', isVerifying: false });
   };
 
-  const isUuidFormat = (str) => {
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    return uuidRegex.test(str);
-  };
-
   const handleModalSubmit = async (e) => {
     e.preventDefault();
     setModalState(prev => ({ ...prev, isVerifying: true, errorMsg: '' }));
@@ -320,35 +316,26 @@ export default function SalesPage() {
       let delErr = null;
 
       if (isOnline) {
-        // Coba 1: Hapus berdasarkan order_id (string custom)
-        if (sale.order_id || sale.id) {
-          const searchOrderVal = String(sale.order_id || sale.id);
-          const res1 = await supabase.from('orders').delete().eq('order_id', searchOrderVal).select();
-          if (res1.data && res1.data.length > 0) {
-            deletedData = res1.data;
-          } else {
-            delErr = res1.error;
-          }
-        }
-
-        // Coba 2: Hapus berdasarkan id (HANYA jika nilainya format UUID valid)
-        if (!deletedData && sale.raw_id && isUuidFormat(sale.raw_id)) {
-          const res2 = await supabase.from('orders').delete().eq('id', sale.raw_id).select();
-          if (res2.data && res2.data.length > 0) {
-            deletedData = res2.data;
-            delErr = null;
-          } else {
-            delErr = res2.error;
-          }
-        }
+        // Hapus Web Online PASTI menggunakan UUID primary key tabel orders
+        const res = await supabase
+          .from('orders')
+          .delete()
+          .eq('id', sale.primary_id)
+          .select();
+        deletedData = res.data;
+        delErr = res.error;
       } else {
-        // Untuk transaksi manual offline (tabel sales)
-        const res = await supabase.from('sales').delete().eq('id', Number(sale.id)).select();
+        // Hapus Offline PASTI menggunakan ID BigInt tabel sales
+        const res = await supabase
+          .from('sales')
+          .delete()
+          .eq('id', sale.primary_id)
+          .select();
         deletedData = res.data;
         delErr = res.error;
       }
 
-      if (delErr && !deletedData) {
+      if (delErr) {
         setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Error Supabase: ' + delErr.message }));
         return;
       }
@@ -358,7 +345,7 @@ export default function SalesPage() {
         return;
       }
 
-      // HANYA JIKA BERHASIL TERHAPUS DARI DB, KEMBALIKAN STOK
+      // HANYA JIKA BERHASIL TERHAPUS DARI DATABASE, KEMBALIKAN STOK AKRILIK
       const restoredStock = acrylicStock + (parseInt(sale.quantity, 10) || 1);
       await supabase.from('inventory').update({ stock_quantity: restoredStock }).eq('id', targetId);
 
@@ -366,16 +353,11 @@ export default function SalesPage() {
       const sale = modalState.targetData;
       const isOnline = sale.source === 'online';
       
-      let statusErr = null;
-
-      if (isOnline) {
-        const searchOrderVal = String(sale.order_id || sale.id);
-        const res1 = await supabase.from('orders').update({ payment_status: selectedNewStatus }).eq('order_id', searchOrderVal);
-        statusErr = res1.error;
-      } else {
-        const res2 = await supabase.from('sales').update({ payment_status: selectedNewStatus }).eq('id', Number(sale.id));
-        statusErr = res2.error;
-      }
+      const targetTable = isOnline ? 'orders' : 'sales';
+      const { error: statusErr } = await supabase
+        .from(targetTable)
+        .update({ payment_status: selectedNewStatus })
+        .eq('id', sale.primary_id);
       
       if (statusErr) {
         setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Gagal Status: ' + statusErr.message }));
@@ -528,7 +510,7 @@ export default function SalesPage() {
               const subtotalBarang = sale.total_price - sale.shipping_cost;
 
               return (
-                <div key={`${sale.source}-${sale.id}`} style={{ padding: '12px', borderRadius: '10px', border: '1px solid #f1f5f9', backgroundColor: '#f8fafc' }}>
+                <div key={`${sale.source}-${sale.primary_id}`} style={{ padding: '12px', borderRadius: '10px', border: '1px solid #f1f5f9', backgroundColor: '#f8fafc' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                     <div>
                       <strong style={{ fontSize: '14px' }}>{sale.customer_name}</strong>
@@ -556,7 +538,7 @@ export default function SalesPage() {
                     </span>
                     
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                      {editingSaleId === sale.id ? (
+                      {editingSaleId === sale.primary_id ? (
                         <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                           <select value={selectedNewStatus} onChange={(e) => setSelectedNewStatus(e.target.value)} style={{ fontSize: '11px', padding: '2px 4px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
                             <option value="Lunas">✅ Lunas</option>
@@ -571,7 +553,7 @@ export default function SalesPage() {
                           <span style={{ padding: '2px 6px', borderRadius: '4px', backgroundColor: sale.payment_status === 'Lunas' ? '#dcfce7' : sale.payment_status === 'DP 50%' ? '#fef3c7' : '#fee2e2', color: sale.payment_status === 'Lunas' ? '#15803d' : sale.payment_status === 'DP 50%' ? '#b45309' : '#dc2626', fontWeight: '700' }}>
                             {sale.payment_status}
                           </span>
-                          <button onClick={() => { setEditingSaleId(sale.id); setSelectedNewStatus(sale.payment_status); }} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '11px', fontWeight: '600', cursor: 'pointer', padding: 0 }}>
+                          <button onClick={() => { setEditingSaleId(sale.primary_id); setSelectedNewStatus(sale.payment_status); }} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '11px', fontWeight: '600', cursor: 'pointer', padding: 0 }}>
                             ✏️ Edit Status
                           </button>
                         </div>
