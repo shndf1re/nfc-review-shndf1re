@@ -105,7 +105,7 @@ export default function OrderPage() {
         body: JSON.stringify({
           destinationCityName: destinationCity,
           destinationPostalCode: postalCode,
-          weightGrams: orderQty * 500,
+          qty: orderQty,
         }),
       });
 
@@ -116,7 +116,7 @@ export default function OrderPage() {
         setShippingMessage('🎉 Selamat! Alamat Samarinda mendapatkan Gratis Ongkir.');
         setSelectedShipping({ cost: 0, courierName: 'Kurir Lokal Samarinda (Free)' });
       } else {
-        setShippingMessage(`📍 Berhasil mengambil tarif ekspedisi. Silakan pilih kurir:`);
+        setShippingMessage(`📍 Berhasil mengambil opsi kurir (${data.calculatedWeightKg || 1} kg):`);
         setShippingOptions(data.results);
         if (data.results.length > 0) {
           setSelectedShipping({ cost: data.results[0].cost, courierName: data.results[0].courierName });
@@ -143,7 +143,7 @@ export default function OrderPage() {
       if (res.ok) {
         localStorage.removeItem('active_nfc_order_id');
         setActiveOrder(null);
-        alert('Pesanan dibatalkan.');
+        alert('Pesanan berhasil dibatalkan.');
       }
     } catch (err) {
       alert('Gagal membatalkan pesanan.');
