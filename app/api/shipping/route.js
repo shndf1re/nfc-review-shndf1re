@@ -39,21 +39,7 @@ export async function POST(req) {
     const parsedQty = Math.max(1, parseInt(qty, 10) || 1);
     const weightGrams = Math.ceil(parsedQty / 50) * 1000;
 
-    // STEP A: CARI ORIGIN AREA ID (SAMARINDA ULU)
-    let originAreaId = 'IDNP19IDCD700IDD46977'; // Default ID Samarinda Ulu
-    try {
-      const originRes = await fetch(`https://api.biteship.com/v1/maps/areas?countries=ID&input=Samarinda%20Ulu`, {
-        headers: { 'Authorization': `Bearer ${apiKey}` },
-      });
-      const originData = await originRes.json();
-      if (originData.areas && originData.areas.length > 0) {
-        originAreaId = originData.areas[0].id;
-      }
-    } catch (e) {
-      console.error('Origin area search error:', e);
-    }
-
-    // STEP B: CARI DESTINATION AREA ID
+    // 2. AMBIL AREA ID TUJUAN DARI MAPS BITESHIP
     let destinationAreaId = null;
     const searchQuery = `${cleanDistrict} ${cleanCity}`;
 
@@ -69,13 +55,15 @@ export async function POST(req) {
       console.error('Dest area search error:', e);
     }
 
-    // STEP C: SUSUN PAYLOAD HANYA DENGAN PARAMETER YANG DITERIMA BITESHIP
+    // 3. SUSUN PAYLOAD RESMI BITESHIP
+    // Menggunakan origin_postal_code 75125 (Samarinda Ulu) & destination_area_id hasil Maps
     const payload = {
-      origin_area_id: originAreaId,
+      origin_postal_code: 75125,
       couriers: 'jne,jnt,sicepat,pos',
       items: [
         {
           name: 'Papan Akrilik NFC Google Review',
+          description: 'Papan Akrilik',
           value: Number(60000 * parsedQty),
           weight: Number(weightGrams),
           quantity: Number(parsedQty),
@@ -89,11 +77,11 @@ export async function POST(req) {
       payload.destination_postal_code = postalCodeNum;
     } else {
       return NextResponse.json({ 
-        error: `Area tujuan (${cleanDistrict}, ${cleanCity}) tidak ditemukan di Biteship.` 
+        error: `Area tujuan (${cleanDistrict}, ${cleanCity}) tidak ditemukan di sistem Biteship.` 
       }, { status: 400 });
     }
 
-    // STEP D: REQUEST DENGAN HEADER RESMI BITESHIP
+    // 4. REQUEST KE BITESHIP RATES
     const rateRes = await fetch('https://api.biteship.com/v1/rates/couriers', {
       method: 'POST',
       headers: {
@@ -106,9 +94,10 @@ export async function POST(req) {
     const rateData = await rateRes.json();
 
     if (!rateRes.ok || !rateData.pricing || rateData.pricing.length === 0) {
+      const bErrorMsg = rateData.error || rateData.message || 'Tidak ada respons tarif dari kurir Biteship.';
       return NextResponse.json({ 
-        error: rateData.message || `Biteship Error (${rateRes.status}): Gagal mengambil harga dari kurir.` 
-      }, { status: 400 });
+        error: `Biteship Response: ${bErrorMsg}` 
+      }, { status: rateRes.status || 400 });
     }
 
     // Format Opsi Kurir Murni Real-Time
