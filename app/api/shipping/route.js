@@ -35,11 +35,15 @@ export async function POST(req) {
     }
 
     const parsedQty = Math.max(1, parseInt(qty, 10) || 1);
-    const weightGrams = Math.ceil(parsedQty / 50) * 1000;
+    
+    // PERBAIKAN RUMUS BERAT: 1 Pcs Akrilik = ~200 gram.
+    // Jika order 1-5 Pcs, total berat di bawah 1.000 gram tetap dihitung 1 kg.
+    // Ongkir Samarinda -> Balikpapan normal (~Rp 12.000 - Rp 15.000)
+    const weightGrams = Math.max(1000, Math.ceil((parsedQty * 200) / 1000) * 1000);
 
     // 2. PAYLOAD STABIL (MURNI KODE POS)
     const payload = {
-      origin_postal_code: 75125,              // Kode Pos Gudang Samarinda Ulu
+      origin_postal_code: 75125, // Kode Pos Samarinda Ulu
       destination_postal_code: postalCodeNum,
       couriers: 'jne,jnt,sicepat',
       items: [
@@ -66,9 +70,7 @@ export async function POST(req) {
 
     if (!rateRes.ok || !rateData.pricing || rateData.pricing.length === 0) {
       const errorMsg = rateData.error || rateData.message || 'Rute pengiriman belum didukung oleh kurir.';
-      return NextResponse.json({ 
-        error: `Biteship: ${errorMsg}` 
-      }, { status: 400 });
+      return NextResponse.json({ error: `Biteship: ${errorMsg}` }, { status: 400 });
     }
 
     // 4. FORMAT HASIL & FILTER MEMBUANG JNE TRUCKING / KARGO
@@ -76,7 +78,6 @@ export async function POST(req) {
       .filter((item) => {
         const serviceName = String(item.courier_service_name || '').toLowerCase();
         const serviceCode = String(item.courier_service_code || '').toLowerCase();
-        // Membuang layanan kargo/trucking
         return !serviceName.includes('trucking') && !serviceCode.includes('jtr') && !serviceName.includes('cargo');
       })
       .map((item) => ({
