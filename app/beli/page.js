@@ -5,6 +5,23 @@ import { useState, useEffect } from 'react';
 export default function BeliPage() {
   const [step, setStep] = useState(1);
 
+  // Countdown Timer State (15 Menit / 900 Detik)
+  const [timeLeft, setTimeLeft] = useState(15 * 60);
+
+  useEffect(() => {
+    if (timeLeft <= 0) return;
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => prev - 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [timeLeft]);
+
+  const formatTime = (seconds) => {
+    const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+    const s = (seconds % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
   // Step 1: Data Pembeli
   const [buyerName, setBuyerName] = useState('');
   const [waNumber, setWaNumber] = useState('');
@@ -132,7 +149,7 @@ export default function BeliPage() {
     setStep(2);
   };
 
-  // Inline CSS Stylesheet Pas Presisi dengan Layout Proyek Kamu
+  // Styling Inline Murni
   const styles = {
     pageContainer: {
       minHeight: '100vh',
@@ -317,9 +334,10 @@ export default function BeliPage() {
           <div style={styles.badgePromo}>🔥 PROMO SPESIAL 60% OFF</div>
         </div>
 
+        {/* Live Countdown Timer */}
         <div style={styles.timerBanner}>
           <span style={{ fontWeight: '600' }}>⏰ Promo Berakhir Dalam:</span>
-          <span style={{ fontWeight: 'bold' }}>14:28</span>
+          <span style={{ fontWeight: 'bold' }}>{formatTime(timeLeft)}</span>
         </div>
 
         {/* Step Indicator */}
