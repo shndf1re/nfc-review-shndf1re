@@ -108,7 +108,7 @@ export default function SalesPage() {
 
     const { data: salesData } = await querySales;
 
-    // 3. Fetch Data Transaksi Web dari Tabel 'orders' (Jika ada)
+    // 3. Fetch Data Transaksi Web dari Tabel 'orders'
     let queryOrders = supabase.from('orders').select('*').order('created_at', { ascending: false });
     if (startDate && endDate) {
       queryOrders = queryOrders.gte('created_at', `${startDate}T00:00:00`).lte('created_at', `${endDate}T23:59:59`);
@@ -124,14 +124,14 @@ export default function SalesPage() {
 
     const { data: ordersData } = await queryOrders;
 
-    // Format & Gabungkan Data dari kedua tabel
+    // Format & Gabungkan Data
     const formattedSales = (salesData || []).map(s => ({
       id: s.id,
       source: 'manual',
       customer_name: s.customer_name,
       quantity: parseInt(s.quantity, 10) || 1,
       total_price: parseFloat(s.total_price) || 0,
-      shipping_cost: parseFloat(s.shipping_cost) || 0, // Ongkir manual (default 0)
+      shipping_cost: parseFloat(s.shipping_cost) || 0,
       payment_status: s.payment_status || 'Lunas',
       notes: s.notes,
       created_at: s.created_at
@@ -151,7 +151,7 @@ export default function SalesPage() {
         customer_name: o.customer_name || 'Pembeli Online',
         quantity: parseInt(o.quantity, 10) || 1,
         total_price: parseFloat(o.total_price) || 0,
-        shipping_cost: parseFloat(o.shipping_cost) || 0, // Ongkir dari Biteship
+        shipping_cost: parseFloat(o.shipping_cost) || 0,
         payment_status: mappedStatus,
         notes: o.courier ? `Kurir: ${o.courier}` : 'Order Web',
         created_at: o.created_at
@@ -213,7 +213,7 @@ export default function SalesPage() {
         customer_name: customerName,
         quantity: qtyNumber,
         total_price: priceNumber,
-        shipping_cost: 0, // Penjualan manual dianggap tanpa ongkir ekspedisi
+        shipping_cost: 0,
         device_id: deviceId || null,
         payment_status: paymentStatus,
         notes: notes || null
@@ -311,9 +311,12 @@ export default function SalesPage() {
 
     } else if (modalState.actionType === 'delete') {
       const sale = modalState.targetData;
+      
+      // Tentukan tabel asal data berdasarkan sumbernya
       const targetTable = sale.source === 'online' ? 'orders' : 'sales';
       const idCol = sale.source === 'online' ? 'order_id' : 'id';
 
+      // Hapus data secara presisi berdasarkan tabel aslinya
       const { error: delErr } = await supabase.from(targetTable).delete().eq(idCol, sale.id);
       
       if (delErr) {
@@ -321,6 +324,7 @@ export default function SalesPage() {
         return;
       }
 
+      // Kembalikan stok akrilik
       const restoredStock = acrylicStock + (parseInt(sale.quantity, 10) || 1);
       await supabase.from('inventory').update({ stock_quantity: restoredStock }).eq('id', targetId);
 
@@ -345,17 +349,13 @@ export default function SalesPage() {
     fetchData();
   };
 
-  // =========================================================================
-  // RUMUS PERHITUNGAN KEUNTUNGAN MURNI (EKSKLUDING ONGKIR EKSPEDISI)
-  // =========================================================================
+  // RUMUS STATISTIK
   const totalPapanTerjual = salesHistory.reduce((acc, curr) => acc + (parseInt(curr.quantity, 10) || 0), 0);
   
-  // Total Biaya Ongkir Ekspedisi
   const totalOngkirCollected = salesHistory
     .filter(s => s.payment_status === 'Lunas')
     .reduce((acc, curr) => acc + (parseFloat(curr.shipping_cost) || 0), 0);
 
-  // Keuntungan Murni Penjualan Produk (Total Bayar dikurangi Ongkir)
   const totalKeuntunganLunas = salesHistory
     .filter(s => s.payment_status === 'Lunas')
     .reduce((acc, curr) => {
@@ -363,10 +363,8 @@ export default function SalesPage() {
       return acc + subtotalBarang;
     }, 0);
 
-  // Total Kas Masuk Bruto (Produk + Ongkir)
   const totalBrutoLunas = totalKeuntunganLunas + totalOngkirCollected;
 
-  // Total Piutang / Belum Bayar (Hanya Subtotal Produk)
   const totalPiutang = salesHistory
     .filter(s => s.payment_status !== 'Lunas')
     .reduce((acc, curr) => {
@@ -398,7 +396,7 @@ export default function SalesPage() {
         </button>
       </div>
 
-      {/* FORM INPUT PENJUALAN MANUAL */}
+      {/* FORM INPUT MANUAL */}
       <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
         <h3 style={{ margin: '0 0 16px 0', fontSize: '15px', fontWeight: '700' }}>➕ Input Penjualan Manual (Offline)</h3>
         <form onSubmit={handleAddSale} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -443,7 +441,7 @@ export default function SalesPage() {
         </form>
       </div>
 
-      {/* KARTU STATISTIK INCOME (EKSKLUDING ONGKIR) */}
+      {/* KARTU STATISTIK */}
       <div style={{ backgroundColor: '#ffffff', padding: '16px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
         <div style={{ backgroundColor: '#f8fafc', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
           
@@ -556,40 +554,7 @@ export default function SalesPage() {
         )}
       </div>
 
-      {/* MODAL WARNING STOK TIPIS (WHATSAPP ALERT) */}
-      {waAlertModal.isOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '16px' }}>
-          <div style={{ width: '100%', maxWidth: '360px', backgroundColor: '#ffffff', borderRadius: '20px', padding: '24px', textAlign: 'center', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
-            <div style={{ width: '56px', height: '56px', backgroundColor: '#fef2f2', color: '#ef4444', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', marginBottom: '12px' }}>
-              ⚠️
-            </div>
-            <h3 style={{ margin: '0 0 8px 0', fontSize: '18px', fontWeight: '800', color: '#0f172a' }}>Peringatan Stok Menipis!</h3>
-            <p style={{ margin: '0 0 20px 0', fontSize: '13px', color: '#475569', lineHeight: '1.5' }}>
-              Sisa stok Papan Akrilik saat ini tinggal <strong>{waAlertModal.stockLeft} pcs</strong>.
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <a
-                href={waAlertModal.waUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => setWaAlertModal({ isOpen: false, stockLeft: 0, waUrl: '' })}
-                style={{ width: '100%', padding: '12px', backgroundColor: '#16a34a', color: '#ffffff', borderRadius: '12px', fontSize: '13px', fontWeight: '700', textDecoration: 'none', boxSizing: 'border-box' }}
-              >
-                💬 Kirim Laporan via WA
-              </a>
-              <button
-                onClick={() => setWaAlertModal({ isOpen: false, stockLeft: 0, waUrl: '' })}
-                style={{ width: '100%', padding: '10px', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '12px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}
-              >
-                Tutup
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL PIN & UPDATE STOK */}
+      {/* MODAL PIN & HAPUS / UPDATE */}
       {modalState.isOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '16px' }}>
           <div style={{ width: '100%', maxWidth: '360px', backgroundColor: '#ffffff', borderRadius: '16px', padding: '24px', textAlign: 'center' }}>
