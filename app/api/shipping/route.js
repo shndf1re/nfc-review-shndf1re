@@ -36,27 +36,27 @@ export async function POST(req) {
 
     const parsedQty = Math.max(1, parseInt(qty, 10) || 1);
     
-    // PERBAIKAN RUMUS BERAT: 1 Pcs Akrilik = ~200 gram.
-    // Jika order 1-5 Pcs, total berat di bawah 1.000 gram tetap dihitung 1 kg.
-    // Ongkir Samarinda -> Balikpapan normal (~Rp 12.000 - Rp 15.000)
-    const weightGrams = Math.max(1000, Math.ceil((parsedQty * 200) / 1000) * 1000);
+    // RUMUS BERAT: Setiap kelipatan 20 pcs = 1 kg (1.000 gram)
+    // 1 - 20 pcs = 1.000g (1 kg)
+    // 21 - 40 pcs = 2.000g (2 kg)
+    const weightGrams = Math.ceil(parsedQty / 20) * 1000;
 
-    // 2. PAYLOAD STABIL (MURNI KODE POS)
+    // PAYLOAD BITESHIP: quantity di-set 1 agar Biteship tidak mengalikan ongkir dengan pcs
     const payload = {
-      origin_postal_code: 75125, // Kode Pos Samarinda Ulu
+      origin_postal_code: 75125, // Samarinda Ulu
       destination_postal_code: postalCodeNum,
       couriers: 'jne,jnt,sicepat',
       items: [
         {
-          name: 'Papan Akrilik NFC Google Review',
-          value: 60000 * parsedQty,
-          weight: weightGrams,
-          quantity: parsedQty,
+          name: 'Paket Papan Akrilik NFC Google Review',
+          value: Number(60000 * parsedQty),
+          weight: Number(weightGrams),
+          quantity: 1, // Di-set 1 paket gabungan
         },
       ],
     };
 
-    // 3. REQUEST KE API RATES BITESHIP
+    // REQUEST KE API RATES BITESHIP
     const rateRes = await fetch('https://api.biteship.com/v1/rates/couriers', {
       method: 'POST',
       headers: {
@@ -73,7 +73,7 @@ export async function POST(req) {
       return NextResponse.json({ error: `Biteship: ${errorMsg}` }, { status: 400 });
     }
 
-    // 4. FORMAT HASIL & FILTER MEMBUANG JNE TRUCKING / KARGO
+    // FILTER MEMBUANG TRUCKING / KARGO
     const shippingResults = rateData.pricing
       .filter((item) => {
         const serviceName = String(item.courier_service_name || '').toLowerCase();
