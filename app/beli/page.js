@@ -32,6 +32,7 @@ export default function BeliPage() {
   const [provinces, setProvinces] = useState([]);
   const [regencies, setRegencies] = useState([]);
   const [districts, setDistricts] = useState([]);
+  const [postalCodesList, setPostalCodesList] = useState([]);
 
   const [selectedProvince, setSelectedProvince] = useState('');
   const [selectedCity, setSelectedCity] = useState('');
@@ -67,8 +68,10 @@ export default function BeliPage() {
     setSelectedProvince(provObj ? provObj.name : '');
     setSelectedCity('');
     setSelectedDistrict('');
+    setPostalCode('');
     setRegencies([]);
     setDistricts([]);
+    setPostalCodesList([]);
 
     if (provId) {
       fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/regencies/${provId}.json`)
@@ -82,7 +85,9 @@ export default function BeliPage() {
     const regObj = regencies.find((r) => r.id === regId);
     setSelectedCity(regObj ? regObj.name : '');
     setSelectedDistrict('');
+    setPostalCode('');
     setDistricts([]);
+    setPostalCodesList([]);
 
     if (regId) {
       fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/districts/${regId}.json`)
@@ -94,13 +99,38 @@ export default function BeliPage() {
   const handleDistrictChange = (e) => {
     const distId = e.target.value;
     const distObj = districts.find((d) => d.id === distId);
-    setSelectedDistrict(distObj ? distObj.name : '');
+    const districtName = distObj ? distObj.name : '';
+    setSelectedDistrict(districtName);
+    setPostalCode('');
+    setPostalCodesList([]);
+
+    if (distId) {
+      // Ambil data kelurahan untuk mengekstrak opsi kode pos otomatis
+      fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/villages/${distId}.json`)
+        .then((res) => res.json())
+        .then((villages) => {
+          if (villages && villages.length > 0) {
+            // Fetch pencarian kode pos berdasarkan nama kecamatan
+            fetch(`https://kodepos.now.sh/search?q=${encodeURIComponent(districtName)}`)
+              .then((res) => res.json())
+              .then((resData) => {
+                if (resData && resData.data && resData.data.length > 0) {
+                  const codes = [...new Set(resData.data.map((item) => item.postalcode))];
+                  setPostalCodesList(codes);
+                  if (codes.length > 0) setPostalCode(codes[0]); // Auto-select kode pos pertama
+                }
+              })
+              .catch(() => setPostalCodesList([]));
+          }
+        })
+        .catch((err) => console.error('Gagal load kelurahan/kode pos:', err));
+    }
   };
 
   // === CEK ONGKIR BITESHIP ===
   const handleCekOngkir = async () => {
     if (!selectedCity || !postalCode) {
-      setErrorMessage('Pilih Kota dan masukkan Kode Pos terlebih dahulu.');
+      setErrorMessage('Pilih Kota dan Kode Pos terlebih dahulu.');
       return;
     }
 
@@ -476,7 +506,7 @@ export default function BeliPage() {
                 onClick={() => setStep(1)}
                 style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
               >
-                ✏️ Edit Data Pembeli
+                ✏️ Edit Data Pemesan
               </button>
             </div>
 
@@ -506,15 +536,28 @@ export default function BeliPage() {
 
             <label style={styles.label}>Kode Pos *</label>
             <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
-              <input
-                type="tel"
-                inputMode="numeric"
-                maxLength={5}
-                placeholder="11210"
-                value={postalCode}
-                onChange={(e) => setPostalCode(e.target.value.replace(/\D/g, ''))}
-                style={{ ...styles.input, marginBottom: 0, flex: 1 }}
-              />
+              {postalCodesList.length > 0 ? (
+                <select
+                  value={postalCode}
+                  onChange={(e) => setPostalCode(e.target.value)}
+                  style={{ ...styles.select, marginBottom: 0, flex: 1 }}
+                >
+                  {postalCodesList.map((code) => (
+                    <option key={code} value={code}>{code}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  maxLength={5}
+                  placeholder="Contoh: 75125"
+                  value={postalCode}
+                  onChange={(e) => setPostalCode(e.target.value.replace(/\D/g, ''))}
+                  style={{ ...styles.input, marginBottom: 0, flex: 1 }}
+                />
+              )}
+
               <button
                 type="button"
                 onClick={handleCekOngkir}
