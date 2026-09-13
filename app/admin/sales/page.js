@@ -312,11 +312,10 @@ export default function SalesPage() {
     } else if (modalState.actionType === 'delete') {
       const sale = modalState.targetData;
       
-      // Tentukan tabel asal data berdasarkan sumbernya
       const targetTable = sale.source === 'online' ? 'orders' : 'sales';
       const idCol = sale.source === 'online' ? 'order_id' : 'id';
 
-      // Hapus data secara presisi berdasarkan tabel aslinya
+      // 1. Hapus data dari database terlebih dahulu dengan aman
       const { error: delErr } = await supabase.from(targetTable).delete().eq(idCol, sale.id);
       
       if (delErr) {
@@ -324,9 +323,14 @@ export default function SalesPage() {
         return;
       }
 
-      // Kembalikan stok akrilik
+      // 2. Jika penghapusan database sukses, baru kembalikan stok akrilik
       const restoredStock = acrylicStock + (parseInt(sale.quantity, 10) || 1);
-      await supabase.from('inventory').update({ stock_quantity: restoredStock }).eq('id', targetId);
+      const { error: stockErr } = await supabase.from('inventory').update({ stock_quantity: restoredStock }).eq('id', targetId);
+
+      if (stockErr) {
+        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '⚠️ Data terhapus, tapi gagal update stok: ' + stockErr.message }));
+        return;
+      }
 
     } else if (modalState.actionType === 'updateStatus') {
       const sale = modalState.targetData;
