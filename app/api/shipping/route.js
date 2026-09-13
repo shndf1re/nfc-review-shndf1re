@@ -2,21 +2,23 @@ import { NextResponse } from 'next/server';
 
 export async function POST(req) {
   try {
-    const { destinationCityName, weightGrams = 500 } = await req.json();
+    const { destinationPostalCode, destinationCityName, weightGrams = 500 } = await req.json();
 
     const cleanCity = String(destinationCityName || '').trim().toLowerCase();
+    const postalCodeNum = parseInt(destinationPostalCode, 10);
 
-    // 1. Jika alamat tujuan adalah SAMARINDA, otomatis GRATIS ONGKIR (Rp 0)
-    if (cleanCity.includes('samarinda')) {
+    // 1. LOGIKA LOKAL SAMARINDA (Kodepos 75xxx atau nama Kota mengandung Samarinda)
+    const isSamarinda = cleanCity.includes('samarinda') || (postalCodeNum >= 75000 && postalCodeNum <= 75258);
+
+    if (isSamarinda) {
       return NextResponse.json({
         success: true,
         isFreeShipping: true,
         results: [
           {
-            courierCode: 'lokal',
+            courierCode: 'LOKAL',
             courierName: 'Kurir Lokal Samarinda',
             service: 'FREE',
-            description: 'Gratis Ongkir Khusus Samarinda',
             cost: 0,
             etd: '1 Hari',
           },
@@ -24,77 +26,57 @@ export async function POST(req) {
       });
     }
 
-    // 2. Jika Luar Samarinda, cari ID Kota via API RajaOngkir
-    const apiKey = process.env.RAJAONGKIR_API_KEY;
+    // 2. LOGIKA LUAR SAMARINDA (Panggil API Biteship)
+    const apiKey = process.env.BITESHIP_API_KEY;
     if (!apiKey) {
-      return NextResponse.json({ error: 'RAJAONGKIR_API_KEY belum diset di Vercel.' }, { status: 500 });
+      return NextResponse.json({ error: 'BITESHIP_API_KEY belum dikonfigurasi di Vercel.' }, { status: 500 });
     }
 
-    // Ambil daftar kota dari RajaOngkir Starter
-    const citiesRes = await fetch('https://api.rajaongkir.com/starter/city', {
-      method: 'GET',
-      headers: { key: apiKey },
+    if (!postalCodeNum || isNaN(postalCodeNum)) {
+      return NextResponse.json({ error: 'Kode Pos wajib diisi angka 5 digit untuk cek tarif luar kota.' }, { status: 400 });
+    }
+
+    const ORIGIN_POSTAL_CODE = 75125; // Samarinda Ulu
+
+    const response = await fetch('https://api.biteship.com/v1/rates/couriers', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        origin_postal_code: ORIGIN_POSTAL_CODE,
+        destination_postal_code: postalCodeNum,
+        couriers: 'jne,jnt,sicepat,anteraja,pos',
+        items: [
+          {
+            name: 'Papan Akrilik NFC Google Review',
+            value: 60000,
+            weight: weightGrams,
+            quantity: 1,
+          },
+        ],
+      }),
     });
-    const citiesData = await citiesRes.json();
 
-    if (!citiesRes.ok || !citiesData.rajaongkir?.results) {
-      return NextResponse.json({ error: 'Gagal mengambil data kota dari RajaOngkir.' }, { status: 500 });
+    const data = await response.json();
+
+    if (!response.ok || !data.pricing) {
+      return NextResponse.json({ error: data.message || 'Gagal menghitung tarif ongkir dari Biteship.' }, { status: 400 });
     }
 
-    // Match nama kota yang diketik pembeli
-    const matchedCity = citiesData.rajaongkir.results.find((c) =>
-      cleanCity.includes(c.city_name.toLowerCase()) || c.city_name.toLowerCase().includes(cleanCity)
-    );
-
-    if (!matchedCity) {
-      return NextResponse.json(
-        { error: `Kota "${destinationCityName}" tidak ditemukan. Pastikan ketik nama Kota/Kabupaten yang valid.` },
-        { status: 404 }
-      );
-    }
-
-    // 3. Hitung Ongkir Asli dari Kota Samarinda (ID: 387) ke Kota Tujuan
-    const ORIGIN_CITY_SAMARINDA = 387; // ID Kota Samarinda di RajaOngkir
-    const courierOptions = ['jne', 'pos', 'tiki'];
-    let shippingResults = [];
-
-    for (const courier of courierOptions) {
-      const costRes = await fetch('https://api.rajaongkir.com/starter/cost', {
-        method: 'POST',
-        headers: {
-          key: apiKey,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          origin: ORIGIN_CITY_SAMARINDA,
-          destination: matchedCity.city_id,
-          weight: weightGrams,
-          courier: courier,
-        }),
-      });
-
-      const costData = await costRes.json();
-      if (costRes.ok && costData.rajaongkir?.results?.[0]?.costs) {
-        const courierName = costData.rajaongkir.results[0].name;
-        const services = costData.rajaongkir.results[0].costs;
-
-        services.forEach((srv) => {
-          shippingResults.push({
-            courierCode: courier.toUpperCase(),
-            courierName: `${courierName} (${srv.service})`,
-            service: srv.service,
-            description: srv.description,
-            cost: srv.cost[0].value,
-            etd: srv.cost[0].etd ? `${srv.cost[0].etd} Hari` : '-',
-          });
-        });
-      }
-    }
+    // Format hasil response Biteship untuk dropdown pilihan di frontend
+    const shippingResults = data.pricing.map((item) => ({
+      courierCode: item.courier_code.toUpperCase(),
+      courierName: `${item.courier_name} (${item.courier_service_name})`,
+      service: item.courier_service_code,
+      cost: item.price,
+      etd: item.shipment_duration_range ? `${item.shipment_duration_range} ${item.shipment_duration_unit}` : '-',
+    }));
 
     return NextResponse.json({
       success: true,
       isFreeShipping: false,
-      matchedCityName: `${matchedCity.type} ${matchedCity.city_name}, ${matchedCity.province}`,
       results: shippingResults,
     });
   } catch (err) {
