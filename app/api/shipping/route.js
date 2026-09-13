@@ -4,12 +4,14 @@ export async function POST(req) {
   try {
     const { destinationPostalCode, destinationCityName, destinationDistrictName, qty = 1 } = await req.json();
 
-    const cleanCity = String(destinationCityName || '').trim().toLowerCase();
-    const cleanDistrict = String(destinationDistrictName || '').trim().toLowerCase();
+    const cleanCity = String(destinationCityName || '').trim();
+    const cleanDistrict = String(destinationDistrictName || '').trim();
     const postalCodeNum = parseInt(destinationPostalCode, 10);
 
-    // 1. GRATIS ONGKIR LOKAL SAMARINDA
-    const isSamarinda = cleanCity.includes('samarinda') || cleanDistrict.includes('samarinda') || (postalCodeNum >= 75000 && postalCodeNum <= 75258);
+    // 1. FREE ONGKIR LOKAL SAMARINDA
+    const isSamarinda = cleanCity.toLowerCase().includes('samarinda') || 
+                        cleanDistrict.toLowerCase().includes('samarinda') || 
+                        (postalCodeNum >= 75000 && postalCodeNum <= 75258);
 
     if (isSamarinda) {
       return NextResponse.json({
@@ -30,30 +32,47 @@ export async function POST(req) {
     const apiKey = process.env.BITESHIP_API_KEY;
     if (!apiKey) {
       return NextResponse.json({ 
-        error: 'BITESHIP_API_KEY belum diset di Vercel.' 
+        error: 'BITESHIP_API_KEY belum terkonfigurasi di Vercel.' 
       }, { status: 500 });
     }
 
-    // Hitung berat (1-50 pcs = 1000g / 1 kg)
     const parsedQty = Math.max(1, parseInt(qty, 10) || 1);
     const weightGrams = Math.ceil(parsedQty / 50) * 1000;
 
-    // STEP A: CARI MAPS AREA ID DARI BITESHIP DULU (AGAR ACCURATE 100%)
-    const searchTerm = destinationDistrictName || destinationCityName;
-    const areaRes = await fetch(`https://api.biteship.com/v1/maps/areas?countries=ID&input=${encodeURIComponent(searchTerm)}`, {
-      headers: { 'Authorization': `Bearer ${apiKey}` },
-    });
-    const areaData = await areaRes.json();
-
+    // STEP A: CARI ORIGIN AREA ID (SAMARINDA ULU) & DESTINATION AREA ID
+    let originAreaId = 'IDNP19IDCD700IDD46977'; // Fallback Area ID Samarinda Ulu
     let destinationAreaId = null;
-    if (areaData.areas && areaData.areas.length > 0) {
-      destinationAreaId = areaData.areas[0].id;
+
+    // Search Area ID Asal (Samarinda Ulu)
+    try {
+      const originSearchRes = await fetch(`https://api.biteship.com/v1/maps/areas?countries=ID&input=Samarinda%20Ulu`, {
+        headers: { 'Authorization': `Bearer ${apiKey}` },
+      });
+      const originSearchData = await originSearchRes.json();
+      if (originSearchData.areas && originSearchData.areas.length > 0) {
+        originAreaId = originSearchData.areas[0].id;
+      }
+    } catch (e) {
+      console.error('Failed fetch origin area id', e);
     }
 
-    // STEP B: PANGGIL API COURIER RATES BITESHIP DENGAN AREA ID / KODE POS
+    // Search Area ID Tujuan (Misal: Umbulharjo Kota Yogyakarta)
+    const searchQuery = `${cleanDistrict} ${cleanCity}`;
+    try {
+      const destSearchRes = await fetch(`https://api.biteship.com/v1/maps/areas?countries=ID&input=${encodeURIComponent(searchQuery)}`, {
+        headers: { 'Authorization': `Bearer ${apiKey}` },
+      });
+      const destSearchData = await destSearchRes.json();
+      if (destSearchData.areas && destSearchData.areas.length > 0) {
+        destinationAreaId = destSearchData.areas[0].id;
+      }
+    } catch (e) {
+      console.error('Failed fetch dest area id', e);
+    }
+
+    // STEP B: BUAT PAYLOAD CEK TARIF BITESHIP
     const payload = {
-      origin_postal_code: 75125, // Samarinda Ulu
-      couriers: 'jne,jnt,sicepat',
+      couriers: 'jne,jnt,sicepat,pos',
       items: [
         {
           name: 'Papan Akrilik NFC Google Review',
@@ -65,13 +84,18 @@ export async function POST(req) {
     };
 
     if (destinationAreaId) {
+      payload.origin_area_id = originAreaId;
       payload.destination_area_id = destinationAreaId;
     } else if (postalCodeNum) {
+      payload.origin_postal_code = 75125;
       payload.destination_postal_code = postalCodeNum;
     } else {
-      return NextResponse.json({ error: 'Area tujuan tidak ditemukan di sistem Biteship.' }, { status: 400 });
+      return NextResponse.json({ 
+        error: `Area tujuan (${cleanDistrict}, ${cleanCity}) tidak ditemukan di sistem Biteship.` 
+      }, { status: 400 });
     }
 
+    // STEP C: PANGGIL API RATES BITESHIP
     const rateRes = await fetch('https://api.biteship.com/v1/rates/couriers', {
       method: 'POST',
       headers: {
@@ -85,11 +109,11 @@ export async function POST(req) {
 
     if (!rateRes.ok || !rateData.pricing || rateData.pricing.length === 0) {
       return NextResponse.json({ 
-        error: rateData.message || `Tidak ada layanan kurir real-time dari Biteship yang menjangkau lokasi ini.` 
+        error: rateData.message || `API Biteship merespons tetapi tidak menemukan tarif untuk lokasi ini. Cek status kurir di Dashboard Biteship.` 
       }, { status: 400 });
     }
 
-    // Format Opsi Murni dari Biteship
+    // Format Opsi Kurir Murni Real-Time
     const shippingResults = rateData.pricing.map((item) => ({
       courierCode: String(item.courier_code || '').toUpperCase(),
       courierName: `${item.courier_name} (${item.courier_service_name || item.service_type || 'Reguler'})`,
@@ -106,6 +130,6 @@ export async function POST(req) {
     });
 
   } catch (err) {
-    return NextResponse.json({ error: 'Gagal memanggil API Biteship: ' + err.message }, { status: 500 });
+    return NextResponse.json({ error: 'Server Error: ' + err.message }, { status: 500 });
   }
 }
