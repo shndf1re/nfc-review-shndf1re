@@ -225,7 +225,7 @@ export default function LandingPage() {
       {/* 5. FOOTER */}
       <footer style={{ marginTop: 'auto', padding: '32px 24px', backgroundColor: '#0f172a', color: '#94a3b8', fontSize: '13px', textAlign: 'center' }}>
         <p style={{ margin: '0 0 8px 0' }}>© {new Date().getFullYear()} {SITE_CONFIG.brandName}. All rights reserved.</p>
-        <p style={{ margin: 0 }}>Pengiriman Resmi dari Samarinda Ulu, Kalimantan Timur 75125.</p>
+        <p style={{ margin: 0 }}>Pengiriman ke seluruh Indonesia.</p>
       </footer>
 
       {/* FLOATING WHATSAPP BUTTON */}
