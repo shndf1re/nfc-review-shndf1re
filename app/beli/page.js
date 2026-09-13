@@ -45,6 +45,7 @@ export default function BeliPage() {
   const [selectedCourier, setSelectedCourier] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [isFreeShipping, setIsFreeShipping] = useState(false);
+  const [loadingPay, setLoadingPay] = useState(false);
 
   const itemPrice = 60000;
   const currentQty = Math.max(1, parseInt(qty, 10) || 1);
@@ -52,7 +53,7 @@ export default function BeliPage() {
   const shippingCost = selectedCourier ? selectedCourier.cost : 0;
   const totalAmount = subtotal + shippingCost;
 
-  // === LOAD WILAYAH INDONESIA (EMSIFA API) ===
+  // === LOAD WILAYAH INDONESIA ===
   useEffect(() => {
     fetch('https://www.emsifa.com/api-wilayah-indonesia/api/provinces.json')
       .then((res) => res.json())
@@ -96,7 +97,7 @@ export default function BeliPage() {
     setSelectedDistrict(distObj ? distObj.name : '');
   };
 
-  // === CEK ONGKIR DENGAN AUTO-SELECT KURIR PERTAMA ===
+  // === CEK ONGKIR BITESHIP ===
   const handleCekOngkir = async () => {
     if (!selectedCity || !postalCode) {
       setErrorMessage('Pilih Kota dan masukkan Kode Pos terlebih dahulu.');
@@ -127,8 +128,6 @@ export default function BeliPage() {
       } else {
         setIsFreeShipping(data.isFreeShipping);
         setShippingOptions(data.results || []);
-        
-        // KRUSIAL: Pilih otomatis kurir pertama agar tombol "Lanjut Bayar" langsung aktif!
         if (data.results && data.results.length > 0) {
           setSelectedCourier(data.results[0]);
         }
@@ -140,7 +139,6 @@ export default function BeliPage() {
     }
   };
 
-  // === VALIDASI STEP 1 ===
   const handleNextStep1 = (e) => {
     e.preventDefault();
     if (waNumber.length < 8) {
@@ -150,13 +148,70 @@ export default function BeliPage() {
     setStep(2);
   };
 
-  // === PROSES BAYAR MIDTRANS ===
-  const handlePay = () => {
-    alert(`Memproses pembayaran sebesar Rp ${totalAmount.toLocaleString('id-ID')}...`);
-    // Tambahkan trigger Snap Midtrans kamu di sini
+  // === PROSES BAYAR SESUAI PAYLOAD BACKEND APP/API/CHECKOUT/ROUTE.JS ===
+  const handlePay = async () => {
+    if (!selectedCourier || !streetAddress) {
+      alert('Lengkapi alamat dan pilih kurir terlebih dahulu.');
+      return;
+    }
+
+    setLoadingPay(true);
+
+    try {
+      // Body payload disesuaikan 100% dengan backend Supabase & Midtrans kamu
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerName: buyerName,
+          customerPhone: waNumber,
+          shippingAddress: streetAddress,
+          destinationCity: `${selectedDistrict}, ${selectedCity}, ${selectedProvince}`,
+          postalCode: postalCode,
+          storeName: buyerName, // Digunakan untuk label nama toko
+          targetUrl: googleMapsUrl,
+          qty: currentQty,
+          courierName: selectedCourier.courierName,
+          shippingCost: shippingCost,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.token) {
+        alert(data.error || 'Gagal membuat transaksi Midtrans.');
+        setLoadingPay(false);
+        return;
+      }
+
+      // Memanggil Pop-up Snap Midtrans asli
+      if (typeof window !== 'undefined' && window.snap) {
+        window.snap.pay(data.token, {
+          onSuccess: function (result) {
+            alert('Pembayaran Berhasil!');
+            window.location.href = '/';
+          },
+          onPending: function (result) {
+            alert('Menunggu Pembayaran...');
+          },
+          onError: function (result) {
+            alert('Pembayaran Gagal!');
+          },
+          onClose: function () {
+            alert('Anda menutup popup pembayaran.');
+          },
+        });
+      } else {
+        alert('SDK Midtrans belum siap di browser. Silakan coba refresh halaman.');
+      }
+    } catch (err) {
+      alert('Terjadi kesalahan koneksi: ' + err.message);
+    } finally {
+      setLoadingPay(false);
+    }
   };
 
-  // === INLINE STYLING MURNI PAS PRESIASI DENGAN LAYOUT PROYEK ===
+  // Styling Inline Murni
   const styles = {
     pageContainer: {
       minHeight: '100vh',
@@ -304,7 +359,6 @@ export default function BeliPage() {
       fontWeight: 'bold',
       cursor: disabled ? 'not-allowed' : 'pointer',
       boxShadow: disabled ? 'none' : '0 4px 12px rgba(22, 163, 74, 0.2)',
-      transition: 'all 0.2s ease',
     }),
     summaryCard: {
       backgroundColor: '#f8fafc',
@@ -336,19 +390,16 @@ export default function BeliPage() {
     <div style={styles.pageContainer}>
       <div style={styles.card}>
         
-        {/* Navigasi Atas & Banner Promo */}
         <div style={styles.topHeader}>
           <a href="/" style={styles.backLink}>← Utama</a>
           <div style={styles.badgePromo}>🔥 PROMO SPESIAL 60% OFF</div>
         </div>
 
-        {/* Live Countdown Timer */}
         <div style={styles.timerBanner}>
           <span style={{ fontWeight: '600' }}>⏰ Promo Berakhir Dalam:</span>
           <span style={{ fontWeight: 'bold' }}>{formatTime(timeLeft)}</span>
         </div>
 
-        {/* Step Indicator */}
         <div style={styles.stepperContainer}>
           <div style={styles.stepBox}>
             <div style={styles.circleNumber(true, true)}>1</div>
@@ -361,7 +412,7 @@ export default function BeliPage() {
           </div>
         </div>
 
-        {/* STEP 1: DATA PEMBELI */}
+        {/* STEP 1 */}
         {step === 1 && (
           <form onSubmit={handleNextStep1}>
             <div style={styles.formTitle}>Langkah 1: Data Pemesan</div>
@@ -417,7 +468,7 @@ export default function BeliPage() {
           </form>
         )}
 
-        {/* STEP 2: ALAMAT & ONGKIR */}
+        {/* STEP 2 */}
         {step === 2 && (
           <div>
             <div style={styles.formTitle}>
@@ -443,9 +494,8 @@ export default function BeliPage() {
             <select onChange={handleCityChange} disabled={!regencies.length} style={styles.select}>
               <option value="">-- Pilih Kota / Kabupaten --</option>
               {regencies.map((r) => (
-                <option key={r.id} value={r.id}>{r.name}</option>
-              ))}
-            </select>
+                <option key={r.id} value={r.id}>{r.name}</option>)}
+              </select>
 
             <label style={styles.label}>Kecamatan Tujuan *</label>
             <select onChange={handleDistrictChange} disabled={!districts.length} style={styles.select}>
@@ -461,7 +511,7 @@ export default function BeliPage() {
                 type="tel"
                 inputMode="numeric"
                 maxLength={5}
-                placeholder="75325"
+                placeholder="11210"
                 value={postalCode}
                 onChange={(e) => setPostalCode(e.target.value.replace(/\D/g, ''))}
                 style={{ ...styles.input, marginBottom: 0, flex: 1 }}
@@ -490,20 +540,18 @@ export default function BeliPage() {
             <textarea
               rows={2}
               required
-              placeholder="JL Loktuan..."
+              placeholder="Jln. Ahmad Yani No. 12, RT 05..."
               value={streetAddress}
               onChange={(e) => setStreetAddress(e.target.value)}
               style={{ ...styles.input, height: 'auto', fontFamily: 'inherit' }}
             />
 
-            {/* Error Message */}
             {errorMessage && (
               <div style={{ backgroundColor: '#fef2f2', color: '#dc2626', padding: '10px 14px', borderRadius: '12px', fontSize: '13px', border: '1px solid #fee2e2', marginBottom: '14px' }}>
                 ❌ Error: {errorMessage}
               </div>
             )}
 
-            {/* Pilihan Kurir */}
             {shippingOptions.length > 0 && (
               <div style={{ marginBottom: '14px' }}>
                 <label style={styles.label}>Pilih Kurir Ekspedisi *</label>
@@ -524,7 +572,6 @@ export default function BeliPage() {
               </div>
             )}
 
-            {/* Summary Box */}
             <div style={styles.summaryCard}>
               <div style={styles.summaryRow}>
                 <span>Subtotal ({currentQty} Pcs):</span>
@@ -540,7 +587,6 @@ export default function BeliPage() {
               </div>
             </div>
 
-            {/* Action Buttons */}
             <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
               <button
                 type="button"
@@ -560,14 +606,13 @@ export default function BeliPage() {
                 ← Kembali
               </button>
               
-              {/* Tombol Lanjut Bayar Aktif */}
               <button
                 type="button"
                 onClick={handlePay}
-                disabled={!selectedCourier || !streetAddress}
-                style={styles.btnGreen(!selectedCourier || !streetAddress)}
+                disabled={!selectedCourier || !streetAddress || loadingPay}
+                style={styles.btnGreen(!selectedCourier || !streetAddress || loadingPay)}
               >
-                💳 Lanjut Bayar
+                {loadingPay ? 'Memproses...' : '💳 Lanjut Bayar'}
               </button>
             </div>
 
