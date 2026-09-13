@@ -37,40 +37,48 @@ export async function POST(req) {
     }
 
     const parsedQty = Math.max(1, parseInt(qty, 10) || 1);
-    // Berat: 1-50 pcs = 1000g (1 kg)
     const weightGrams = Math.ceil(parsedQty / 50) * 1000;
 
-    // STEP A: CARI DESTINATION AREA ID RESMI DARI BITESHIP MAPS
+    // STEP A: CARI ORIGIN AREA ID (SAMARINDA ULU)
+    let originAreaId = 'IDNP19IDCD700IDD46977'; // Default ID Samarinda Ulu
+    try {
+      const originRes = await fetch(`https://api.biteship.com/v1/maps/areas?countries=ID&input=Samarinda%20Ulu`, {
+        headers: { 'Authorization': `Bearer ${apiKey}` },
+      });
+      const originData = await originRes.json();
+      if (originData.areas && originData.areas.length > 0) {
+        originAreaId = originData.areas[0].id;
+      }
+    } catch (e) {
+      console.error('Origin area search error:', e);
+    }
+
+    // STEP B: CARI DESTINATION AREA ID
     let destinationAreaId = null;
     const searchQuery = `${cleanDistrict} ${cleanCity}`;
 
     try {
-      const destSearchRes = await fetch(`https://api.biteship.com/v1/maps/areas?countries=ID&input=${encodeURIComponent(searchQuery)}`, {
+      const destRes = await fetch(`https://api.biteship.com/v1/maps/areas?countries=ID&input=${encodeURIComponent(searchQuery)}`, {
         headers: { 'Authorization': `Bearer ${apiKey}` },
       });
-      const destSearchData = await destSearchRes.json();
-      if (destSearchData.areas && destSearchData.areas.length > 0) {
-        destinationAreaId = destSearchData.areas[0].id;
+      const destData = await destRes.json();
+      if (destData.areas && destData.areas.length > 0) {
+        destinationAreaId = destData.areas[0].id;
       }
     } catch (e) {
-      console.error('Failed fetch dest area id', e);
+      console.error('Dest area search error:', e);
     }
 
-    // STEP B: BUAT PAYLOAD BITESHIP DENGAN DIMENSI LENGKAP (KUNCI SYARAT BITESHIP)
+    // STEP C: SUSUN PAYLOAD HANYA DENGAN PARAMETER YANG DITERIMA BITESHIP
     const payload = {
-      origin_postal_code: 75125, // Samarinda Ulu
+      origin_area_id: originAreaId,
       couriers: 'jne,jnt,sicepat,pos',
       items: [
         {
           name: 'Papan Akrilik NFC Google Review',
-          description: 'Papan Akrilik',
-          category: 'fashion', // Syarat kategori Biteship
-          value: 60000 * parsedQty,
-          weight: weightGrams,
-          quantity: parsedQty,
-          height: 15, // cm
-          length: 20, // cm
-          width: 5,   // cm
+          value: Number(60000 * parsedQty),
+          weight: Number(weightGrams),
+          quantity: Number(parsedQty),
         },
       ],
     };
@@ -81,11 +89,11 @@ export async function POST(req) {
       payload.destination_postal_code = postalCodeNum;
     } else {
       return NextResponse.json({ 
-        error: `Area tujuan (${cleanDistrict}, ${cleanCity}) tidak ditemukan di sistem Biteship.` 
+        error: `Area tujuan (${cleanDistrict}, ${cleanCity}) tidak ditemukan di Biteship.` 
       }, { status: 400 });
     }
 
-    // STEP C: REQUEST RATES DARI BITESHIP
+    // STEP D: REQUEST DENGAN HEADER RESMI BITESHIP
     const rateRes = await fetch('https://api.biteship.com/v1/rates/couriers', {
       method: 'POST',
       headers: {
@@ -99,11 +107,11 @@ export async function POST(req) {
 
     if (!rateRes.ok || !rateData.pricing || rateData.pricing.length === 0) {
       return NextResponse.json({ 
-        error: rateData.message || `Tidak ada layanan kurir Biteship yang mengembalikan harga untuk area ini. Pastikan kurir (JNE/J&T/SiCepat) sudah dicentang di Dashboard Biteship.` 
+        error: rateData.message || `Biteship Error (${rateRes.status}): Gagal mengambil harga dari kurir.` 
       }, { status: 400 });
     }
 
-    // Format Opsi Kurir Murni Real-Time dari Biteship
+    // Format Opsi Kurir Murni Real-Time
     const shippingResults = rateData.pricing.map((item) => ({
       courierCode: String(item.courier_code || '').toUpperCase(),
       courierName: `${item.courier_name} (${item.courier_service_name || item.service_type || 'Reguler'})`,
