@@ -28,17 +28,21 @@ export default function BeliPage() {
   const [qty, setQty] = useState(1);
   const [googleMapsUrl, setGoogleMapsUrl] = useState('');
 
-  // === STEP 2: ALAMAT PENGIRIMAN MURNI SOOLUH JSON ===
-  const [rawPostalData, setRawPostalData] = useState([]);
-  
-  const [provincesList, setProvincesList] = useState([]);
-  const [regenciesList, setRegenciesList] = useState([]);
-  const [districtsList, setDistrictsList] = useState([]);
-  const [postalCodesList, setPostalCodesList] = useState([]);
+  // === STEP 2: ALAMAT PENGIRIMAN EMSIFA V2 ===
+  const [provinces, setProvinces] = useState([]);
+  const [regencies, setRegencies] = useState([]);
+  const [districts, setDistricts] = useState([]);
+  const [villages, setVillages] = useState([]);
 
-  const [selectedProvince, setSelectedProvince] = useState('');
-  const [selectedCity, setSelectedCity] = useState('');
-  const [selectedDistrict, setSelectedDistrict] = useState('');
+  const [selectedProvinceId, setSelectedProvinceId] = useState('');
+  const [selectedRegencyId, setSelectedRegencyId] = useState('');
+  const [selectedDistrictId, setSelectedDistrictId] = useState('');
+  
+  const [selectedProvinceName, setSelectedProvinceName] = useState('');
+  const [selectedRegencyName, setSelectedRegencyName] = useState('');
+  const [selectedDistrictName, setSelectedDistrictName] = useState('');
+  const [selectedVillageName, setSelectedVillageName] = useState('');
+  
   const [postalCode, setPostalCode] = useState('');
   const [streetAddress, setStreetAddress] = useState('');
 
@@ -56,90 +60,103 @@ export default function BeliPage() {
   const shippingCost = selectedCourier ? selectedCourier.cost : 0;
   const totalAmount = subtotal + shippingCost;
 
-  // === LOAD MASTER DATA KODEPOS SOOLUH SEPENUHNYA ===
+  // === 1. LOAD PROVINSI EMSIFA V2 ===
   useEffect(() => {
-    fetch('https://raw.githubusercontent.com/sooluh/kodepos/refs/heads/main/data/kodepos.json')
+    fetch('https://www.emsifa.com/api-wilayah-indonesia/v2/provinces.json')
       .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) {
-          setRawPostalData(data);
-          // Ekstrak daftar provinsi unik dari file Sooluh
-          const provs = [...new Set(data.map((item) => item.provinsi || item.province).filter(Boolean))].sort();
-          setProvincesList(provs);
-        }
-      })
-      .catch((err) => console.error('Gagal load database kodepos sooluh:', err));
+      .then((json) => setProvinces(json.data || []))
+      .catch((err) => console.error('Gagal load provinsi:', err));
   }, []);
 
+  // === 2. HANDLE PROVINSI CHANGE ===
   const handleProvinceChange = (e) => {
-    const provName = e.target.value;
-    setSelectedProvince(provName);
-    setSelectedCity('');
-    setSelectedDistrict('');
-    setPostalCode('');
-    setRegenciesList([]);
-    setDistrictsList([]);
-    setPostalCodesList([]);
+    const provId = e.target.value;
+    setSelectedProvinceId(provId);
+    
+    const provObj = provinces.find((p) => p.id === provId);
+    setSelectedProvinceName(provObj ? provObj.name : '');
 
-    if (provName && rawPostalData.length > 0) {
-      // Filter Kota/Kabupaten berdasarkan Provinsi yang dipilih
-      const cities = [...new Set(
-        rawPostalData
-          .filter((item) => (item.provinsi || item.province) === provName)
-          .map((item) => item.kabupaten || item.city)
-          .filter(Boolean)
-      )].sort();
-      setRegenciesList(cities);
+    // Reset turunan
+    setSelectedRegencyId('');
+    setSelectedRegencyName('');
+    setSelectedDistrictId('');
+    setSelectedDistrictName('');
+    setSelectedVillageName('');
+    setPostalCode('');
+    setRegencies([]);
+    setDistricts([]);
+    setVillages([]);
+
+    if (provId) {
+      fetch(`https://www.emsifa.com/api-wilayah-indonesia/v2/regencies/${provId}.json`)
+        .then((res) => res.json())
+        .then((json) => setRegencies(json.data || []))
+        .catch((err) => console.error('Gagal load kab/kota:', err));
     }
   };
 
-  const handleCityChange = (e) => {
-    const cityName = e.target.value;
-    setSelectedCity(cityName);
-    setSelectedDistrict('');
-    setPostalCode('');
-    setDistrictsList([]);
-    setPostalCodesList([]);
+  // === 3. HANDLE KOTA/KABUPATEN CHANGE ===
+  const handleRegencyChange = (e) => {
+    const regId = e.target.value;
+    setSelectedRegencyId(regId);
+    
+    const regObj = regencies.find((r) => r.id === regId);
+    setSelectedRegencyName(regObj ? regObj.name : '');
 
-    if (cityName && rawPostalData.length > 0) {
-      // Filter Kecamatan berdasarkan Kota/Kabupaten yang dipilih
-      const districts = [...new Set(
-        rawPostalData
-          .filter((item) => (item.kabupaten || item.city) === cityName)
-          .map((item) => item.kecamatan || item.subdistrict)
-          .filter(Boolean)
-      )].sort();
-      setDistrictsList(districts);
+    // Reset turunan
+    setSelectedDistrictId('');
+    setSelectedDistrictName('');
+    setSelectedVillageName('');
+    setPostalCode('');
+    setDistricts([]);
+    setVillages([]);
+
+    if (regId) {
+      fetch(`https://www.emsifa.com/api-wilayah-indonesia/v2/districts/${regId}.json`)
+        .then((res) => res.json())
+        .then((json) => setDistricts(json.data || []))
+        .catch((err) => console.error('Gagal load kecamatan:', err));
     }
   };
 
+  // === 4. HANDLE KECAMATAN CHANGE ===
   const handleDistrictChange = (e) => {
-    const distName = e.target.value;
-    setSelectedDistrict(distName);
+    const distId = e.target.value;
+    setSelectedDistrictId(distId);
+    
+    const distObj = districts.find((d) => d.id === distId);
+    setSelectedDistrictName(distObj ? distObj.name : '');
+
+    // Reset turunan
+    setSelectedVillageName('');
     setPostalCode('');
-    setPostalCodesList([]);
+    setVillages([]);
 
-    if (distName && rawPostalData.length > 0) {
-      // Filter Kode Pos berdasarkan Kecamatan yang dipilih
-      const matches = rawPostalData.filter((item) => {
-        const itemKec = (item.kecamatan || item.subdistrict || '').trim();
-        const itemKab = (item.kabupaten || item.city || '').trim();
-        return itemKec === distName && itemKab === selectedCity;
-      });
+    if (distId) {
+      fetch(`https://www.emsifa.com/api-wilayah-indonesia/v2/villages/${distId}.json`)
+        .then((res) => res.json())
+        .then((json) => setVillages(json.data || []))
+        .catch((err) => console.error('Gagal load kelurahan:', err));
+    }
+  };
 
-      const codes = [...new Set(matches.map((item) => item.kodepos || item.postalcode || item.postal_code).filter(Boolean))];
+  // === 5. HANDLE KELURAHAN / KODE POS CHANGE ===
+  const handleVillageChange = (e) => {
+    const villageName = e.target.value;
+    setSelectedVillageName(villageName);
 
-      if (codes.length > 0) {
-        setPostalCodesList(codes);
-        setPostalCode(codes[0]); // Auto-select kode pos pertama
-      }
+    const villageObj = villages.find((v) => v.name === villageName);
+    if (villageObj && villageObj.postal_code) {
+      setPostalCode(villageObj.postal_code);
+    } else {
+      setPostalCode('');
     }
   };
 
   // === CEK ONGKIR BITESHIP ===
   const handleCekOngkir = async () => {
-    if (!selectedCity || !postalCode) {
-      setErrorMessage('Pilih wilayah dan Kode Pos terlebih dahulu.');
+    if (!selectedRegencyName || !postalCode) {
+      setErrorMessage('Pilih wilayah lengkap dan kode pos terlebih dahulu.');
       return;
     }
 
@@ -154,8 +171,8 @@ export default function BeliPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           destinationPostalCode: postalCode,
-          destinationCityName: selectedCity,
-          destinationDistrictName: selectedDistrict,
+          destinationCityName: selectedRegencyName,
+          destinationDistrictName: selectedDistrictName,
           qty: currentQty,
         }),
       });
@@ -204,7 +221,7 @@ export default function BeliPage() {
           customerName: buyerName,
           customerPhone: waNumber,
           shippingAddress: streetAddress,
-          destinationCity: `${selectedDistrict}, ${selectedCity}, ${selectedProvince}`,
+          destinationCity: `${selectedDistrictName}, ${selectedRegencyName}, ${selectedProvinceName}`,
           postalCode: postalCode,
           storeName: buyerName,
           targetUrl: googleMapsUrl,
@@ -519,54 +536,59 @@ export default function BeliPage() {
               </button>
             </div>
 
-            {/* PROVINSI MURNI SOOLUH */}
+            {/* PROVINSI */}
             <label style={styles.label}>Provinsi Tujuan *</label>
-            <select value={selectedProvince} onChange={handleProvinceChange} style={styles.select}>
+            <select value={selectedProvinceId} onChange={handleProvinceChange} style={styles.select}>
               <option value="">-- Pilih Provinsi --</option>
-              {provincesList.map((prov) => (
-                <option key={prov} value={prov}>{prov}</option>
+              {provinces.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
 
-            {/* KOTA / KABUPATEN MURNI SOOLUH */}
+            {/* KOTA / KABUPATEN */}
             <label style={styles.label}>Kota / Kabupaten Tujuan *</label>
-            <select value={selectedCity} onChange={handleCityChange} disabled={!regenciesList.length} style={styles.select}>
+            <select value={selectedRegencyId} onChange={handleRegencyChange} disabled={!regencies.length} style={styles.select}>
               <option value="">-- Pilih Kota / Kabupaten --</option>
-              {regenciesList.map((city) => (
-                <option key={city} value={city}>{city}</option>
+              {regencies.map((r) => (
+                <option key={r.id} value={r.id}>{r.name}</option>
               ))}
             </select>
 
-            {/* KECAMATAN MURNI SOOLUH */}
+            {/* KECAMATAN */}
             <label style={styles.label}>Kecamatan Tujuan *</label>
-            <select value={selectedDistrict} onChange={handleDistrictChange} disabled={!districtsList.length} style={styles.select}>
+            <select value={selectedDistrictId} onChange={handleDistrictChange} disabled={!districts.length} style={styles.select}>
               <option value="">-- Pilih Kecamatan --</option>
-              {districtsList.map((dist) => (
-                <option key={dist} value={dist}>{dist}</option>
+              {districts.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
               ))}
             </select>
 
-            {/* KODE POS MURNI SOOLUH */}
+            {/* KELURAHAN (PILIH KELURAHAN UNTUK MUNCULKAN KODE POS OTOMATIS) */}
+            <label style={styles.label}>Kelurahan / Desa *</label>
+            <select value={selectedVillageName} onChange={handleVillageChange} disabled={!villages.length} style={styles.select}>
+              <option value="">-- Pilih Kelurahan --</option>
+              {villages.map((v) => (
+                <option key={v.id} value={v.name}>
+                  {v.name} {v.postal_code ? `(Kode Pos: ${v.postal_code})` : ''}
+                </option>
+              ))}
+            </select>
+
+            {/* KODE POS OTOMATIS TERISI */}
             <label style={styles.label}>Kode Pos *</label>
             <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
-              <select
+              <input
+                type="text"
+                readOnly
+                placeholder="Otomatis terisi dari kelurahan"
                 value={postalCode}
-                onChange={(e) => setPostalCode(e.target.value)}
-                style={{ ...styles.select, marginBottom: 0, flex: 1 }}
-              >
-                {postalCodesList.length > 0 ? (
-                  postalCodesList.map((code) => (
-                    <option key={code} value={code}>{code}</option>
-                  ))
-                ) : (
-                  <option value="">{selectedDistrict ? '-- Tidak Ada Kode Pos --' : '-- Pilih Kecamatan Dulu --'}</option>
-                )}
-              </select>
+                style={{ ...styles.input, marginBottom: 0, flex: 1, backgroundColor: '#f1f5f9', fontWeight: 'bold' }}
+              />
 
               <button
                 type="button"
                 onClick={handleCekOngkir}
-                disabled={loadingOngkir || !postalCode || !selectedCity}
+                disabled={loadingOngkir || !postalCode || !selectedRegencyName}
                 style={{
                   backgroundColor: '#2563eb',
                   color: '#ffffff',
@@ -576,7 +598,7 @@ export default function BeliPage() {
                   fontWeight: 'bold',
                   fontSize: '13px',
                   cursor: 'pointer',
-                  opacity: (loadingOngkir || !postalCode || !selectedCity) ? 0.6 : 1,
+                  opacity: (loadingOngkir || !postalCode || !selectedRegencyName) ? 0.6 : 1,
                 }}
               >
                 {loadingOngkir ? 'Memuat...' : '🔍 Cek Ongkir'}
