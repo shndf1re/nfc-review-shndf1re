@@ -16,20 +16,19 @@ const snap = new midtransClient.Snap({
 export async function POST(req) {
   try {
     const body = await req.json();
-    const { customerName, customerPhone, shippingAddress, storeName, targetUrl, qty, courierName, shippingCost, destinationCity } = body;
+    const { customerName, customerPhone, shippingAddress, storeName, targetUrl, qty, courierName, shippingCost, destinationCity, postalCode } = body;
 
     const cleanName = String(customerName || '').trim();
     const cleanPhone = String(customerPhone || '').trim();
     const cleanAddress = String(shippingAddress || '').trim();
     const cleanCity = String(destinationCity || '').trim();
-    const cleanStore = String(storeName || '').trim();
-    const cleanUrl = String(targetUrl || '').trim();
+    const cleanPostal = String(postalCode || '').trim();
     const parsedQty = Math.max(1, parseInt(qty, 10) || 1);
     const parsedShippingCost = Math.max(0, parseFloat(shippingCost) || 0);
 
     if (!cleanName || !cleanPhone || !cleanAddress || !cleanCity) {
       return NextResponse.json(
-        { error: 'Nama, No. WA, Kota Tujuan, dan Alamat Lengkap wajib diisi!' },
+        { error: 'Nama, No. WA, Kota/Kecamatan, dan Alamat Lengkap wajib diisi!' },
         { status: 400 }
       );
     }
@@ -39,19 +38,21 @@ export async function POST(req) {
     const totalPrice = itemsTotal + parsedShippingCost;
     const orderId = `NFC-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
+    const fullShippingAddress = `${cleanAddress}, ${cleanCity} (${cleanPostal})`;
+
     // 1. Simpan Transaksi ke Database Supabase
     const { error: dbError } = await supabase.from('orders').insert([
       {
         order_id: orderId,
         customer_name: cleanName,
         customer_phone: cleanPhone,
-        shipping_address: cleanAddress,
+        shipping_address: fullShippingAddress,
         destination_city: cleanCity,
-        store_name: cleanStore || null,
-        target_url: cleanUrl || null,
+        store_name: String(storeName || '').trim() || null,
+        target_url: String(targetUrl || '').trim() || null,
         quantity: parsedQty,
         shipping_cost: parsedShippingCost,
-        courier: courierName || 'Lokal Samarinda',
+        courier: courierName || 'Lokal Samarinda Free',
         total_price: totalPrice,
         payment_status: 'pending',
       },
