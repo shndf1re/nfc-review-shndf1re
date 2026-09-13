@@ -32,6 +32,9 @@ export default function BeliPage() {
   const [provinces, setProvinces] = useState([]);
   const [regencies, setRegencies] = useState([]);
   const [districts, setDistricts] = useState([]);
+  
+  // Master Data JSON Sooluh Kodepos
+  const [rawPostalData, setRawPostalData] = useState([]);
   const [postalCodesList, setPostalCodesList] = useState([]);
 
   const [selectedProvince, setSelectedProvince] = useState('');
@@ -54,12 +57,23 @@ export default function BeliPage() {
   const shippingCost = selectedCourier ? selectedCourier.cost : 0;
   const totalAmount = subtotal + shippingCost;
 
-  // === LOAD PROVINSI ===
+  // === LOAD PROVINSI & MASTER KODEPOS SOOLUH ===
   useEffect(() => {
+    // 1. Load Provinsi Emsifa
     fetch('https://www.emsifa.com/api-wilayah-indonesia/api/provinces.json')
       .then((res) => res.json())
       .then((data) => setProvinces(data || []))
       .catch((err) => console.error('Gagal load provinsi:', err));
+
+    // 2. Load Master Database Kodepos dari Sooluh GitHub
+    fetch('https://raw.githubusercontent.com/sooluh/kodepos/refs/heads/main/data/kodepos.json')
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setRawPostalData(data);
+        }
+      })
+      .catch((err) => console.error('Gagal load database kodepos sooluh:', err));
   }, []);
 
   const handleProvinceChange = (e) => {
@@ -99,51 +113,35 @@ export default function BeliPage() {
   const handleDistrictChange = (e) => {
     const distId = e.target.value;
     const distObj = districts.find((d) => d.id === distId);
-    const distName = distObj ? distObj.name : '';
-    setSelectedDistrict(distName);
+    const distName = distObj ? distObj.name.toUpperCase().trim() : '';
+    setSelectedDistrict(distObj ? distObj.name : '');
     setPostalCode('');
     setPostalCodesList([]);
 
-    if (distId) {
-      // Ambil data kelurahan untuk mencocokkan kode pos yang valid
-      fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/villages/${distId}.json`)
-        .then((res) => res.json())
-        .then((villages) => {
-          if (villages && villages.length > 0) {
-            const codes = [...new Set(villages.map((v) => v.postal_code).filter(Boolean))];
-            if (codes.length > 0) {
-              setPostalCodesList(codes);
-              setPostalCode(codes[0]);
-              return;
-            }
-          }
-          // Fallback jika API kelurahan kosong
-          fallbackPostalCodeSearch(distName);
-        })
-        .catch(() => {
-          fallbackPostalCodeSearch(distName);
-        });
-    }
-  };
-
-  const fallbackPostalCodeSearch = (distName) => {
-    fetch(`https://kodepos.now.sh/search?q=${encodeURIComponent(distName)}`)
-      .then((res) => res.json())
-      .then((resData) => {
-        if (resData && resData.data && resData.data.length > 0) {
-          const codes = [...new Set(resData.data.map((item) => item.postalcode))];
-          setPostalCodesList(codes);
-          if (codes.length > 0) setPostalCode(codes[0]);
-        } else {
-          // Default cadangan jika semua API kosong agar dropdown tetap terisi & bisa diklik
-          setPostalCodesList(['10110', '10220', '10310', '10430', '75117']);
-          setPostalCode('10110');
-        }
-      })
-      .catch(() => {
-        setPostalCodesList(['10110', '10220', '10310', '10430', '75117']);
-        setPostalCode('10110');
+    if (distName && rawPostalData.length > 0) {
+      // Filter kode pos langsung dari master data Sooluh berdasarkan nama kecamatan
+      // Struktur JSON Sooluh umumnya memiliki property seperti kecamatan / subdistrict / postalcode / kodepos
+      const matches = rawPostalData.filter((item) => {
+        const itemKecamatan = (item.kecamatan || item.subdistrict || '').toUpperCase().trim();
+        return itemKecamatan === distName || itemKecamatan.includes(distName);
       });
+
+      const codes = [...new Set(matches.map((item) => item.kodepos || item.postalcode || item.postal_code).filter(Boolean))];
+
+      if (codes.length > 0) {
+        setPostalCodesList(codes);
+        setPostalCode(codes[0]);
+      } else {
+        // Fallback jika nama tidak persis sama, ambil default aman
+        const fallbackCodes = ['75117', '10110', '40111', '60271'];
+        setPostalCodesList(fallbackCodes);
+        setPostalCode(fallbackCodes[0]);
+      }
+    } else {
+      const fallbackCodes = ['75117', '10110', '40111', '60271'];
+      setPostalCodesList(fallbackCodes);
+      setPostalCode(fallbackCodes[0]);
+    }
   };
 
   // === CEK ONGKIR BITESHIP ===
@@ -553,7 +551,7 @@ export default function BeliPage() {
               ))}
             </select>
 
-            {/* KODE POS FULL DROPDOWN KONSISTEN */}
+            {/* KODE POS DARI DATABASE SOOLUH */}
             <label style={styles.label}>Kode Pos *</label>
             <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
               <select
