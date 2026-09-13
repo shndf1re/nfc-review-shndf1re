@@ -33,7 +33,7 @@ export default function BeliPage() {
   const [regencies, setRegencies] = useState([]);
   const [districts, setDistricts] = useState([]);
   
-  // Master Data JSON Sooluh Kodepos
+  // Master Data JSON Sooluh Kodepos Asli
   const [rawPostalData, setRawPostalData] = useState([]);
   const [postalCodesList, setPostalCodesList] = useState([]);
 
@@ -65,7 +65,7 @@ export default function BeliPage() {
       .then((data) => setProvinces(data || []))
       .catch((err) => console.error('Gagal load provinsi:', err));
 
-    // 2. Load Master Database Kodepos dari Sooluh GitHub
+    // 2. Load Master Database Kodepos dari Sooluh GitHub secara utuh
     fetch('https://raw.githubusercontent.com/sooluh/kodepos/refs/heads/main/data/kodepos.json')
       .then((res) => res.json())
       .then((data) => {
@@ -119,28 +119,21 @@ export default function BeliPage() {
     setPostalCodesList([]);
 
     if (distName && rawPostalData.length > 0) {
-      // Filter kode pos langsung dari master data Sooluh berdasarkan nama kecamatan
-      // Struktur JSON Sooluh umumnya memiliki property seperti kecamatan / subdistrict / postalcode / kodepos
+      // Filter murni dari JSON Sooluh berdasarkan nama kecamatan
       const matches = rawPostalData.filter((item) => {
         const itemKecamatan = (item.kecamatan || item.subdistrict || '').toUpperCase().trim();
-        return itemKecamatan === distName || itemKecamatan.includes(distName);
+        return itemKecamatan === distName;
       });
 
+      // Ambil kode pos unik yang ditemukan
       const codes = [...new Set(matches.map((item) => item.kodepos || item.postalcode || item.postal_code).filter(Boolean))];
 
       if (codes.length > 0) {
         setPostalCodesList(codes);
-        setPostalCode(codes[0]);
+        setPostalCode(codes[0]); // Auto-select kode pos pertama yang valid
       } else {
-        // Fallback jika nama tidak persis sama, ambil default aman
-        const fallbackCodes = ['75117', '10110', '40111', '60271'];
-        setPostalCodesList(fallbackCodes);
-        setPostalCode(fallbackCodes[0]);
+        setPostalCodesList([]);
       }
-    } else {
-      const fallbackCodes = ['75117', '10110', '40111', '60271'];
-      setPostalCodesList(fallbackCodes);
-      setPostalCode(fallbackCodes[0]);
     }
   };
 
@@ -551,7 +544,7 @@ export default function BeliPage() {
               ))}
             </select>
 
-            {/* KODE POS DARI DATABASE SOOLUH */}
+            {/* KODE POS MURNI DARI DATABASE SOOLUH */}
             <label style={styles.label}>Kode Pos *</label>
             <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
               <select
@@ -564,7 +557,7 @@ export default function BeliPage() {
                     <option key={code} value={code}>{code}</option>
                   ))
                 ) : (
-                  <option value="">{selectedDistrict ? '-- Memuat Kode Pos --' : '-- Pilih Kecamatan Dulu --'}</option>
+                  <option value="">{selectedDistrict ? '-- Tidak Ada Kode Pos --' : '-- Pilih Kecamatan Dulu --'}</option>
                 )}
               </select>
 
