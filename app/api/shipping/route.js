@@ -4,13 +4,13 @@ export async function POST(req) {
   try {
     const { destinationPostalCode, destinationCityName, destinationDistrictName, qty = 1 } = await req.json();
 
-    const cleanCity = String(destinationCityName || '').trim();
-    const cleanDistrict = String(destinationDistrictName || '').trim();
+    const cleanCity = String(destinationCityName || '').trim().toLowerCase();
+    const cleanDistrict = String(destinationDistrictName || '').trim().toLowerCase();
     const postalCodeNum = parseInt(destinationPostalCode, 10);
 
     // 1. GRATIS ONGKIR LOKAL SAMARINDA
-    const isSamarinda = cleanCity.toLowerCase().includes('samarinda') || 
-                        cleanDistrict.toLowerCase().includes('samarinda') || 
+    const isSamarinda = cleanCity.includes('samarinda') || 
+                        cleanDistrict.includes('samarinda') || 
                         (postalCodeNum >= 75000 && postalCodeNum <= 75258);
 
     if (isSamarinda) {
@@ -31,78 +31,28 @@ export async function POST(req) {
 
     const apiKey = process.env.BITESHIP_API_KEY;
     if (!apiKey) {
-      return NextResponse.json({ 
-        error: 'BITESHIP_API_KEY belum terkonfigurasi di Vercel.' 
-      }, { status: 500 });
+      return NextResponse.json({ error: 'API Key Biteship belum dipasang.' }, { status: 500 });
     }
 
     const parsedQty = Math.max(1, parseInt(qty, 10) || 1);
     const weightGrams = Math.ceil(parsedQty / 50) * 1000;
 
-    // STEP A: CARI ORIGIN AREA ID (SAMARINDA ULU) DARI BITESHIP MAPS
-    let originAreaId = null;
-    try {
-      const originRes = await fetch(`https://api.biteship.com/v1/maps/areas?countries=ID&input=Samarinda%20Ulu`, {
-        headers: { 'Authorization': `Bearer ${apiKey}` },
-      });
-      const originData = await originRes.json();
-      if (originData.areas && originData.areas.length > 0) {
-        originAreaId = originData.areas[0].id;
-      }
-    } catch (e) {
-      console.error('Origin area search error:', e);
-    }
-
-    // STEP B: CARI DESTINATION AREA ID RESMI DARI BITESHIP MAPS
-    let destinationAreaId = null;
-    const searchQuery = `${cleanDistrict} ${cleanCity}`;
-
-    try {
-      const destRes = await fetch(`https://api.biteship.com/v1/maps/areas?countries=ID&input=${encodeURIComponent(searchQuery)}`, {
-        headers: { 'Authorization': `Bearer ${apiKey}` },
-      });
-      const destData = await destRes.json();
-      if (destData.areas && destData.areas.length > 0) {
-        destinationAreaId = destData.areas[0].id;
-      }
-    } catch (e) {
-      console.error('Dest area search error:', e);
-    }
-
-    // STEP C: PAYLOAD MURNI AREA ID (TANPA KOORDINAT LAT/LNG AGAR MELEWATI FILTER INSTANT COURIER)
+    // 2. PAYLOAD PALING STABIL (HANYA MENGGUNAKAN KODE POS)
     const payload = {
-      couriers: 'jne,jnt,sicepat,pos',
+      origin_postal_code: 75125,            // Kode Pos Samarinda Ulu
+      destination_postal_code: postalCodeNum, // Kode Pos Tujuan dari inputan
+      couriers: 'jne,jnt,sicepat',          // Kurir yang sudah kamu aktifkan
       items: [
         {
-          name: 'Papan Akrilik NFC Google Review',
-          description: 'Papan Akrilik',
-          category: 'fashion',
-          value: Number(60000 * parsedQty),
-          weight: Number(weightGrams),
-          quantity: Number(parsedQty),
-        },
-      ],
+          name: 'Papan Akrilik NFC',
+          value: 60000 * parsedQty,
+          weight: weightGrams,
+          quantity: parsedQty
+        }
+      ]
     };
 
-    // Kunci Asal Pengirim (Samarinda Ulu)
-    if (originAreaId) {
-      payload.origin_area_id = originAreaId;
-    } else {
-      payload.origin_postal_code = 75125;
-    }
-
-    // Kunci Tujuan Penerima
-    if (destinationAreaId) {
-      payload.destination_area_id = destinationAreaId;
-    } else if (postalCodeNum && !isNaN(postalCodeNum)) {
-      payload.destination_postal_code = postalCodeNum;
-    } else {
-      return NextResponse.json({ 
-        error: `Area tujuan (${cleanDistrict}, ${cleanCity}) tidak ditemukan di sistem Biteship.` 
-      }, { status: 400 });
-    }
-
-    // STEP D: REQUEST KE API RATES BITESHIP
+    // 3. REQUEST KE BITESHIP
     const rateRes = await fetch('https://api.biteship.com/v1/rates/couriers', {
       method: 'POST',
       headers: {
@@ -115,13 +65,13 @@ export async function POST(req) {
     const rateData = await rateRes.json();
 
     if (!rateRes.ok || !rateData.pricing || rateData.pricing.length === 0) {
-      const bErrorMsg = rateData.error || rateData.message || 'Tidak ada respons tarif dari kurir Biteship.';
+      const errorMsg = rateData.error || rateData.message || 'Rute pengiriman belum didukung oleh kurir.';
       return NextResponse.json({ 
-        error: `Biteship Response: ${bErrorMsg}` 
-      }, { status: rateRes.status || 400 });
+        error: `Biteship: ${errorMsg}` 
+      }, { status: 400 });
     }
 
-    // Format Opsi Kurir Murni Real-Time
+    // 4. FORMAT HASIL
     const shippingResults = rateData.pricing.map((item) => ({
       courierCode: String(item.courier_code || '').toUpperCase(),
       courierName: `${item.courier_name} (${item.courier_service_name || item.service_type || 'Reguler'})`,
