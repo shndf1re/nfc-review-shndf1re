@@ -309,31 +309,39 @@ export default function SalesPage() {
       const sale = modalState.targetData;
       const isOnline = sale.source === 'online';
       
-      const targetTable = isOnline ? 'orders' : 'sales';
-      const idCol = isOnline ? 'order_id' : 'id';
-      
-      // Pastikan tipe data ID dikonversi dengan presisi
-      const formattedId = isOnline ? String(sale.id) : Number(sale.id);
+      let deletedData = null;
+      let delErr = null;
 
-      // 1. Eksekusi Hapus & Verifikasi Baris Terhapus
-      const { data: deletedData, error: delErr } = await supabase
-        .from(targetTable)
-        .delete()
-        .eq(idCol, formattedId)
-        .select();
-      
+      if (isOnline) {
+        // Fallback 1: Hapus menggunakan kolom order_id
+        const res1 = await supabase.from('orders').delete().eq('order_id', String(sale.id)).select();
+        
+        if (res1.data && res1.data.length > 0) {
+          deletedData = res1.data;
+        } else {
+          // Fallback 2: Hapus menggunakan kolom id
+          const res2 = await supabase.from('orders').delete().eq('id', sale.id).select();
+          deletedData = res2.data;
+          delErr = res2.error;
+        }
+      } else {
+        // Untuk transaksi manual offline (tabel sales)
+        const res = await supabase.from('sales').delete().eq('id', Number(sale.id)).select();
+        deletedData = res.data;
+        delErr = res.error;
+      }
+
       if (delErr) {
-        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Gagal Hapus DB: ' + delErr.message }));
+        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Error Supabase: ' + delErr.message }));
         return;
       }
 
-      // 2. Jika DB gagal menghapus, JANGAN LAKUKAN PENAMBAHAN STOK
       if (!deletedData || deletedData.length === 0) {
-        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Data tidak ditemukan di database / Gagal terhapus!' }));
+        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Data tidak ditemukan di DB / Gagal terhapus!' }));
         return;
       }
 
-      // 3. Hanya jika berhasil terhapus dari DB, kembalikan stok
+      // HANYA JIKA BERHASIL TERHAPUS DARI DB, KEMBALIKAN STOK
       const restoredStock = acrylicStock + (parseInt(sale.quantity, 10) || 1);
       await supabase.from('inventory').update({ stock_quantity: restoredStock }).eq('id', targetId);
 
