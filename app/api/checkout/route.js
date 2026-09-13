@@ -16,59 +16,59 @@ const snap = new midtransClient.Snap({
 export async function POST(req) {
   try {
     const body = await req.json();
-    const { customerName, customerPhone, shippingAddress, storeName, targetUrl, qty, courier, destinationCity, shippingCost } = body;
+    const { customerName, customerPhone, shippingAddress, storeName, targetUrl, qty, courierName, shippingCost, destinationCity } = body;
 
     const cleanName = String(customerName || '').trim();
     const cleanPhone = String(customerPhone || '').trim();
     const cleanAddress = String(shippingAddress || '').trim();
+    const cleanCity = String(destinationCity || '').trim();
     const cleanStore = String(storeName || '').trim();
     const cleanUrl = String(targetUrl || '').trim();
     const parsedQty = Math.max(1, parseInt(qty, 10) || 1);
     const parsedShippingCost = Math.max(0, parseFloat(shippingCost) || 0);
 
-    if (!cleanName || !cleanPhone || !cleanAddress) {
+    if (!cleanName || !cleanPhone || !cleanAddress || !cleanCity) {
       return NextResponse.json(
-        { error: 'Nama, Nomor WhatsApp, dan Alamat wajib diisi!' },
+        { error: 'Nama, No. WA, Kota Tujuan, dan Alamat Lengkap wajib diisi!' },
         { status: 400 }
       );
     }
 
-    // Perhitungan Total Tagihan = (Harga Papan x Qty) + Ongkir
     const PRICE_PER_ITEM = SITE_CONFIG.pricing?.discountPrice || 60000;
     const itemsTotal = parsedQty * PRICE_PER_ITEM;
     const totalPrice = itemsTotal + parsedShippingCost;
     const orderId = `NFC-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
-    // 1. Simpan Transaksi ke Supabase
+    // 1. Simpan Transaksi ke Database Supabase
     const { error: dbError } = await supabase.from('orders').insert([
       {
         order_id: orderId,
         customer_name: cleanName,
         customer_phone: cleanPhone,
         shipping_address: cleanAddress,
+        destination_city: cleanCity,
         store_name: cleanStore || null,
         target_url: cleanUrl || null,
         quantity: parsedQty,
         shipping_cost: parsedShippingCost,
-        courier: courier || 'Lokal Samarinda Ulu',
-        destination_city: destinationCity || 'Samarinda',
+        courier: courierName || 'Lokal Samarinda',
         total_price: totalPrice,
         payment_status: 'pending',
       },
     ]);
 
     if (dbError) {
-      return NextResponse.json({ error: 'Gagal membuat pesanan di database: ' + dbError.message }, { status: 500 });
+      return NextResponse.json({ error: 'DB Insert Error: ' + dbError.message }, { status: 500 });
     }
 
-    // 2. Parameter Midtrans (Item Papan + Item Ongkir)
+    // 2. Rincian Tagihan untuk Midtrans
     const itemDetails = [
       {
         id: 'PAPAN-NFC-AKRILIK',
         price: PRICE_PER_ITEM,
         quantity: parsedQty,
         name: 'Papan Akrilik NFC Google Review',
-      }
+      },
     ];
 
     if (parsedShippingCost > 0) {
@@ -76,7 +76,7 @@ export async function POST(req) {
         id: 'ONGKOS-KIRIM',
         price: parsedShippingCost,
         quantity: 1,
-        name: `Ongkir (${courier || 'Ekspedisi'})`,
+        name: `Ongkir (${courierName || 'Ekspedisi'})`,
       });
     }
 
