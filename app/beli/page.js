@@ -14,81 +14,13 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 );
 
-// DATA WILAYAH SAMPLE UTAMA (PROVINSI - KOTA - KECAMATAN - KODEPOS)
-const PROVINCE_LIST = [
-  { id: 'kaltim', name: 'Kalimantan Timur' },
-  { id: 'jabar', name: 'Jawa Barat' },
-  { id: 'dki', name: 'DKI Jakarta' },
-  { id: 'jatim', name: 'Jawa Timur' },
-  { id: 'jateng', name: 'Jawa Tengah' },
-];
-
-const CITY_MAP = {
-  kaltim: [
-    { id: 'samarinda', name: 'Kota Samarinda' },
-    { id: 'balikpapan', name: 'Kota Balikpapan' },
-    { id: 'kukar', name: 'Kab. Kutai Kartanegara' },
-  ],
-  jabar: [
-    { id: 'bandung', name: 'Kota Bandung' },
-    { id: 'bekasi', name: 'Kota Bekasi' },
-    { id: 'bogor', name: 'Kota Bogor' },
-  ],
-  dki: [
-    { id: 'jaksel', name: 'Jakarta Selatan' },
-    { id: 'jaktim', name: 'Jakarta Timur' },
-    { id: 'jakbar', name: 'Jakarta Barat' },
-  ],
-  jatim: [
-    { id: 'surabaya', name: 'Kota Surabaya' },
-    { id: 'malang', name: 'Kota Malang' },
-  ],
-  jateng: [
-    { id: 'semarang', name: 'Kota Semarang' },
-    { id: 'solo', name: 'Kota Surakarta (Solo)' },
-  ],
-};
-
-const DISTRICT_MAP = {
-  samarinda: [
-    { name: 'Samarinda Ulu', postal: '75125' },
-    { name: 'Samarinda Utara', postal: '75119' },
-    { name: 'Sungai Kunjang', postal: '75126' },
-    { name: 'Sambutan', postal: '75115' },
-    { name: 'Palaran', postal: '75243' },
-  ],
-  balikpapan: [
-    { name: 'Balikpapan Kota', postal: '76111' },
-    { name: 'Balikpapan Selatan', postal: '76114' },
-    { name: 'Balikpapan Utara', postal: '76125' },
-  ],
-  kukar: [
-    { name: 'Tenggarong', postal: '75511' },
-    { name: 'Loa Janan', postal: '75391' },
-  ],
-  bandung: [
-    { name: 'Sumur Bandung', postal: '40111' },
-    { name: 'Coblong', postal: '40132' },
-    { name: 'Cicendo', postal: '40171' },
-    { name: 'Bandung Wetan', postal: '40116' },
-  ],
-  jaksel: [
-    { name: 'Kebayoran Baru', postal: '12110' },
-    { name: 'Cilandak', postal: '12430' },
-  ],
-  surabaya: [
-    { name: 'Tegalsari', postal: '60261' },
-    { name: 'Gubeng', postal: '60281' },
-  ],
-};
-
 export default function OrderPage() {
   const router = useRouter();
 
   const [activeOrder, setActiveOrder] = useState(null);
   const [checkingOrder, setCheckingOrder] = useState(true);
 
-  // CONTROL STEP (1 = Data Diri, 2 = Alamat & Kurir)
+  // CONTROL STEP (1 = Data Diri, 2 = Alamat & Ongkir)
   const [step, setStep] = useState(1);
 
   // STEP 1 STATE
@@ -97,10 +29,15 @@ export default function OrderPage() {
   const [storeName, setStoreName] = useState('');
   const [orderQty, setOrderQty] = useState(1);
 
-  // STEP 2 STATE (DROPDOWN WILAYAH)
-  const [selectedProvince, setSelectedProvince] = useState('');
-  const [selectedCity, setSelectedCity] = useState('');
-  const [selectedDistrict, setSelectedDistrict] = useState('');
+  // STEP 2 STATE (DATA WILAYAH INDONESIA VIA API)
+  const [provinces, setProvinces] = useState([]);
+  const [regencies, setRegencies] = useState([]);
+  const [districts, setDistricts] = useState([]);
+
+  const [selectedProvObj, setSelectedProvObj] = useState(null);
+  const [selectedRegObj, setSelectedRegObj] = useState(null);
+  const [selectedDistObj, setSelectedDistObj] = useState(null);
+
   const [postalCode, setPostalCode] = useState('');
   const [shippingAddress, setShippingAddress] = useState('');
 
@@ -123,11 +60,83 @@ export default function OrderPage() {
 
   useEffect(() => {
     checkSavedOrder();
+    fetchProvinces();
     const timer = setInterval(() => {
       setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // LOAD PROVINSI SE-INDONESIA
+  const fetchProvinces = async () => {
+    try {
+      const res = await fetch('https://www.emsifa.com/api-wilayah-indonesia/api/provinces.json');
+      const data = await res.json();
+      setProvinces(data || []);
+    } catch (err) {
+      console.error('Gagal load provinsi:', err);
+    }
+  };
+
+  const handleProvinceChange = async (e) => {
+    const provId = e.target.value;
+    const provObj = provinces.find((p) => p.id === provId);
+    setSelectedProvObj(provObj || null);
+    setSelectedRegObj(null);
+    setSelectedDistObj(null);
+    setRegencies([]);
+    setDistricts([]);
+    setPostalCode('');
+    setShippingOptions([]);
+    setSelectedShipping(null);
+    setShippingMessage('');
+
+    if (provId) {
+      try {
+        const res = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/regencies/${provId}.json`);
+        const data = await res.json();
+        setRegencies(data || []);
+      } catch (err) {
+        console.error('Gagal load kota:', err);
+      }
+    }
+  };
+
+  const handleRegencyChange = async (e) => {
+    const regId = e.target.value;
+    const regObj = regencies.find((r) => r.id === regId);
+    setSelectedRegObj(regObj || null);
+    setSelectedDistObj(null);
+    setDistricts([]);
+    setPostalCode('');
+    setShippingOptions([]);
+    setSelectedShipping(null);
+    setShippingMessage('');
+
+    if (regId) {
+      try {
+        const res = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/districts/${regId}.json`);
+        const data = await res.json();
+        setDistricts(data || []);
+      } catch (err) {
+        console.error('Gagal load kecamatan:', err);
+      }
+    }
+  };
+
+  const handleDistrictChange = (e) => {
+    const distId = e.target.value;
+    const distObj = districts.find((d) => d.id === distId);
+    setSelectedDistObj(distObj || null);
+    setShippingOptions([]);
+    setSelectedShipping(null);
+    setShippingMessage('');
+
+    // Pre-fill postal code default untuk Samarinda / Jabodetabek jika belum mengetik
+    if (distObj && distObj.name.toLowerCase().includes('samarinda ulu')) {
+      setPostalCode('75125');
+    }
+  };
 
   const checkSavedOrder = async () => {
     try {
@@ -160,7 +169,6 @@ export default function OrderPage() {
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
-  // HANDLER STEP 1 -> STEP 2
   const handleNextToStep2 = (e) => {
     e.preventDefault();
     if (!customerName.trim() || !customerPhone.trim()) {
@@ -170,44 +178,10 @@ export default function OrderPage() {
     setStep(2);
   };
 
-  // HANDLER DROPDOWN PROVINSI & KOTA & KECAMATAN
-  const handleProvinceChange = (e) => {
-    const provId = e.target.value;
-    setSelectedProvince(provId);
-    setSelectedCity('');
-    setSelectedDistrict('');
-    setPostalCode('');
-    setShippingOptions([]);
-    setSelectedShipping(null);
-    setShippingMessage('');
-  };
-
-  const handleCityChange = (e) => {
-    const cityId = e.target.value;
-    setSelectedCity(cityId);
-    setSelectedDistrict('');
-    setPostalCode('');
-    setShippingOptions([]);
-    setSelectedShipping(null);
-    setShippingMessage('');
-  };
-
-  const handleDistrictChange = (e) => {
-    const distName = e.target.value;
-    setSelectedDistrict(distName);
-    const distObj = (DISTRICT_MAP[selectedCity] || []).find((d) => d.name === distName);
-    if (distObj) {
-      setPostalCode(distObj.postal);
-    }
-    setShippingOptions([]);
-    setSelectedShipping(null);
-    setShippingMessage('');
-  };
-
   // HANDLER CEK ONGKIR BITESHIP REAL-TIME
   const handleCheckShipping = async () => {
-    if (!selectedCity || !selectedDistrict || !postalCode) {
-      alert('Silakan pilih Kota, Kecamatan, dan Kode Pos terlebih dahulu.');
+    if (!selectedRegObj || !selectedDistObj || !postalCode) {
+      alert('Silakan pilih Kota, Kecamatan, dan masukkan Kode Pos 5 digit terlebih dahulu.');
       return;
     }
 
@@ -216,16 +190,13 @@ export default function OrderPage() {
     setShippingOptions([]);
     setSelectedShipping(null);
 
-    const cityNameObj = (CITY_MAP[selectedProvince] || []).find((c) => c.id === selectedCity);
-    const cityName = cityNameObj ? cityNameObj.name : selectedCity;
-
     try {
       const res = await fetch('/api/shipping', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          destinationCityName: cityName,
-          destinationDistrictName: selectedDistrict,
+          destinationCityName: selectedRegObj.name,
+          destinationDistrictName: selectedDistObj.name,
           destinationPostalCode: postalCode,
           qty: orderQty,
         }),
@@ -265,7 +236,7 @@ export default function OrderPage() {
       if (res.ok) {
         localStorage.removeItem('active_nfc_order_id');
         setActiveOrder(null);
-        alert('Pesanan berhasil dibatalkan.');
+        alert('Pesanan dibatalkan.');
         setStep(1);
       }
     } catch (err) {
@@ -291,19 +262,16 @@ export default function OrderPage() {
     e.preventDefault();
     setOrderError('');
 
-    const cityNameObj = (CITY_MAP[selectedProvince] || []).find((c) => c.id === selectedCity);
-    const cityName = cityNameObj ? cityNameObj.name : selectedCity;
-    const isSamarinda = cityName.toLowerCase().includes('samarinda') || selectedDistrict.toLowerCase().includes('samarinda');
-
+    const isSamarinda = selectedRegObj?.name.toLowerCase().includes('samarinda') || selectedDistObj?.name.toLowerCase().includes('samarinda');
     if (!selectedShipping && !isSamarinda) {
-      alert('Silakan klik "Cek Tarif Ekspedisi" dan pilih kurir yang tersedia sebelum melakukan pembayaran.');
+      alert('Silakan klik "Hitung Ongkir Real-time" dan pilih kurir pengiriman terlebih dahulu.');
       return;
     }
 
     setIsCheckoutLoading(true);
 
     try {
-      const fullAddressText = `${shippingAddress}, Kec. ${selectedDistrict}, ${cityName}, Kode Pos ${postalCode}`;
+      const fullAddressText = `${shippingAddress}, Kec. ${selectedDistObj?.name}, ${selectedRegObj?.name}, ${selectedProvObj?.name}, Kode Pos ${postalCode}`;
 
       const res = await fetch('/api/checkout', {
         method: 'POST',
@@ -312,7 +280,7 @@ export default function OrderPage() {
           customerName,
           customerPhone,
           shippingAddress: fullAddressText,
-          destinationCity: cityName,
+          destinationCity: selectedRegObj?.name || 'Luar Kota',
           postalCode,
           courierName: selectedShipping?.courierName || 'Lokal Samarinda Free',
           shippingCost: selectedShipping?.cost || 0,
@@ -350,7 +318,6 @@ export default function OrderPage() {
     <div className={inter.className} style={{ backgroundColor: '#f8fafc', color: '#0f172a', minHeight: '100vh', padding: '24px 16px' }}>
       <div style={{ maxWidth: '480px', margin: '0 auto', backgroundColor: '#ffffff', borderRadius: '24px', padding: '28px 24px', boxShadow: '0 20px 40px -15px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0' }}>
         
-        {/* HEADER BAR */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
           <Link href="/" style={{ color: '#64748b', textDecoration: 'none', fontSize: '14px', fontWeight: '600' }}>
             ← Utama
@@ -383,7 +350,7 @@ export default function OrderPage() {
               <span style={{ fontSize: '14px', fontWeight: '800', color: '#b91c1c', fontFamily: 'monospace' }}>{formatTimer(timeLeft)}</span>
             </div>
 
-            {/* PROGRESS INDICATOR */}
+            {/* INDICATOR STEP */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', padding: '0 10px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ width: '26px', height: '26px', borderRadius: '50%', backgroundColor: step === 1 ? '#2563eb' : '#16a34a', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '700' }}>1</span>
@@ -396,11 +363,11 @@ export default function OrderPage() {
               </div>
             </div>
 
-            {/* STEP 1: DATA DIRI & QTY */}
+            {/* STEP 1 */}
             {step === 1 && (
               <form onSubmit={handleNextToStep2} autoComplete="off" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <h2 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: '800' }}>👤 Langkah 1: Data Pembeli</h2>
-                <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#64748b' }}>Masukkan nama dan nomor WhatsApp untuk notifikasi pesanan.</p>
+                <h2 style={{ margin: '0 0 4px 0', fontSize: '20px', fontWeight: '800' }}>👤 Langkah 1: Data Pembeli</h2>
+                <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#64748b' }}>Isi data pemesan dan jumlah akrilik yang diinginkan.</p>
 
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', display: 'block', marginBottom: '4px' }}>Nama Lengkap Pembeli *</label>
@@ -436,7 +403,7 @@ export default function OrderPage() {
               </form>
             )}
 
-            {/* STEP 2: DROPDOWN ALAMAT & ONGKIR BITESHIP */}
+            {/* STEP 2 */}
             {step === 2 && (
               <form onSubmit={handleProcessCheckout} autoComplete="off" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -446,60 +413,68 @@ export default function OrderPage() {
                   </button>
                 </div>
 
-                {/* DROPDOWN PROVINSI */}
+                {/* PROVINSI */}
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', display: 'block', marginBottom: '4px' }}>Provinsi Tujuan *</label>
-                  <select required value={selectedProvince} onChange={handleProvinceChange} style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', backgroundColor: '#fff', boxSizing: 'border-box' }}>
+                  <select required value={selectedProvObj?.id || ''} onChange={handleProvinceChange} style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', backgroundColor: '#fff', boxSizing: 'border-box' }}>
                     <option value="">-- Pilih Provinsi --</option>
-                    {PROVINCE_LIST.map((p) => (
+                    {provinces.map((p) => (
                       <option key={p.id} value={p.id}>{p.name}</option>
                     ))}
                   </select>
                 </div>
 
-                {/* DROPDOWN KOTA */}
-                {selectedProvince && (
+                {/* KOTA */}
+                {regencies.length > 0 && (
                   <div>
                     <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', display: 'block', marginBottom: '4px' }}>Kota / Kabupaten Tujuan *</label>
-                    <select required value={selectedCity} onChange={handleCityChange} style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', backgroundColor: '#fff', boxSizing: 'border-box' }}>
+                    <select required value={selectedRegObj?.id || ''} onChange={handleRegencyChange} style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', backgroundColor: '#fff', boxSizing: 'border-box' }}>
                       <option value="">-- Pilih Kota/Kabupaten --</option>
-                      {(CITY_MAP[selectedProvince] || []).map((c) => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
+                      {regencies.map((r) => (
+                        <option key={r.id} value={r.id}>{r.name}</option>
                       ))}
                     </select>
                   </div>
                 )}
 
-                {/* DROPDOWN KECAMATAN */}
-                {selectedCity && (
+                {/* KECAMATAN */}
+                {districts.length > 0 && (
                   <div>
                     <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', display: 'block', marginBottom: '4px' }}>Kecamatan Tujuan *</label>
-                    <select required value={selectedDistrict} onChange={handleDistrictChange} style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', backgroundColor: '#fff', boxSizing: 'border-box' }}>
+                    <select required value={selectedDistObj?.id || ''} onChange={handleDistrictChange} style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', backgroundColor: '#fff', boxSizing: 'border-box' }}>
                       <option value="">-- Pilih Kecamatan --</option>
-                      {(DISTRICT_MAP[selectedCity] || []).map((d) => (
-                        <option key={d.name} value={d.name}>{d.name} (Kode Pos: {d.postal})</option>
+                      {districts.map((d) => (
+                        <option key={d.id} value={d.id}>{d.name}</option>
                       ))}
                     </select>
                   </div>
                 )}
 
-                {/* INPUT ALAMAT JALAN */}
-                {selectedDistrict && (
+                {/* KODE POS & ALAMAT JALAN */}
+                {selectedDistObj && (
                   <>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                      <div>
+                        <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', display: 'block', marginBottom: '4px' }}>Kode Pos *</label>
+                        <input type="text" required maxLength={5} placeholder="Contoh: 40111" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                        <button type="button" onClick={handleCheckShipping} disabled={isCheckingShipping} style={{ width: '100%', padding: '12px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
+                          {isCheckingShipping ? '...' : '🔍 Cek Ongkir'}
+                        </button>
+                      </div>
+                    </div>
+
                     <div>
                       <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', display: 'block', marginBottom: '4px' }}>Alamat Jalan / Patokan *</label>
                       <textarea required placeholder="Jln. Ahmad Yani No. 12, RT 05..." value={shippingAddress} onChange={(e) => setShippingAddress(e.target.value)} style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box', height: '55px', fontFamily: 'inherit' }} />
                     </div>
-
-                    <button type="button" onClick={handleCheckShipping} disabled={isCheckingShipping} style={{ width: '100%', padding: '12px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
-                      {isCheckingShipping ? 'Memeriksa Tarif Biteship...' : '🔍 Hitung Ongkir Real-time (Biteship)'}
-                    </button>
                   </>
                 )}
 
                 {shippingMessage && <p style={{ margin: 0, fontSize: '12px', color: '#2563eb', fontWeight: '600' }}>{shippingMessage}</p>}
 
-                {/* DROPDOWN HASIL KURIR REAL BITESHIP */}
+                {/* DROPDOWN EXPEDITION RESULTS */}
                 {shippingOptions.length > 0 && (
                   <div>
                     <label style={{ fontSize: '12px', fontWeight: '700', color: '#334155', display: 'block', marginBottom: '4px' }}>Pilih Kurir Ekspedisi *</label>
