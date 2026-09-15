@@ -60,9 +60,16 @@ export default function SalesPage() {
     isVerifying: false
   });
 
+  // STATE MANAJEMEN KODE PROMO (KUPON)
+  const [couponsList, setCouponsList] = useState([]);
+  const [newCouponCode, setNewCouponCode] = useState('');
+  const [newDiscountAmount, setNewDiscountAmount] = useState('');
+  const [couponStatusMsg, setCouponStatusMsg] = useState('');
+
   // REALTIME LISTENER SUPABASE
   useEffect(() => {
     fetchData();
+    fetchCoupons();
 
     const channel = supabase
       .channel('sales-page-realtime')
@@ -75,12 +82,45 @@ export default function SalesPage() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => {
         fetchData();
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'coupons' }, () => {
+        fetchCoupons();
+      })
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
   }, [selectedMonth]);
+
+  const fetchCoupons = async () => {
+    const { data } = await supabase.from('coupons').select('*').order('created_at', { ascending: false });
+    if (data) setCouponsList(data);
+  };
+
+  const handleAddCoupon = async (e) => {
+    e.preventDefault();
+    setCouponStatusMsg('Menyimpan...');
+
+    const { error } = await supabase.from('coupons').insert([{
+      code: newCouponCode.trim().toUpperCase(),
+      discount_amount: parseFloat(newDiscountAmount) || 0,
+      is_active: true
+    }]);
+
+    if (error) {
+      setCouponStatusMsg('❌ Gagal: ' + error.message);
+    } else {
+      setCouponStatusMsg('✅ Kode promo berhasil ditambahkan!');
+      setNewCouponCode('');
+      setNewDiscountAmount('');
+      fetchCoupons();
+    }
+  };
+
+  const handleDeleteCoupon = async (id) => {
+    await supabase.from('coupons').delete().eq('id', id);
+    fetchCoupons();
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -152,7 +192,9 @@ export default function SalesPage() {
       let mappedStatus = 'Belum Bayar';
       const statusRaw = (o.payment_status || '').toLowerCase();
       
-      if (['shipped', 'dikirim', 'sedang dikirim'].includes(statusRaw)) {
+      if (['selesai', 'finished', 'completed'].includes(statusRaw)) {
+        mappedStatus = 'Selesai';
+      } else if (['shipped', 'dikirim', 'sedang dikirim'].includes(statusRaw)) {
         mappedStatus = 'Sedang Dikirim';
       } else if (['settlement', 'paid', 'success', 'lunas'].includes(statusRaw)) {
         mappedStatus = 'Lunas';
@@ -195,7 +237,6 @@ export default function SalesPage() {
     setSelectedMonth(new Date().toISOString().substring(0, 7));
   };
 
-  // NOTIFIKASI STOK MENIPIS
   const checkAndTriggerLowStockModal = (currentStock) => {
     const LOW_STOCK_LIMIT = 5;
     const ADMIN_PHONE = '6285156534909';
@@ -273,7 +314,6 @@ export default function SalesPage() {
     fetchData();
   };
 
-  // KELOLA MODAL INPUT RESI
   const openResiModal = (sale) => {
     setResiModal({
       isOpen: true,
@@ -398,15 +438,14 @@ export default function SalesPage() {
     fetchData();
   };
 
-  // RUMUS STATISTIK
   const totalPapanTerjual = salesHistory.reduce((acc, curr) => acc + (parseInt(curr.quantity, 10) || 0), 0);
   
   const totalOngkirCollected = salesHistory
-    .filter(s => ['Lunas', 'Sedang Dikirim'].includes(s.payment_status))
+    .filter(s => ['Lunas', 'Sedang Dikirim', 'Selesai'].includes(s.payment_status))
     .reduce((acc, curr) => acc + (parseFloat(curr.shipping_cost) || 0), 0);
 
   const totalKeuntunganLunas = salesHistory
-    .filter(s => ['Lunas', 'Sedang Dikirim'].includes(s.payment_status))
+    .filter(s => ['Lunas', 'Sedang Dikirim', 'Selesai'].includes(s.payment_status))
     .reduce((acc, curr) => {
       const subtotalBarang = (parseFloat(curr.total_price) || 0) - (parseFloat(curr.shipping_cost) || 0);
       return acc + subtotalBarang;
@@ -415,7 +454,7 @@ export default function SalesPage() {
   const totalBrutoLunas = totalKeuntunganLunas + totalOngkirCollected;
 
   const totalPiutang = salesHistory
-    .filter(s => !['Lunas', 'Sedang Dikirim'].includes(s.payment_status))
+    .filter(s => !['Lunas', 'Sedang Dikirim', 'Selesai'].includes(s.payment_status))
     .reduce((acc, curr) => {
       const subtotalBarang = (parseFloat(curr.total_price) || 0) - (parseFloat(curr.shipping_cost) || 0);
       return acc + subtotalBarang;
@@ -445,6 +484,47 @@ export default function SalesPage() {
         </button>
       </div>
 
+      {/* MANAJEMEN KODE PROMO (KUPON) */}
+      <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
+        <h3 style={{ margin: '0 0 16px 0', fontSize: '15px', fontWeight: '700' }}>🎟️ Kelola Kode Promo / Diskon (Flat Rp)</h3>
+        
+        <form onSubmit={handleAddCoupon} style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+          <input 
+            type="text" 
+            required 
+            placeholder="Kode (misal: DISKON40K)" 
+            value={newCouponCode} 
+            onChange={(e) => setNewCouponCode(e.target.value)} 
+            style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }} 
+          />
+          <input 
+            type="number" 
+            required 
+            placeholder="Potongan Rp (misal: 40000)" 
+            value={newDiscountAmount} 
+            onChange={(e) => setNewDiscountAmount(e.target.value)} 
+            style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }} 
+          />
+          <button type="submit" style={{ padding: '10px 16px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}>
+            + Tambah
+          </button>
+        </form>
+        {couponStatusMsg && <p style={{ fontSize: '12px', textAlign: 'center', marginBottom: '12px', fontWeight: 'bold', color: couponStatusMsg.startsWith('❌') ? '#dc2626' : '#16a34a' }}>{couponStatusMsg}</p>}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {couponsList.map((c) => (
+            <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #f1f5f9' }}>
+              <div>
+                <strong style={{ color: '#2563eb', fontFamily: 'monospace', fontSize: '14px' }}>{c.code}</strong>
+                <span style={{ marginLeft: '10px', fontSize: '12px', color: '#16a34a', fontWeight: 'bold' }}>- Rp {parseFloat(c.discount_amount).toLocaleString('id-ID')}</span>
+              </div>
+              <button onClick={() => handleDeleteCoupon(c.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>🗑️ Hapus</button>
+            </div>
+          ))}
+          {couponsList.length === 0 && <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0, textAlign: 'center' }}>Belum ada kode promo aktif.</p>}
+        </div>
+      </div>
+
       {/* FORM INPUT MANUAL */}
       <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
         <h3 style={{ margin: '0 0 16px 0', fontSize: '15px', fontWeight: '700' }}>➕ Input Penjualan Manual (Offline)</h3>
@@ -459,6 +539,7 @@ export default function SalesPage() {
             <select value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)} style={{ flex: 1, padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#fff', boxSizing: 'border-box' }}>
               <option value="Lunas">✅ Lunas</option>
               <option value="Sedang Dikirim">🚚 Sedang Dikirim</option>
+              <option value="Selesai">🎉 Selesai</option>
               <option value="DP 50%">⏳ DP 50%</option>
               <option value="Belum Bayar">❌ Belum Bayar</option>
             </select>
@@ -588,6 +669,7 @@ export default function SalesPage() {
                           <select value={selectedNewStatus} onChange={(e) => setSelectedNewStatus(e.target.value)} style={{ fontSize: '11px', padding: '2px 4px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
                             <option value="Lunas">✅ Lunas</option>
                             <option value="Sedang Dikirim">🚚 Sedang Dikirim</option>
+                            <option value="Selesai">🎉 Selesai</option>
                             <option value="DP 50%">⏳ DP 50%</option>
                             <option value="Belum Bayar">❌ Belum Bayar</option>
                           </select>
@@ -599,8 +681,8 @@ export default function SalesPage() {
                           <span style={{
                             padding: '2px 6px',
                             borderRadius: '4px',
-                            backgroundColor: sale.payment_status === 'Sedang Dikirim' ? '#e0f2fe' : sale.payment_status === 'Lunas' ? '#dcfce7' : sale.payment_status === 'DP 50%' ? '#fef3c7' : '#fee2e2',
-                            color: sale.payment_status === 'Sedang Dikirim' ? '#0284c7' : sale.payment_status === 'Lunas' ? '#15803d' : sale.payment_status === 'DP 50%' ? '#b45309' : '#dc2626',
+                            backgroundColor: sale.payment_status === 'Selesai' ? '#dcfce7' : sale.payment_status === 'Sedang Dikirim' ? '#e0f2fe' : sale.payment_status === 'Lunas' ? '#dcfce7' : sale.payment_status === 'DP 50%' ? '#fef3c7' : '#fee2e2',
+                            color: sale.payment_status === 'Selesai' ? '#15803d' : sale.payment_status === 'Sedang Dikirim' ? '#0284c7' : sale.payment_status === 'Lunas' ? '#15803d' : sale.payment_status === 'DP 50%' ? '#b45309' : '#dc2626',
                             fontWeight: '700'
                           }}>
                             {sale.payment_status}
