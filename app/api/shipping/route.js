@@ -54,7 +54,6 @@ export async function POST(req) {
       })
     });
 
-    // Cek jika HTTP response dari Biteship bukan 200 OK
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Biteship API Error Raw:', errorText);
@@ -71,18 +70,43 @@ export async function POST(req) {
       }, { status: 400 });
     }
 
-    // Format opsi kurir untuk frontend
-    const results = data.pricing.map((item) => ({
-      courierCode: item.courier_code,
-      courierName: `${item.courier_name} (${item.service_type})`,
-      service: item.service_type,
-      cost: item.price,
-      etd: item.shipment_duration_range ? `${item.shipment_duration_range} hari` : '2-3 hari'
-    }));
+    // 3. FILTER KURIR: Hapus ongkir mahal terpisah (> Rp 90.000) dan rapikan nama layanan
+    const filteredPricing = data.pricing.filter((item) => {
+      // Abaikan jika harga di atas Rp 90.000 (menghapus JNE YES / Instant yang terlampau mahal)
+      if (item.price > 90000) return false;
+      return true;
+    });
+
+    // Urutkan dari ongkir termurah ke termahal
+    filteredPricing.sort((a, b) => a.price - b.price);
+
+    // Format opsi kurir untuk dimunculkan di dropdown frontend
+    const results = filteredPricing.map((item) => {
+      let prettyName = item.courier_name;
+      
+      // Rapikan label di dropdown agar terlihat profesional
+      if (item.service_type) {
+        prettyName = `${item.courier_name} (${item.service_type.toUpperCase()})`;
+      }
+
+      return {
+        courierCode: item.courier_code,
+        courierName: prettyName,
+        service: item.service_type,
+        cost: item.price,
+        etd: item.shipment_duration_range ? `${item.shipment_duration_range} hari` : '2-4 hari'
+      };
+    });
 
     return NextResponse.json({
       isFreeShipping: false,
-      results: results
+      results: results.length > 0 ? results : data.pricing.slice(0, 3).map(item => ({
+        courierCode: item.courier_code,
+        courierName: `${item.courier_name} (${item.service_type})`,
+        service: item.service_type,
+        cost: item.price,
+        etd: item.shipment_duration_range ? `${item.shipment_duration_range} hari` : '2-4 hari'
+      }))
     });
 
   } catch (err) {
