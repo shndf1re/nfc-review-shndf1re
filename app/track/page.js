@@ -16,13 +16,14 @@ export default function TrackOrderPage() {
   const [errorMessage, setErrorMessage] = useState('');
   const [isMounted, setIsMounted] = useState(false);
   const [copyStatus, setCopyStatus] = useState('Salin');
+  const [autoCheckingCourier, setAutoCheckingCourier] = useState(false);
 
   // LOAD MIDTRANS SNAP SDK DINAMIS
   useEffect(() => {
     setIsMounted(true);
 
     const clientKey = process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY || '';
-    const snapScriptUrl = 'https://app.sandbox.midtrans.com/snap/snap.js'; // Ganti ke app.midtrans.com jika production
+    const snapScriptUrl = 'https://app.sandbox.midtrans.com/snap/snap.js';
 
     if (!document.querySelector(`script[src="${snapScriptUrl}"]`)) {
       const script = document.createElement('script');
@@ -70,6 +71,12 @@ export default function TrackOrderPage() {
         setErrorMessage('Pesanan tidak ditemukan. Pastikan Nomor WA atau ID Order sudah benar.');
       } else {
         setOrderData(data);
+
+        // OTOMATISASI: Jika status 'Sedang Dikirim' & ada Nomor Resi, cek status langsung ke Kurir
+        const currentStatus = (data.payment_status || '').toLowerCase();
+        if (['shipped', 'dikirim', 'sedang dikirim'].includes(currentStatus) && data.resi_number) {
+          checkCourierDeliveryStatus(data);
+        }
       }
     } catch (err) {
       setErrorMessage('Terjadi kesalahan koneksi.');
@@ -78,12 +85,37 @@ export default function TrackOrderPage() {
     }
   };
 
+  // OTOMATIS CEK STATUS RESI VIA BITESHIP
+  const checkCourierDeliveryStatus = async (order) => {
+    setAutoCheckingCourier(true);
+    try {
+      const res = await fetch('/api/track-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderDbId: order.id,
+          resiNumber: order.resi_number,
+          courierCode: order.courier || 'jne'
+        })
+      });
+
+      const data = await res.json();
+      if (data.isFinished) {
+        // Update state lokal agar badge berubah jadi Selesai
+        setOrderData(prev => prev ? { ...prev, payment_status: 'Selesai' } : prev);
+      }
+    } catch (err) {
+      console.log('Cek resi otomatis di latar belakang:', err.message);
+    } finally {
+      setAutoCheckingCourier(false);
+    }
+  };
+
   const handleSearchSubmit = (e) => {
     e.preventDefault();
     fetchOrder();
   };
 
-  // FUNGSI MEMBUKA ULANG MIDTRANS POPUP DARI MENU LACAK
   const handleOpenSnapPayment = () => {
     if (!orderData || !orderData.snap_token) {
       alert('Token pembayaran tidak ditemukan. Silakan hubungi admin via WA.');
@@ -104,7 +136,7 @@ export default function TrackOrderPage() {
           alert('Pembayaran Gagal!');
         },
         onClose: function () {
-          // Hanya menutup popup tanpa error
+          // Tutup tanpa error
         },
       });
     } else {
@@ -114,6 +146,9 @@ export default function TrackOrderPage() {
 
   const getStatusBadge = (status) => {
     const s = (status || '').toLowerCase();
+    if (['selesai', 'finished', 'completed'].includes(s)) {
+      return { label: '🎉 PESANAN SELESAI', bg: '#dcfce7', color: '#15803d' };
+    }
     if (['shipped', 'dikirim', 'sedang dikirim'].includes(s)) {
       return { label: '🚚 SEDANG DIKIRIM', bg: '#e0f2fe', color: '#0284c7' };
     }
@@ -134,7 +169,8 @@ export default function TrackOrderPage() {
 
   if (!isMounted) return null;
 
-  const isPendingPayment = ['pending', 'belum bayar'].includes((orderData?.payment_status || '').toLowerCase());
+  const statusRaw = (orderData?.payment_status || '').toLowerCase();
+  const isPendingPayment = ['pending', 'belum bayar'].includes(statusRaw);
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', padding: '24px 16px', fontFamily: '-apple-system, sans-serif' }}>
@@ -201,6 +237,11 @@ export default function TrackOrderPage() {
               }}>
                 {getStatusBadge(orderData.payment_status).label}
               </span>
+              {autoCheckingCourier && (
+                <span style={{ fontSize: '10px', color: '#0284c7', display: 'block', marginTop: '6px', fontWeight: '500' }}>
+                  🔄 Memverifikasi posisi resi di kurir...
+                </span>
+              )}
             </div>
 
             {/* KOTAK TOMBOL GANTI METODE BAYAR (JIKA BELUM BAYAR) */}
