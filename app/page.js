@@ -26,8 +26,8 @@ export default function LandingPage() {
   const [activateError, setActivateError] = useState('');
   const [verifying, setVerifying] = useState(false);
 
-  const ORIGINAL_PRICE = SITE_CONFIG.pricing?.originalPrice || 150000;
-  const DISCOUNT_PRICE = SITE_CONFIG.pricing?.discountPrice || 60000;
+  const ORIGINAL_PRICE = SITE_CONFIG.pricing?.originalPrice || 100000;
+  const DISCOUNT_PRICE = SITE_CONFIG.pricing?.discountPrice || 65000;
   const PROMO_TAG = SITE_CONFIG.pricing?.promoTag || '🔥 PROMO SPESIAL 60% OFF';
 
   // Handler Aktivasi Kartu
