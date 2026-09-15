@@ -70,29 +70,37 @@ export async function POST(req) {
       }, { status: 400 });
     }
 
-    // 3. FILTER KURIR: Hapus ongkir mahal terpisah (> Rp 90.000) dan rapikan nama layanan
-    const filteredPricing = data.pricing.filter((item) => {
-      // Abaikan jika harga di atas Rp 90.000 (menghapus JNE YES / Instant yang terlampau mahal)
-      if (item.price > 90000) return false;
-      return true;
-    });
-
-    // Urutkan dari ongkir termurah ke termahal
+    // 3. FILTER & MAPPING NAMA PAKET RESMI EKSPEDISI
+    const filteredPricing = data.pricing.filter((item) => item.price <= 90000);
     filteredPricing.sort((a, b) => a.price - b.price);
 
-    // Format opsi kurir untuk dimunculkan di dropdown frontend
     const results = filteredPricing.map((item) => {
-      let prettyName = item.courier_name;
-      
-      // Rapikan label di dropdown agar terlihat profesional
-      if (item.service_type) {
-        prettyName = `${item.courier_name} (${item.service_type.toUpperCase()})`;
+      const code = (item.courier_code || '').toLowerCase();
+      const serviceType = (item.service_type || '').toLowerCase();
+      let officialServiceName = item.service_name || item.service_type;
+
+      // Pemetaan Nama Paket Resmi Ekspedisi
+      if (code.includes('jne')) {
+        if (serviceType.includes('reg') || serviceType.includes('standard')) officialServiceName = 'REG';
+        else if (serviceType.includes('yes')) officialServiceName = 'YES';
+        else if (serviceType.includes('oke')) officialServiceName = 'OKE';
+      } else if (code.includes('jnt') || code.includes('j&t')) {
+        if (serviceType.includes('ez') || serviceType.includes('standard')) officialServiceName = 'EZ';
+        else if (serviceType.includes('jemari')) officialServiceName = 'JEMARI';
+      } else if (code.includes('sicepat')) {
+        if (serviceType.includes('reg') || serviceType.includes('standard')) officialServiceName = 'REG';
+        else if (serviceType.includes('best')) officialServiceName = 'BEST';
+        else if (serviceType.includes('gokil')) officialServiceName = 'GOKIL';
+      } else if (code.includes('pos')) {
+        if (serviceType.includes('reg') || serviceType.includes('standard')) officialServiceName = 'Kilat Khusus';
       }
+
+      const courierNameFormatted = `${item.courier_name} ${officialServiceName}`;
 
       return {
         courierCode: item.courier_code,
-        courierName: prettyName,
-        service: item.service_type,
+        courierName: courierNameFormatted,
+        service: officialServiceName,
         cost: item.price,
         etd: item.shipment_duration_range ? `${item.shipment_duration_range} hari` : '2-4 hari'
       };
@@ -100,13 +108,7 @@ export async function POST(req) {
 
     return NextResponse.json({
       isFreeShipping: false,
-      results: results.length > 0 ? results : data.pricing.slice(0, 3).map(item => ({
-        courierCode: item.courier_code,
-        courierName: `${item.courier_name} (${item.service_type})`,
-        service: item.service_type,
-        cost: item.price,
-        etd: item.shipment_duration_range ? `${item.shipment_duration_range} hari` : '2-4 hari'
-      }))
+      results: results
     });
 
   } catch (err) {
