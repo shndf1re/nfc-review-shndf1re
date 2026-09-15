@@ -14,65 +14,59 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Order ID & Nomor Resi wajib diisi.' }, { status: 400 });
     }
 
-    const biteshipApiKey = process.env.BITESHIP_API_KEY || '';
-    if (!biteshipApiKey) {
-      return NextResponse.json({ error: 'Biteship API Key belum dikonfigurasi.' }, { status: 500 });
+    const apiKey = process.env.BINDERBYTE_API_KEY || '';
+    if (!apiKey) {
+      return NextResponse.json({ error: 'BINDERBYTE_API_KEY belum dipasang di environment variable.' }, { status: 500 });
     }
 
-    // Ekstrak kode kurir sederhana (misal 'JNE (Reguler)' -> 'jne')
-    let cleanCourier = (courierCode || '').toLowerCase();
-    if (cleanCourier.includes('jne')) cleanCourier = 'jne';
-    else if (cleanCourier.includes('j&t') || cleanCourier.includes('jnt')) cleanCourier = 'jnt';
-    else if (cleanCourier.includes('pos')) cleanCourier = 'pos';
-    else if (cleanCourier.includes('sicepat')) cleanCourier = 'sicepat';
-    else if (cleanCourier.includes('tiki')) cleanCourier = 'tiki';
-    else cleanCourier = 'jne'; // fallback default
+    // Format kode ekspedisi sesuai dokumentasi BinderByte
+    let courier = (courierCode || '').toLowerCase();
+    if (courier.includes('jne')) courier = 'jne';
+    else if (courier.includes('j&t') || courier.includes('jnt')) courier = 'jnt';
+    else if (courier.includes('pos')) courier = 'pos';
+    else if (courier.includes('sicepat')) courier = 'sicepat';
+    else if (courier.includes('tiki')) courier = 'tiki';
+    else if (courier.includes('anteraja')) courier = 'anteraja';
+    else if (courier.includes('ninja')) courier = 'ninja';
+    else courier = 'jne';
 
-    // Panggil API Tracking Gratis dari Biteship
-    const biteshipRes = await fetch(
-      `https://api.biteship.com/v1/trackings/${resiNumber}/couriers/${cleanCourier}`,
-      {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${biteshipApiKey}`,
-          'Content-Type': 'application/json',
-        },
-      }
+    // Panggil API BinderByte (API Cek Resi Gratis)
+    const response = await fetch(
+      `https://api.binderbyte.com/v1/track?api_key=${apiKey}&courier=${courier}&awb=${resiNumber.trim()}`
     );
 
-    const biteshipData = await biteshipRes.json();
+    const result = await response.json();
 
-    if (!biteshipRes.ok || !biteshipData.success) {
+    if (!response.ok || result.status !== 200 || !result.data) {
       return NextResponse.json({ 
-        message: 'Resi belum terdeteksi di sistem kurir atau masih diproses.',
-        status: 'on_delivery'
+        isFinished: false,
+        message: result.message || 'Resi belum terdaftar atau masih diproses kurir.' 
       });
     }
 
-    const trackingStatus = (biteshipData.status || '').toLowerCase();
+    const summaryStatus = (result.data.summary?.status || '').toLowerCase();
 
-    // Jika status dari kurir sudah 'delivered' (sampai tujuan)
-    if (trackingStatus === 'delivered') {
-      // Update status di Supabase menjadi Selesai
+    // BinderByte mengembalikan status 'DELIVERED' jika paket sudah sampai
+    if (summaryStatus === 'delivered') {
       const { error: updateErr } = await supabase
         .from('orders')
         .update({ payment_status: 'Selesai' })
         .eq('id', orderDbId);
 
       if (updateErr) {
-        return NextResponse.json({ error: 'Gagal update ke DB: ' + updateErr.message }, { status: 500 });
+        return NextResponse.json({ error: 'Gagal update status di database: ' + updateErr.message }, { status: 500 });
       }
 
       return NextResponse.json({ 
         isFinished: true, 
-        message: 'Pesanan telah selesai diantar oleh kurir!',
-        status: 'delivered' 
+        message: 'Pesanan telah diterima oleh penerima.',
+        status: 'DELIVERED' 
       });
     }
 
     return NextResponse.json({ 
       isFinished: false, 
-      status: trackingStatus 
+      status: summaryStatus 
     });
 
   } catch (err) {
