@@ -2,100 +2,93 @@ import { NextResponse } from 'next/server';
 
 export async function POST(req) {
   try {
-    const { destinationPostalCode, destinationCityName, destinationDistrictName, qty = 1 } = await req.json();
+    const { destinationPostalCode, destinationCityName, destinationDistrictName, qty } = await req.json();
 
-    const cleanCity = String(destinationCityName || '').trim().toLowerCase();
-    const cleanDistrict = String(destinationDistrictName || '').trim().toLowerCase();
-    const postalCodeNum = parseInt(destinationPostalCode, 10);
+    const biteshipApiKey = process.env.BITESHIP_API_KEY || '';
 
-    // 1. GRATIS ONGKIR LOKAL SAMARINDA
-    const isSamarinda = cleanCity.includes('samarinda') || 
-                        cleanDistrict.includes('samarinda') || 
-                        (postalCodeNum >= 75000 && postalCodeNum <= 75258);
+    if (!biteshipApiKey) {
+      return NextResponse.json({ 
+        error: 'BITESHIP_API_KEY belum dikonfigurasi di environment variable (.env.local / Vercel).' 
+      }, { status: 500 });
+    }
+
+    const totalWeight = Math.max(1, (parseInt(qty, 10) || 1) * 200); // 200 gr per pcs
+
+    // 1. CEK KHUSUS LOKAL SAMARINDA (FREE ONGKIR)
+    const isSamarinda = (destinationCityName || '').toLowerCase().includes('samarinda');
 
     if (isSamarinda) {
       return NextResponse.json({
-        success: true,
         isFreeShipping: true,
         results: [
           {
-            courierCode: 'LOKAL',
-            courierName: 'Kurir Lokal Samarinda',
+            courierCode: 'lokal',
+            courierName: 'Kurir Lokal Samarinda (Free Ongkir)',
             service: 'FREE',
             cost: 0,
-            etd: '1 Hari',
-          },
-        ],
+            etd: '1 Hari'
+          }
+        ]
       });
     }
 
-    const apiKey = process.env.BITESHIP_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ error: 'API Key Biteship belum dipasang.' }, { status: 500 });
-    }
-
-    const parsedQty = Math.max(1, parseInt(qty, 10) || 1);
-    
-    // RUMUS BERAT: Setiap kelipatan 20 pcs = 1 kg (1.000 gram)
-    // 1 - 20 pcs = 1.000g (1 kg)
-    // 21 - 40 pcs = 2.000g (2 kg)
-    const weightGrams = Math.ceil(parsedQty / 20) * 1000;
-
-    // PAYLOAD BITESHIP: quantity di-set 1 agar Biteship tidak mengalikan ongkir dengan pcs
-    const payload = {
-      origin_postal_code: 75125, // Samarinda Ulu
-      destination_postal_code: postalCodeNum,
-      couriers: 'jne,jnt,sicepat',
-      items: [
-        {
-          name: 'Paket Papan Akrilik NFC Google Review',
-          value: Number(60000 * parsedQty),
-          weight: Number(weightGrams),
-          quantity: 1, // Di-set 1 paket gabungan
-        },
-      ],
-    };
-
-    // REQUEST KE API RATES BITESHIP
-    const rateRes = await fetch('https://api.biteship.com/v1/rates/couriers', {
+    // 2. CEK ONGKIR EKSPEDISI VIA BITESHIP API
+    const response = await fetch('https://api.biteship.com/v1/rates/couriers', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${biteshipApiKey}`,
+        'Content-Type': 'application/json'
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        origin_postal_code: 75119, // Kode Pos Samarinda Ulu / Toko Utama
+        destination_postal_code: parseInt(destinationPostalCode, 10) || 0,
+        couriers: 'jne,jnt,pos,sicepat',
+        items: [
+          {
+            name: 'Papan Akrilik NFC',
+            value: 60000,
+            quantity: parseInt(qty, 10) || 1,
+            weight: totalWeight
+          }
+        ]
+      })
     });
 
-    const rateData = await rateRes.json();
-
-    if (!rateRes.ok || !rateData.pricing || rateData.pricing.length === 0) {
-      const errorMsg = rateData.error || rateData.message || 'Rute pengiriman belum didukung oleh kurir.';
-      return NextResponse.json({ error: `Biteship: ${errorMsg}` }, { status: 400 });
+    // Cek jika HTTP response dari Biteship bukan 200 OK
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Biteship API Error Raw:', errorText);
+      return NextResponse.json({ 
+        error: 'Gagal menghubungi Biteship. Pastikan BITESHIP_API_KEY valid.' 
+      }, { status: 400 });
     }
 
-    // FILTER MEMBUANG TRUCKING / KARGO
-    const shippingResults = rateData.pricing
-      .filter((item) => {
-        const serviceName = String(item.courier_service_name || '').toLowerCase();
-        const serviceCode = String(item.courier_service_code || '').toLowerCase();
-        return !serviceName.includes('trucking') && !serviceCode.includes('jtr') && !serviceName.includes('cargo');
-      })
-      .map((item) => ({
-        courierCode: String(item.courier_code || '').toUpperCase(),
-        courierName: `${item.courier_name} (${item.courier_service_name || item.service_type || 'Reguler'})`,
-        service: item.courier_service_code || 'REG',
-        cost: item.price,
-        etd: item.shipment_duration_range ? `${item.shipment_duration_range} ${item.shipment_duration_unit || 'Hari'}` : '2-3 Hari',
-      }));
+    const data = await response.json();
+
+    if (!data.success || !data.pricing || data.pricing.length === 0) {
+      return NextResponse.json({ 
+        error: data.message || 'Tidak ada layanan kurir yang tersedia untuk kode pos ini.' 
+      }, { status: 400 });
+    }
+
+    // Format opsi kurir untuk frontend
+    const results = data.pricing.map((item) => ({
+      courierCode: item.courier_code,
+      courierName: `${item.courier_name} (${item.service_type})`,
+      service: item.service_type,
+      cost: item.price,
+      etd: item.shipment_duration_range ? `${item.shipment_duration_range} hari` : '2-3 hari'
+    }));
 
     return NextResponse.json({
-      success: true,
       isFreeShipping: false,
-      calculatedWeightKg: weightGrams / 1000,
-      results: shippingResults,
+      results: results
     });
 
   } catch (err) {
-    return NextResponse.json({ error: 'Server Error: ' + err.message }, { status: 500 });
+    console.error('Shipping API Catch Error:', err);
+    return NextResponse.json({ 
+      error: 'Terjadi kesalahan server saat mengecek ongkir: ' + err.message 
+    }, { status: 500 });
   }
 }
