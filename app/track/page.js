@@ -17,10 +17,21 @@ export default function TrackOrderPage() {
   const [isMounted, setIsMounted] = useState(false);
   const [copyStatus, setCopyStatus] = useState('Salin');
 
+  // LOAD MIDTRANS SNAP SDK DINAMIS
   useEffect(() => {
     setIsMounted(true);
 
-    // Auto-detect dari LocalStorage jika pernah order dari HP/Browser ini
+    const clientKey = process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY || '';
+    const snapScriptUrl = 'https://app.sandbox.midtrans.com/snap/snap.js'; // Ganti ke app.midtrans.com jika production
+
+    if (!document.querySelector(`script[src="${snapScriptUrl}"]`)) {
+      const script = document.createElement('script');
+      script.src = snapScriptUrl;
+      script.setAttribute('data-client-key', clientKey);
+      script.async = true;
+      document.body.appendChild(script);
+    }
+
     const savedOrderId = localStorage.getItem('last_order_id');
     const savedPhone = localStorage.getItem('last_customer_phone');
 
@@ -45,7 +56,6 @@ export default function TrackOrderPage() {
     setOrderData(null);
 
     try {
-      // Cari berdasarkan order_id ATAU customer_phone
       let { data, error } = await supabase
         .from('orders')
         .select('*')
@@ -73,6 +83,35 @@ export default function TrackOrderPage() {
     fetchOrder();
   };
 
+  // FUNGSI MEMBUKA ULANG MIDTRANS POPUP DARI MENU LACAK
+  const handleOpenSnapPayment = () => {
+    if (!orderData || !orderData.snap_token) {
+      alert('Token pembayaran tidak ditemukan. Silakan hubungi admin via WA.');
+      return;
+    }
+
+    if (typeof window !== 'undefined' && window.snap) {
+      window.snap.pay(orderData.snap_token, {
+        onSuccess: function () {
+          alert('Pembayaran Berhasil!');
+          fetchOrder(orderData.order_id);
+        },
+        onPending: function () {
+          alert('Menunggu Pembayaran...');
+          fetchOrder(orderData.order_id);
+        },
+        onError: function () {
+          alert('Pembayaran Gagal!');
+        },
+        onClose: function () {
+          // Hanya menutup popup tanpa error
+        },
+      });
+    } else {
+      alert('Sistem pembayaran Midtrans sedang memuat, silakan coba 2 detik lagi.');
+    }
+  };
+
   const getStatusBadge = (status) => {
     const s = (status || '').toLowerCase();
     if (['shipped', 'dikirim', 'sedang dikirim'].includes(s)) {
@@ -94,6 +133,8 @@ export default function TrackOrderPage() {
   };
 
   if (!isMounted) return null;
+
+  const isPendingPayment = ['pending', 'belum bayar'].includes((orderData?.payment_status || '').toLowerCase());
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', padding: '24px 16px', fontFamily: '-apple-system, sans-serif' }}>
@@ -162,6 +203,39 @@ export default function TrackOrderPage() {
               </span>
             </div>
 
+            {/* KOTAK TOMBOL GANTI METODE BAYAR (JIKA BELUM BAYAR) */}
+            {isPendingPayment && orderData.snap_token && (
+              <div style={{
+                backgroundColor: '#fffbe6',
+                border: '1.5px solid #ffe58f',
+                borderRadius: '14px',
+                padding: '14px',
+                marginBottom: '16px',
+                textAlign: 'center'
+              }}>
+                <span style={{ fontSize: '12px', fontWeight: '700', color: '#d48806', display: 'block', marginBottom: '8px' }}>
+                  ⚡ Pembayaran Belum Selesai
+                </span>
+                <button
+                  onClick={handleOpenSnapPayment}
+                  style={{
+                    width: '100%',
+                    backgroundColor: '#16a34a',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '10px',
+                    padding: '12px',
+                    fontSize: '13px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 10px rgba(22, 163, 74, 0.2)'
+                  }}
+                >
+                  💳 Bayar Sekarang / Ganti Metode Bayar
+                </button>
+              </div>
+            )}
+
             {/* KOTAK NOMOR RESI (JIKA SUDAH DIINPUT ADMIN) */}
             {orderData.resi_number && (
               <div style={{
@@ -195,9 +269,6 @@ export default function TrackOrderPage() {
                     📋 {copyStatus}
                   </button>
                 </div>
-                <span style={{ fontSize: '10px', color: '#60a5fa', display: 'block', marginTop: '4px' }}>
-                  Salin nomor resi untuk cek posisi paket di aplikasi kurir.
-                </span>
               </div>
             )}
 
