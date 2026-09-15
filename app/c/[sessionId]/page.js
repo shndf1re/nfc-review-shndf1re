@@ -34,13 +34,19 @@ export default function DynamicCheckoutPage() {
     }
   }, [params, router]);
 
-  // === 1. COUNTDOWN TIMER PROMO PERSISTEN (30 Menit) ===
-  const PROMO_PRICE = 60000;   // Harga Promo per Pcs
-  const NORMAL_PRICE = 150000; // Harga Normal per Pcs (setelah 30 menit)
+  // === HARGA RESMI & PROMO ===
+  const ORIGINAL_PRICE_PER_ITEM = 150000; // Harga Resmi (Dicoret)
+  const BASE_PROMO_PRICE = 60000;        // Harga Promo Normal per Pcs
 
   const [timeLeft, setTimeLeft] = useState('30:00');
   const [isExpired, setIsExpired] = useState(false);
-  const [itemPrice, setItemPrice] = useState(PROMO_PRICE);
+  const [itemPrice, setItemPrice] = useState(BASE_PROMO_PRICE);
+
+  // === STATE KODE PROMO (KUPON) ===
+  const [couponInput, setCouponInput] = useState('');
+  const [appliedDiscount, setAppliedDiscount] = useState(0);
+  const [couponError, setCouponError] = useState('');
+  const [appliedCode, setAppliedCode] = useState('');
 
   useEffect(() => {
     if (!isValidSession) return;
@@ -62,7 +68,7 @@ export default function DynamicCheckoutPage() {
         clearInterval(timerInterval);
         setTimeLeft('00:00');
         setIsExpired(true);
-        setItemPrice(NORMAL_PRICE);
+        setItemPrice(ORIGINAL_PRICE_PER_ITEM);
       } else {
         const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
         const seconds = Math.floor((distance % (1000 * 60)) / 1000);
@@ -72,7 +78,7 @@ export default function DynamicCheckoutPage() {
 
         setTimeLeft(`${formattedMin}:${formattedSec}`);
         setIsExpired(false);
-        setItemPrice(PROMO_PRICE);
+        setItemPrice(BASE_PROMO_PRICE);
       }
     }, 1000);
 
@@ -113,11 +119,39 @@ export default function DynamicCheckoutPage() {
   const [activeSnapToken, setActiveSnapToken] = useState(null);
 
   const currentQty = Math.max(1, parseInt(qty, 10) || 1);
-  const subtotal = itemPrice * currentQty;
+  const rawSubtotal = itemPrice * currentQty;
+  const finalSubtotal = Math.max(0, rawSubtotal - appliedDiscount);
   const shippingCost = selectedCourier ? selectedCourier.cost : 0;
-  const totalAmount = subtotal + shippingCost;
+  const totalAmount = finalSubtotal + shippingCost;
 
-  // === 1. LOAD PROVINSI EMSIFA V2 ===
+  // FUNGSI CEK & GUNAKAN KODE PROMO
+  const handleApplyCoupon = async () => {
+    setCouponError('');
+    if (!couponInput.trim()) return;
+
+    try {
+      const res = await fetch('/api/coupons', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: couponInput })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setCouponError(data.error || 'Kode promo tidak valid.');
+        setAppliedDiscount(0);
+        setAppliedCode('');
+      } else {
+        setAppliedDiscount(data.discountAmount);
+        setAppliedCode(data.code);
+        setCouponError('');
+      }
+    } catch (err) {
+      setCouponError('Gagal memverifikasi kode promo.');
+    }
+  };
+
+  // === LOAD PROVINSI EMSIFA V2 ===
   useEffect(() => {
     if (!isValidSession) return;
     fetch('https://www.emsifa.com/api-wilayah-indonesia/v2/provinces.json')
@@ -254,7 +288,6 @@ export default function DynamicCheckoutPage() {
     setStep(2);
   };
 
-  // FUNGSI TRIGGER POPUP SNAP MIDTRANS
   const triggerSnapPay = (token, orderId) => {
     if (typeof window !== 'undefined' && window.snap) {
       window.snap.pay(token, {
@@ -275,7 +308,6 @@ export default function DynamicCheckoutPage() {
           alert('Pembayaran Gagal!');
         },
         onClose: function () {
-          // Tidak ada alert mengganggu saat ditutup, hanya menyimpan token agar bisa buka ulang
           setActiveSnapToken(token);
         },
       });
@@ -284,14 +316,12 @@ export default function DynamicCheckoutPage() {
     }
   };
 
-  // PROSES BAYAR / GANTI METODE
   const handlePay = async () => {
     if (!selectedCourier || !streetAddress) {
       alert('Lengkapi alamat dan pilih kurir terlebih dahulu.');
       return;
     }
 
-    // Jika sudah pernah request token di sesi ini, pakai token yang ada agar tidak duplikat order
     if (activeSnapToken) {
       const savedOrderId = localStorage.getItem('last_order_id') || 'NFC-ORDER';
       triggerSnapPay(activeSnapToken, savedOrderId);
@@ -315,7 +345,8 @@ export default function DynamicCheckoutPage() {
           qty: currentQty,
           courierName: selectedCourier.courierName,
           shippingCost: shippingCost,
-          isExpiredPromo: isExpired
+          isExpiredPromo: isExpired,
+          discountAmount: appliedDiscount
         }),
       });
 
@@ -368,7 +399,7 @@ export default function DynamicCheckoutPage() {
     },
     topHeader: {
       display: 'flex',
-      justifyContent: 'space-between',
+      justify: 'space-between',
       alignItems: 'center',
       marginBottom: '12px',
     },
@@ -540,7 +571,7 @@ export default function DynamicCheckoutPage() {
             <a href="/track" style={styles.trackLink}>📦 Lacak</a>
           </div>
           <div style={styles.badgePromo}>
-            {isExpired ? '⚠️ Waktu Promo Habis' : '🔥 PROMO SPESIAL 60% OFF'}
+            {isExpired ? '⚠️ Waktu Promo Habis' : '🔥 PROMO SPESIAL'}
           </div>
         </div>
 
@@ -735,21 +766,58 @@ export default function DynamicCheckoutPage() {
               </div>
             )}
 
+            {/* FORM INPUT KODE PROMO */}
+            <div style={{ padding: '14px', backgroundColor: '#f8fafc', borderRadius: '14px', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#334155', marginBottom: '6px' }}>
+                🎟️ Punya Kode Promo?
+              </label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="Contoh: DISKON40K"
+                  value={couponInput}
+                  onChange={(e) => setCouponInput(e.target.value)}
+                  style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', textTransform: 'uppercase' }}
+                />
+                <button
+                  type="button"
+                  onClick={handleApplyCoupon}
+                  style={{ backgroundColor: '#0f172a', color: '#ffffff', border: 'none', borderRadius: '8px', padding: '0 16px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}
+                >
+                  Gunakan
+                </button>
+              </div>
+              {couponError && <p style={{ fontSize: '11px', color: '#dc2626', marginTop: '6px', margin: 0, fontWeight: '600' }}>❌ {couponError}</p>}
+              {appliedDiscount > 0 && <p style={{ fontSize: '11px', color: '#16a34a', marginTop: '6px', margin: 0, fontWeight: 'bold' }}>🎉 Potongan Rp {appliedDiscount.toLocaleString('id-ID')} ({appliedCode}) berhasil diterapkan!</p>}
+            </div>
+
+            {/* RINGKASAN HARGA CORET & PROMO */}
             <div style={styles.summaryCard}>
               <div style={styles.summaryRow}>
-                <span>Harga per Pcs:</span>
-                <span style={{ fontWeight: 'bold', color: isExpired ? '#dc2626' : '#16a34a' }}>
-                  Rp {itemPrice.toLocaleString('id-ID')} {isExpired ? '(Harga Normal)' : '(Promo)'}
+                <span>Harga Resmi:</span>
+                <span style={{ textDecoration: 'line-through', color: '#94a3b8' }}>
+                  Rp {(ORIGINAL_PRICE_PER_ITEM * currentQty).toLocaleString('id-ID')}
                 </span>
               </div>
               <div style={styles.summaryRow}>
-                <span>Subtotal ({currentQty} Pcs):</span>
-                <span>Rp {subtotal.toLocaleString('id-ID')}</span>
+                <span>Harga Promo:</span>
+                <span style={{ fontWeight: 'bold', color: isExpired ? '#dc2626' : '#16a34a' }}>
+                  Rp {rawSubtotal.toLocaleString('id-ID')} {isExpired ? '(Harga Normal)' : '(Promo Active)'}
+                </span>
               </div>
+
+              {appliedDiscount > 0 && (
+                <div style={{ ...styles.summaryRow, color: '#16a34a', fontWeight: 'bold' }}>
+                  <span>Diskon Tambahan ({appliedCode}):</span>
+                  <span>- Rp {appliedDiscount.toLocaleString('id-ID')}</span>
+                </div>
+              )}
+
               <div style={styles.summaryRow}>
                 <span>Ongkos Kirim:</span>
                 <span>{isFreeShipping ? 'FREE (Lokal Samarinda)' : `Rp ${shippingCost.toLocaleString('id-ID')}`}</span>
               </div>
+              
               <div style={styles.totalRow}>
                 <span>Total Bayar:</span>
                 <span>Rp {totalAmount.toLocaleString('id-ID')}</span>
