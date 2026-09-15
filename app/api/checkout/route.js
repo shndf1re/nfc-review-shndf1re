@@ -1,127 +1,140 @@
 import { NextResponse } from 'next/server';
-import midtransClient from 'midtrans-client';
+import snap from '@/lib/midtrans'; // Pastikan path lib midtrans kamu sesuai
 import { createClient } from '@supabase/supabase-js';
-import { SITE_CONFIG } from '../../../lib/config';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 );
 
-const snap = new midtransClient.Snap({
-  isProduction: false, // Set ke true jika sudah live production Midtrans
-  serverKey: process.env.MIDTRANS_SERVER_KEY || '',
-});
-
 export async function POST(req) {
   try {
-    const body = await req.json();
     const {
       customerName,
       customerPhone,
       shippingAddress,
+      destinationCity,
+      postalCode,
       storeName,
       targetUrl,
       qty,
       courierName,
       shippingCost,
-      destinationCity,
-      postalCode,
-      isExpiredPromo // Diterima dari client (status timer 30 menit)
-    } = body;
+      isExpiredPromo,
+      discountAmount
+    } = await req.json();
 
-    const cleanName = String(customerName || '').trim();
-    const cleanPhone = String(customerPhone || '').trim();
-    const cleanAddress = String(shippingAddress || '').trim();
-    const cleanCity = String(destinationCity || '').trim();
-    const cleanPostal = String(postalCode || '').trim();
-    const parsedQty = Math.max(1, parseInt(qty, 10) || 1);
-    const parsedShippingCost = Math.max(0, parseFloat(shippingCost) || 0);
+    // 1. Tentukan Harga per Pcs berdasarkan Promo Timer
+    const BASE_PROMO_PRICE = 60000;
+    const ORIGINAL_PRICE = 150000;
+    const itemUnitPrice = isExpiredPromo ? ORIGINAL_PRICE : BASE_PROMO_PRICE;
 
-    if (!cleanName || !cleanPhone || !cleanAddress || !cleanCity) {
-      return NextResponse.json(
-        { error: 'Nama, No. WA, Kota/Kecamatan, dan Alamat Lengkap wajib diisi!' },
-        { status: 400 }
-      );
-    }
-
-    // === VALIDASI HARGA DI SISI SERVER ===
-    const PROMO_PRICE = SITE_CONFIG.pricing?.discountPrice || 60000;
-    const NORMAL_PRICE = SITE_CONFIG.pricing?.normalPrice || 150000;
-
-    // Tentukan harga satuan berdasarkan kondisi promo (tanpa percaya input total dari F12 client)
-    const PRICE_PER_ITEM = isExpiredPromo ? NORMAL_PRICE : PROMO_PRICE;
+    const currentQty = Math.max(1, parseInt(qty, 10) || 1);
+    const rawSubtotal = itemUnitPrice * currentQty;
+    const discountVal = parseFloat(discountAmount) || 0;
     
-    const itemsTotal = parsedQty * PRICE_PER_ITEM;
-    const totalPrice = itemsTotal + parsedShippingCost;
-    const orderId = `NFC-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    // Subtotal barang setelah diskon kupon (tidak boleh kurang dari 0)
+    const finalSubtotal = Math.max(0, rawSubtotal - discountVal);
+    const shipCostVal = parseFloat(shippingCost) || 0;
+    
+    // Total Tagihan Akhir
+    const grossAmount = finalSubtotal + shipCostVal;
 
-    const fullShippingAddress = `${cleanAddress}, ${cleanCity} (${cleanPostal})`;
+    // 2. Buat Order ID Unik (Misal: NFC-1712345678-999)
+    const uniqueSuffix = Math.floor(100 + Math.random() * 900);
+    const orderId = `NFC-${Date.now()}-${uniqueSuffix}`;
 
-    // 1. Simpan Transaksi ke Database Supabase
-    const { error: dbError } = await supabase.from('orders').insert([
-      {
-        order_id: orderId,
-        customer_name: cleanName,
-        customer_phone: cleanPhone,
-        shipping_address: fullShippingAddress,
-        destination_city: cleanCity,
-        store_name: String(storeName || '').trim() || null,
-        target_url: String(targetUrl || '').trim() || null,
-        quantity: parsedQty,
-        shipping_cost: parsedShippingCost,
-        courier: courierName || 'Lokal Samarinda Free',
-        total_price: totalPrice,
-        payment_status: 'pending',
-      },
-    ]);
-
-    if (dbError) {
-      return NextResponse.json({ error: 'DB Insert Error: ' + dbError.message }, { status: 500 });
-    }
-
-    // 2. Rincian Tagihan untuk Midtrans
+    // 3. Rincian Item untuk Midtrans Snap
     const itemDetails = [
       {
-        id: 'PAPAN-NFC-AKRILIK',
-        price: PRICE_PER_ITEM,
-        quantity: parsedQty,
-        name: `Papan Akrilik NFC (${isExpiredPromo ? 'Harga Normal' : 'Promo'})`,
-      },
+        id: 'NFC-ACRYLIC',
+        price: itemUnitPrice,
+        quantity: currentQty,
+        name: 'Papan Akrilik NFC'
+      }
     ];
 
-    if (parsedShippingCost > 0) {
+    // Jika ada diskon kupon, masukkan sebagai item potongan harga di Midtrans
+    if (discountVal > 0) {
       itemDetails.push({
-        id: 'ONGKOS-KIRIM',
-        price: parsedShippingCost,
+        id: 'DISCOUNT-PROMO',
+        price: -Math.abs(discountVal),
         quantity: 1,
-        name: `Ongkir (${courierName || 'Ekspedisi'})`,
+        name: 'Potongan Kode Promo'
       });
     }
 
+    // Jika ada ongkir, masukkan item ongkir
+    if (shipCostVal > 0) {
+      itemDetails.push({
+        id: 'SHIPPING-FEE',
+        price: shipCostVal,
+        quantity: 1,
+        name: `Ongkir (${courierName || 'Ekspedisi'})`
+      });
+    }
+
+    // 4. Parameter Transaksi Midtrans
     const parameter = {
       transaction_details: {
         order_id: orderId,
-        gross_amount: totalPrice,
-      },
-      customer_details: {
-        first_name: cleanName,
-        phone: cleanPhone,
+        gross_amount: grossAmount
       },
       item_details: itemDetails,
-      enabled_payments: ['qris', 'gopay', 'shopeepay', 'bca_va', 'bni_va', 'bri_va', 'mandiri_va', 'permata_va'],
+      customer_details: {
+        first_name: customerName,
+        phone: customerPhone,
+        shipping_address: {
+          first_name: customerName,
+          phone: customerPhone,
+          address: shippingAddress,
+          city: destinationCity,
+          postal_code: postalCode
+        }
+      }
     };
 
-    const transaction = await snap.createTransaction(parameter);
-    await supabase.from('orders').update({ snap_token: transaction.token }).eq('order_id', orderId);
+    // Request Snap Token ke Midtrans
+    const snapResponse = await snap.createTransaction(parameter);
+    const snapToken = snapResponse.token;
+
+    // 5. Simpan Pesanan ke Tabel 'orders' di Supabase
+    const { data: orderData, error: dbErr } = await supabase
+      .from('orders')
+      .insert([
+        {
+          order_id: orderId,
+          customer_name: customerName,
+          customer_phone: customerPhone,
+          shipping_address: `${shippingAddress}, ${destinationCity} (${postalCode})`,
+          destination_city: destinationCity,
+          store_name: storeName || null,
+          target_url: targetUrl || null,
+          quantity: currentQty,
+          courier: courierName || 'Reguler',
+          shipping_cost: shipCostVal,
+          total_price: grossAmount,
+          payment_status: 'pending',
+          snap_token: snapToken
+        }
+      ])
+      .select()
+      .single();
+
+    if (dbErr) {
+      console.error('Error insert to Supabase orders:', dbErr);
+      return NextResponse.json({ error: 'Gagal menyimpan transaksi ke database: ' + dbErr.message }, { status: 500 });
+    }
 
     return NextResponse.json({
       success: true,
-      token: transaction.token,
+      token: snapToken,
       orderId: orderId,
+      order: orderData
     });
 
   } catch (err) {
+    console.error('Checkout API Error:', err);
     return NextResponse.json({ error: 'Server Error: ' + err.message }, { status: 500 });
   }
 }
