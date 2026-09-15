@@ -14,25 +14,45 @@ export async function POST(req) {
 
     const totalWeight = Math.max(1, (parseInt(qty, 10) || 1) * 200); // 200 gr per pcs
 
-    // 1. CEK KHUSUS LOKAL SAMARINDA (FREE ONGKIR)
+    // 1. CEK KHUSUS LOKAL SAMARINDA BERDASARKAN KECAMATAN
     const isSamarinda = (destinationCityName || '').toLowerCase().includes('samarinda');
 
     if (isSamarinda) {
+      const districtLower = (destinationDistrictName || '').toLowerCase();
+      let localShippingCost = 0;
+      let labelOngkir = 'Kurir Lokal Samarinda (Free Ongkir)';
+
+      if (districtLower.includes('palaran')) {
+        localShippingCost = 15000;
+        labelOngkir = 'Kurir Lokal Samarinda (Palaran)';
+      } else if (districtLower.includes('loa janan ilir')) {
+        localShippingCost = 15000;
+        labelOngkir = 'Kurir Lokal Samarinda (Loa Janan Ilir)';
+      } else if (districtLower.includes('sambutan')) {
+        localShippingCost = 15000;
+        labelOngkir = 'Kurir Lokal Samarinda (Sambutan)';
+      } else if (districtLower.includes('samarinda seberang')) {
+        localShippingCost = 10000;
+        labelOngkir = 'Kurir Lokal Samarinda (Samarinda Seberang)';
+      }
+
+      const isFree = localShippingCost === 0;
+
       return NextResponse.json({
-        isFreeShipping: true,
+        isFreeShipping: isFree,
         results: [
           {
             courierCode: 'lokal',
-            courierName: 'Kurir Lokal Samarinda (Free Ongkir)',
-            service: 'FREE',
-            cost: 0,
+            courierName: labelOngkir,
+            service: isFree ? 'FREE' : 'REGULER',
+            cost: localShippingCost,
             etd: '1 Hari'
           }
         ]
       });
     }
 
-    // 2. CEK ONGKIR EKSPEDISI VIA BITESHIP API
+    // 2. CEK ONGKIR EKSPEDISI DILUAR SAMARINDA VIA BITESHIP API
     const response = await fetch('https://api.biteship.com/v1/rates/couriers', {
       method: 'POST',
       headers: {
@@ -70,7 +90,7 @@ export async function POST(req) {
       }, { status: 400 });
     }
 
-    // 3. FILTER & MAPPING NAMA PAKET RESMI EKSPEDISI
+    // 3. FILTER & MAPPING NAMA PAKET RESMI EKSPEDISI (UNTUK DILUAR SAMARINDA)
     const filteredPricing = data.pricing.filter((item) => item.price <= 90000);
     filteredPricing.sort((a, b) => a.price - b.price);
 
@@ -79,7 +99,6 @@ export async function POST(req) {
       const serviceType = (item.service_type || '').toLowerCase();
       let officialServiceName = item.service_name || item.service_type;
 
-      // Pemetaan Nama Paket Resmi Ekspedisi
       if (code.includes('jne')) {
         if (serviceType.includes('reg') || serviceType.includes('standard')) officialServiceName = 'REG';
         else if (serviceType.includes('yes')) officialServiceName = 'YES';
