@@ -35,8 +35,8 @@ export default function DynamicCheckoutPage() {
   }, [params, router]);
 
   // === HARGA RESMI & PROMO ===
-  const ORIGINAL_PRICE_PER_ITEM = 150000; // Harga Resmi (Dicoret)
-  const BASE_PROMO_PRICE = 60000;        // Harga Promo Normal per Pcs
+  const ORIGINAL_PRICE_PER_ITEM = 150000; // Harga Normal per Pcs
+  const BASE_PROMO_PRICE = 60000;        // Harga Promo per Pcs
 
   const [timeLeft, setTimeLeft] = useState('30:00');
   const [isExpired, setIsExpired] = useState(false);
@@ -399,7 +399,7 @@ export default function DynamicCheckoutPage() {
     },
     topHeader: {
       display: 'flex',
-      justify: 'space-between',
+      justifyContent: 'space-between',
       alignItems: 'center',
       marginBottom: '12px',
     },
@@ -554,7 +554,7 @@ export default function DynamicCheckoutPage() {
       justifyContent: 'space-between',
       fontSize: '16px',
       fontWeight: 'bold',
-      color: isExpired ? '#0f172a' : '#16a34a',
+      color: '#0f172a',
       borderTop: '1px dashed #cbd5e1',
       paddingTop: '10px',
       marginTop: '10px',
@@ -774,7 +774,7 @@ export default function DynamicCheckoutPage() {
               <div style={{ display: 'flex', gap: '8px' }}>
                 <input
                   type="text"
-                  placeholder="Contoh: DISKON40K"
+                  placeholder="Masukkan kode promo"
                   value={couponInput}
                   onChange={(e) => setCouponInput(e.target.value)}
                   style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', textTransform: 'uppercase' }}
@@ -791,36 +791,41 @@ export default function DynamicCheckoutPage() {
               {appliedDiscount > 0 && <p style={{ fontSize: '11px', color: '#16a34a', marginTop: '6px', margin: 0, fontWeight: 'bold' }}>🎉 Potongan Rp {appliedDiscount.toLocaleString('id-ID')} ({appliedCode}) berhasil diterapkan!</p>}
             </div>
 
-            {/* RINGKASAN HARGA CORET & PROMO */}
+            {/* RINGKASAN HARGA BERSIH & MODERN */}
             <div style={styles.summaryCard}>
               <div style={styles.summaryRow}>
-                <span>Harga Resmi:</span>
-                <span style={{ textDecoration: 'line-through', color: '#94a3b8' }}>
-                  Rp {(ORIGINAL_PRICE_PER_ITEM * currentQty).toLocaleString('id-ID')}
-                </span>
-              </div>
-              <div style={styles.summaryRow}>
-                <span>Harga Promo:</span>
-                <span style={{ fontWeight: 'bold', color: isExpired ? '#dc2626' : '#16a34a' }}>
-                  Rp {rawSubtotal.toLocaleString('id-ID')} {isExpired ? '(Harga Normal)' : '(Promo Active)'}
-                </span>
+                <span>Harga Produk ({currentQty} Pcs):</span>
+                <div>
+                  {!isExpired && (
+                    <span style={{ textDecoration: 'line-through', color: '#94a3b8', marginRight: '6px', fontSize: '12px' }}>
+                      Rp {(ORIGINAL_PRICE_PER_ITEM * currentQty).toLocaleString('id-ID')}
+                    </span>
+                  )}
+                  <strong style={{ color: isExpired ? '#0f172a' : '#16a34a' }}>
+                    Rp {rawSubtotal.toLocaleString('id-ID')}
+                  </strong>
+                </div>
               </div>
 
               {appliedDiscount > 0 && (
                 <div style={{ ...styles.summaryRow, color: '#16a34a', fontWeight: 'bold' }}>
-                  <span>Diskon Tambahan ({appliedCode}):</span>
+                  <span>Potongan Promo ({appliedCode}):</span>
                   <span>- Rp {appliedDiscount.toLocaleString('id-ID')}</span>
                 </div>
               )}
 
               <div style={styles.summaryRow}>
                 <span>Ongkos Kirim:</span>
-                <span>{isFreeShipping ? 'FREE (Lokal Samarinda)' : `Rp ${shippingCost.toLocaleString('id-ID')}`}</span>
+                <span style={{ fontWeight: '500', color: '#334155' }}>
+                  {isFreeShipping ? 'FREE (Lokal Samarinda)' : `Rp ${shippingCost.toLocaleString('id-ID')}`}
+                </span>
               </div>
               
               <div style={styles.totalRow}>
                 <span>Total Bayar:</span>
-                <span>Rp {totalAmount.toLocaleString('id-ID')}</span>
+                <span style={{ color: '#16a34a', fontSize: '17px' }}>
+                  Rp {totalAmount.toLocaleString('id-ID')}
+                </span>
               </div>
             </div>
 
