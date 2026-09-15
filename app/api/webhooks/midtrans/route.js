@@ -40,6 +40,7 @@ export async function POST(req) {
       newPaymentStatus = 'Gagal';
     }
 
+    // UPDATE STATUS PEMBAYARAN DI TABEL ORDERS
     const { data: orderData, error: updateErr } = await supabase
       .from('orders')
       .update({ payment_status: newPaymentStatus })
@@ -51,25 +52,14 @@ export async function POST(req) {
       return NextResponse.json({ error: 'DB Update Error: ' + updateErr.message }, { status: 500 });
     }
 
-    // JIKA LUNAS: SIMPAN PENJUALAN, POTONG STOK, & KIRIM NOTIFIKASI TELEGRAM
+    // JIKA LUNAS: POTONG STOK & KIRIM NOTIFIKASI TELEGRAM
     if (newPaymentStatus === 'Lunas' && orderData) {
       
       const actualTotalPrice = parseFloat(orderData.total_price) || parseFloat(grossAmount) || 0;
       const actualQty = parseInt(orderData.quantity, 10) || 1;
       const shippingCost = parseFloat(orderData.shipping_cost) || 0;
 
-      // 1. Simpan ke Laporan Penjualan (sales)
-      await supabase.from('sales').insert([
-        {
-          customer_name: orderData.customer_name,
-          quantity: actualQty,
-          total_price: actualTotalPrice,
-          payment_status: 'Lunas',
-          notes: `Web Order: ${orderData.store_name || '-'} | Kurir: ${orderData.courier || 'Lokal'} (ID: ${orderId})`
-        }
-      ]);
-
-      // 2. Potong Stok Inventory
+      // 1. Potong Stok Inventory Otomatis
       const { data: invData } = await supabase
         .from('inventory')
         .select('*')
@@ -86,7 +76,7 @@ export async function POST(req) {
           .eq('id', invData.id);
       }
 
-      // 3. KIRIM NOTIFIKASI TELEGRAM BOT (100% GRATIS & RELIABLE)
+      // 2. KIRIM NOTIFIKASI TELEGRAM BOT
       const botToken = process.env.TELEGRAM_BOT_TOKEN;
       const chatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
 
