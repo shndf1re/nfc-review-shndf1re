@@ -32,7 +32,7 @@ export async function POST(req) {
     } = await req.json();
 
     // 1. Tentukan Harga per Pcs berdasarkan Promo Timer
-    const BASE_PROMO_PRICE = 60000;
+    const BASE_PROMO_PRICE = 100000;
     const ORIGINAL_PRICE = 150000;
     const itemUnitPrice = isExpiredPromo ? ORIGINAL_PRICE : BASE_PROMO_PRICE;
 
