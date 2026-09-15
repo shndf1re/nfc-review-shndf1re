@@ -1,11 +1,18 @@
 import { NextResponse } from 'next/server';
-import snap from '@/lib/midtrans'; // Pastikan path lib midtrans kamu sesuai
+import midtransClient from 'midtrans-client';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 );
+
+// Inisialisasi Midtrans Snap SDK
+const snap = new midtransClient.Snap({
+  isProduction: false, // Ubah ke true jika sudah live production
+  serverKey: process.env.MIDTRANS_SERVER_KEY || '',
+  clientKey: process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY || ''
+});
 
 export async function POST(req) {
   try {
@@ -33,14 +40,14 @@ export async function POST(req) {
     const rawSubtotal = itemUnitPrice * currentQty;
     const discountVal = parseFloat(discountAmount) || 0;
     
-    // Subtotal barang setelah diskon kupon (tidak boleh kurang dari 0)
+    // Subtotal barang setelah diskon kupon
     const finalSubtotal = Math.max(0, rawSubtotal - discountVal);
     const shipCostVal = parseFloat(shippingCost) || 0;
     
     // Total Tagihan Akhir
     const grossAmount = finalSubtotal + shipCostVal;
 
-    // 2. Buat Order ID Unik (Misal: NFC-1712345678-999)
+    // 2. Buat Order ID Unik
     const uniqueSuffix = Math.floor(100 + Math.random() * 900);
     const orderId = `NFC-${Date.now()}-${uniqueSuffix}`;
 
@@ -54,7 +61,7 @@ export async function POST(req) {
       }
     ];
 
-    // Jika ada diskon kupon, masukkan sebagai item potongan harga di Midtrans
+    // Jika ada diskon kupon, masukkan sebagai item potongan harga
     if (discountVal > 0) {
       itemDetails.push({
         id: 'DISCOUNT-PROMO',
@@ -64,7 +71,7 @@ export async function POST(req) {
       });
     }
 
-    // Jika ada ongkir, masukkan item ongkir
+    // Jika ada ongkir
     if (shipCostVal > 0) {
       itemDetails.push({
         id: 'SHIPPING-FEE',
