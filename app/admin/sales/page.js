@@ -33,6 +33,15 @@ export default function SalesPage() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
+  // State Modal Input Resi Ekspedisi
+  const [resiModal, setResiModal] = useState({
+    isOpen: false,
+    orderData: null,
+    resiInput: '',
+    errorMsg: '',
+    isSaving: false
+  });
+
   // State Modal Warning Stok WA
   const [waAlertModal, setWaAlertModal] = useState({
     isOpen: false,
@@ -126,8 +135,8 @@ export default function SalesPage() {
 
     // Format & Gabungkan Data
     const formattedSales = (salesData || []).map(s => ({
-      id: s.id,               // ID Tampilan
-      primary_id: s.id,       // HANYA ID asli tabel sales (Integer)
+      id: s.id,
+      primary_id: s.id,
       source: 'manual',
       customer_name: s.customer_name,
       quantity: parseInt(s.quantity, 10) || 1,
@@ -135,20 +144,25 @@ export default function SalesPage() {
       shipping_cost: parseFloat(s.shipping_cost || 0),
       payment_status: s.payment_status || 'Lunas',
       notes: s.notes,
+      resi_number: s.resi_number || null,
       created_at: s.created_at
     }));
 
     const formattedOrders = (ordersData || []).map(o => {
       let mappedStatus = 'Belum Bayar';
-      if (['settlement', 'paid', 'success', 'Lunas'].includes(o.payment_status)) {
+      const statusRaw = (o.payment_status || '').toLowerCase();
+      
+      if (['shipped', 'dikirim', 'sedang dikirim'].includes(statusRaw)) {
+        mappedStatus = 'Sedang Dikirim';
+      } else if (['settlement', 'paid', 'success', 'lunas'].includes(statusRaw)) {
         mappedStatus = 'Lunas';
-      } else if (['pending'].includes(o.payment_status)) {
+      } else if (['pending'].includes(statusRaw)) {
         mappedStatus = 'Belum Bayar';
       }
 
       return {
-        id: o.order_id || o.id, // Nomor transaksi untuk tampilan
-        primary_id: o.id,       // HANYA UUID asli tabel orders! (UUID Supabase)
+        id: o.order_id || o.id,
+        primary_id: o.id,
         order_id: o.order_id,
         source: 'online',
         customer_name: o.customer_name || 'Pembeli Online',
@@ -157,6 +171,7 @@ export default function SalesPage() {
         shipping_cost: parseFloat(o.shipping_cost) || 0,
         payment_status: mappedStatus,
         notes: o.courier ? `Kurir: ${o.courier}` : 'Order Web',
+        resi_number: o.resi_number || null,
         created_at: o.created_at
       };
     });
@@ -258,6 +273,42 @@ export default function SalesPage() {
     fetchData();
   };
 
+  // KELOLA MODAL INPUT RESI
+  const openResiModal = (sale) => {
+    setResiModal({
+      isOpen: true,
+      orderData: sale,
+      resiInput: sale.resi_number || '',
+      errorMsg: '',
+      isSaving: false
+    });
+  };
+
+  const handleSaveResi = async (e) => {
+    e.preventDefault();
+    setResiModal(prev => ({ ...prev, isSaving: true, errorMsg: '' }));
+
+    const sale = resiModal.orderData;
+    const isOnline = sale.source === 'online';
+    const targetTable = isOnline ? 'orders' : 'sales';
+
+    const { error } = await supabase
+      .from(targetTable)
+      .update({
+        resi_number: resiModal.resiInput.trim(),
+        payment_status: 'Sedang Dikirim'
+      })
+      .eq('id', sale.primary_id);
+
+    if (error) {
+      setResiModal(prev => ({ ...prev, isSaving: false, errorMsg: '❌ Gagal simpan resi: ' + error.message }));
+      return;
+    }
+
+    setResiModal({ isOpen: false, orderData: null, resiInput: '', errorMsg: '', isSaving: false });
+    fetchData();
+  };
+
   const openUpdateStockModal = () => {
     setModalState({ isOpen: true, actionType: 'updateStock', targetData: null, stockInput: acrylicStock.toString(), pinInput: '', errorMsg: '', isVerifying: false });
   };
@@ -313,7 +364,6 @@ export default function SalesPage() {
       const isOnline = sale.source === 'online';
       const targetTable = isOnline ? 'orders' : 'sales';
       
-      // Hapus TANPA .select() agar tidak terhalang oleh izin SELECT RLS
       const { error: delErr } = await supabase
         .from(targetTable)
         .delete()
@@ -324,7 +374,6 @@ export default function SalesPage() {
         return;
       }
 
-      // Jika berhasil dihapus (tidak ada error), langsung kembalikan stok
       const restoredStock = acrylicStock + (parseInt(sale.quantity, 10) || 1);
       await supabase.from('inventory').update({ stock_quantity: restoredStock }).eq('id', targetId);
 
@@ -353,11 +402,11 @@ export default function SalesPage() {
   const totalPapanTerjual = salesHistory.reduce((acc, curr) => acc + (parseInt(curr.quantity, 10) || 0), 0);
   
   const totalOngkirCollected = salesHistory
-    .filter(s => s.payment_status === 'Lunas')
+    .filter(s => ['Lunas', 'Sedang Dikirim'].includes(s.payment_status))
     .reduce((acc, curr) => acc + (parseFloat(curr.shipping_cost) || 0), 0);
 
   const totalKeuntunganLunas = salesHistory
-    .filter(s => s.payment_status === 'Lunas')
+    .filter(s => ['Lunas', 'Sedang Dikirim'].includes(s.payment_status))
     .reduce((acc, curr) => {
       const subtotalBarang = (parseFloat(curr.total_price) || 0) - (parseFloat(curr.shipping_cost) || 0);
       return acc + subtotalBarang;
@@ -366,7 +415,7 @@ export default function SalesPage() {
   const totalBrutoLunas = totalKeuntunganLunas + totalOngkirCollected;
 
   const totalPiutang = salesHistory
-    .filter(s => s.payment_status !== 'Lunas')
+    .filter(s => !['Lunas', 'Sedang Dikirim'].includes(s.payment_status))
     .reduce((acc, curr) => {
       const subtotalBarang = (parseFloat(curr.total_price) || 0) - (parseFloat(curr.shipping_cost) || 0);
       return acc + subtotalBarang;
@@ -409,6 +458,7 @@ export default function SalesPage() {
             <input type="text" placeholder="ID Akrilik / NFC (Opsional)" value={deviceId} onChange={(e) => setDeviceId(e.target.value)} style={{ flex: 1, padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
             <select value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)} style={{ flex: 1, padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#fff', boxSizing: 'border-box' }}>
               <option value="Lunas">✅ Lunas</option>
+              <option value="Sedang Dikirim">🚚 Sedang Dikirim</option>
               <option value="DP 50%">⏳ DP 50%</option>
               <option value="Belum Bayar">❌ Belum Bayar</option>
             </select>
@@ -516,11 +566,28 @@ export default function SalesPage() {
                       📅 {new Date(sale.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} | Qty: {sale.quantity} Pcs
                     </span>
                     
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                      <button
+                        onClick={() => openResiModal(sale)}
+                        style={{
+                          backgroundColor: '#2563eb',
+                          color: '#fff',
+                          border: 'none',
+                          padding: '2px 8px',
+                          borderRadius: '6px',
+                          fontSize: '10px',
+                          fontWeight: 'bold',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        🚚 {sale.resi_number ? 'Edit Resi' : 'Input Resi'}
+                      </button>
+
                       {editingSaleId === sale.primary_id ? (
                         <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                           <select value={selectedNewStatus} onChange={(e) => setSelectedNewStatus(e.target.value)} style={{ fontSize: '11px', padding: '2px 4px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
                             <option value="Lunas">✅ Lunas</option>
+                            <option value="Sedang Dikirim">🚚 Sedang Dikirim</option>
                             <option value="DP 50%">⏳ DP 50%</option>
                             <option value="Belum Bayar">❌ Belum Bayar</option>
                           </select>
@@ -528,21 +595,33 @@ export default function SalesPage() {
                           <button onClick={() => setEditingSaleId(null)} style={{ padding: '2px 6px', backgroundColor: '#cbd5e1', color: '#334155', border: 'none', borderRadius: '4px', fontSize: '10px', cursor: 'pointer' }}>X</button>
                         </div>
                       ) : (
-                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                          <span style={{ padding: '2px 6px', borderRadius: '4px', backgroundColor: sale.payment_status === 'Lunas' ? '#dcfce7' : sale.payment_status === 'DP 50%' ? '#fef3c7' : '#fee2e2', color: sale.payment_status === 'Lunas' ? '#15803d' : sale.payment_status === 'DP 50%' ? '#b45309' : '#dc2626', fontWeight: '700' }}>
+                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                          <span style={{
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            backgroundColor: sale.payment_status === 'Sedang Dikirim' ? '#e0f2fe' : sale.payment_status === 'Lunas' ? '#dcfce7' : sale.payment_status === 'DP 50%' ? '#fef3c7' : '#fee2e2',
+                            color: sale.payment_status === 'Sedang Dikirim' ? '#0284c7' : sale.payment_status === 'Lunas' ? '#15803d' : sale.payment_status === 'DP 50%' ? '#b45309' : '#dc2626',
+                            fontWeight: '700'
+                          }}>
                             {sale.payment_status}
                           </span>
                           <button onClick={() => { setEditingSaleId(sale.primary_id); setSelectedNewStatus(sale.payment_status); }} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '11px', fontWeight: '600', cursor: 'pointer', padding: 0 }}>
-                            ✏️ Edit Status
+                            ✏️
                           </button>
                         </div>
                       )}
 
                       <button onClick={() => openDeleteSaleModal(sale)} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '11px', fontWeight: '600', cursor: 'pointer', padding: 0 }}>
-                        🗑️ Hapus
+                        🗑️
                       </button>
                     </div>
                   </div>
+
+                  {sale.resi_number && (
+                    <div style={{ marginTop: '6px', backgroundColor: '#eff6ff', padding: '4px 8px', borderRadius: '6px', fontSize: '11px', color: '#1d4ed8', fontWeight: '600' }}>
+                      📦 No. Resi: <span style={{ fontFamily: 'monospace' }}>{sale.resi_number}</span>
+                    </div>
+                  )}
 
                   {sale.notes && <p style={{ margin: '6px 0 0 0', fontSize: '11px', color: '#475569', fontStyle: 'italic' }}>📝 {sale.notes}</p>}
                 </div>
@@ -553,6 +632,45 @@ export default function SalesPage() {
           </div>
         )}
       </div>
+
+      {/* MODAL INPUT RESI */}
+      {resiModal.isOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '16px' }}>
+          <div style={{ width: '100%', maxWidth: '360px', backgroundColor: '#ffffff', borderRadius: '16px', padding: '24px' }}>
+            <h3 style={{ margin: '0 0 8px 0', fontSize: '17px', fontWeight: '700', textAlign: 'center' }}>
+              🚚 Input Nomor Resi
+            </h3>
+            <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#64748b', textAlign: 'center' }}>
+              Order untuk: <strong>{resiModal.orderData?.customer_name}</strong>
+            </p>
+
+            <form onSubmit={handleSaveResi}>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b', display: 'block', marginBottom: '4px' }}>
+                  Nomor Resi Ekspedisi (J&T / JNE / POS):
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: JNT123456789"
+                  value={resiModal.resiInput}
+                  onChange={(e) => setResiModal(prev => ({ ...prev, resiInput: e.target.value }))}
+                  style={{ width: '100%', padding: '10px', fontSize: '14px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box', outline: 'none' }}
+                />
+              </div>
+
+              {resiModal.errorMsg && <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#ef4444', fontWeight: '600', textAlign: 'center' }}>{resiModal.errorMsg}</p>}
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button type="button" onClick={() => setResiModal({ isOpen: false, orderData: null, resiInput: '', errorMsg: '', isSaving: false })} style={{ flex: 1, padding: '10px', backgroundColor: '#f1f5f9', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>Batal</button>
+                <button type="submit" disabled={resiModal.isSaving} style={{ flex: 1, padding: '10px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>
+                  {resiModal.isSaving ? 'Simpan...' : 'Simpan Resi'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL PIN & HAPUS / UPDATE */}
       {modalState.isOpen && (
