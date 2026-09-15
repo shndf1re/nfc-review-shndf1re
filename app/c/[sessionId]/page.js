@@ -27,11 +27,9 @@ export default function DynamicCheckoutPage() {
     const currentUrlSession = params?.sessionId;
     const savedSession = localStorage.getItem('active_checkout_session');
 
-    // Cek apakah URL unik cocok dengan sesi pembeli
     if (currentUrlSession && savedSession && currentUrlSession === savedSession) {
       setIsValidSession(true);
     } else {
-      // Jika URL asal ketik / tidak sah, kembalikan ke landing page
       router.replace('/');
     }
   }, [params, router]);
@@ -112,6 +110,7 @@ export default function DynamicCheckoutPage() {
   const [errorMessage, setErrorMessage] = useState('');
   const [isFreeShipping, setIsFreeShipping] = useState(false);
   const [loadingPay, setLoadingPay] = useState(false);
+  const [activeSnapToken, setActiveSnapToken] = useState(null);
 
   const currentQty = Math.max(1, parseInt(qty, 10) || 1);
   const subtotal = itemPrice * currentQty;
@@ -127,7 +126,6 @@ export default function DynamicCheckoutPage() {
       .catch((err) => console.error('Gagal load provinsi:', err));
   }, [isValidSession]);
 
-  // === 2. HANDLE PROVINSI CHANGE ===
   const handleProvinceChange = (e) => {
     const provId = e.target.value;
     setSelectedProvinceId(provId);
@@ -153,7 +151,6 @@ export default function DynamicCheckoutPage() {
     }
   };
 
-  // === 3. HANDLE KOTA/KABUPATEN CHANGE ===
   const handleRegencyChange = (e) => {
     const regId = e.target.value;
     setSelectedRegencyId(regId);
@@ -176,7 +173,6 @@ export default function DynamicCheckoutPage() {
     }
   };
 
-  // === 4. HANDLE KECAMATAN CHANGE ===
   const handleDistrictChange = (e) => {
     const distId = e.target.value;
     setSelectedDistrictId(distId);
@@ -196,7 +192,6 @@ export default function DynamicCheckoutPage() {
     }
   };
 
-  // === 5. HANDLE KELURAHAN / KODE POS CHANGE ===
   const handleVillageChange = (e) => {
     const villageName = e.target.value;
     setSelectedVillageName(villageName);
@@ -209,7 +204,6 @@ export default function DynamicCheckoutPage() {
     }
   };
 
-  // === CEK ONGKIR BITESHIP ===
   const handleCekOngkir = async () => {
     if (!selectedRegencyName || !postalCode) {
       setErrorMessage('Pilih wilayah lengkap dan kode pos terlebih dahulu.');
@@ -260,10 +254,47 @@ export default function DynamicCheckoutPage() {
     setStep(2);
   };
 
-  // === PROSES BAYAR MIDTRANS SNAP ===
+  // FUNGSI TRIGGER POPUP SNAP MIDTRANS
+  const triggerSnapPay = (token, orderId) => {
+    if (typeof window !== 'undefined' && window.snap) {
+      window.snap.pay(token, {
+        onSuccess: function () {
+          setSuccessOrderDetails({
+            orderId: orderId || 'NFC-ORDER',
+            name: buyerName,
+            total: totalAmount,
+            qty: currentQty
+          });
+          setShowSuccessModal(true);
+        },
+        onPending: function () {
+          alert('Menunggu Pembayaran. Anda dapat mengubah metode bayar di menu Lacak Pesanan.');
+          window.location.href = '/track';
+        },
+        onError: function () {
+          alert('Pembayaran Gagal!');
+        },
+        onClose: function () {
+          // Tidak ada alert mengganggu saat ditutup, hanya menyimpan token agar bisa buka ulang
+          setActiveSnapToken(token);
+        },
+      });
+    } else {
+      alert('SDK Midtrans belum siap di browser. Silakan coba refresh halaman.');
+    }
+  };
+
+  // PROSES BAYAR / GANTI METODE
   const handlePay = async () => {
     if (!selectedCourier || !streetAddress) {
       alert('Lengkapi alamat dan pilih kurir terlebih dahulu.');
+      return;
+    }
+
+    // Jika sudah pernah request token di sesi ini, pakai token yang ada agar tidak duplikat order
+    if (activeSnapToken) {
+      const savedOrderId = localStorage.getItem('last_order_id') || 'NFC-ORDER';
+      triggerSnapPay(activeSnapToken, savedOrderId);
       return;
     }
 
@@ -303,32 +334,9 @@ export default function DynamicCheckoutPage() {
         }
       }
 
-      if (typeof window !== 'undefined' && window.snap) {
-        window.snap.pay(data.token, {
-          onSuccess: function () {
-            // Tampilkan Modal Ucapan Terima Kasih
-            setSuccessOrderDetails({
-              orderId: data.orderId || 'NFC-ORDER',
-              name: buyerName,
-              total: totalAmount,
-              qty: currentQty
-            });
-            setShowSuccessModal(true);
-          },
-          onPending: function () {
-            alert('Menunggu Pembayaran...');
-            window.location.href = '/track';
-          },
-          onError: function () {
-            alert('Pembayaran Gagal!');
-          },
-          onClose: function () {
-            alert('Anda menutup popup pembayaran.');
-          },
-        });
-      } else {
-        alert('SDK Midtrans belum siap di browser. Silakan coba refresh halaman.');
-      }
+      setActiveSnapToken(data.token);
+      triggerSnapPay(data.token, data.orderId);
+
     } catch (err) {
       alert('Terjadi kesalahan koneksi: ' + err.message);
     } finally {
@@ -486,7 +494,7 @@ export default function DynamicCheckoutPage() {
     },
     btnGreen: (disabled) => ({
       width: '65%',
-      backgroundColor: disabled ? '#94a3b8' : '#16a34a',
+      backgroundColor: disabled ? '#94a3b8' : activeSnapToken ? '#0284c7' : '#16a34a',
       color: '#ffffff',
       padding: '14px',
       borderRadius: '14px',
@@ -773,7 +781,7 @@ export default function DynamicCheckoutPage() {
                 disabled={!selectedCourier || !streetAddress || loadingPay}
                 style={styles.btnGreen(!selectedCourier || !streetAddress || loadingPay)}
               >
-                {loadingPay ? 'Memproses...' : '💳 Lanjut Bayar'}
+                {loadingPay ? 'Memproses...' : activeSnapToken ? '🔄 Ganti / Bayar Ulang' : '💳 Lanjut Bayar'}
               </button>
             </div>
 
@@ -782,7 +790,7 @@ export default function DynamicCheckoutPage() {
 
       </div>
 
-      {/* === MODAL POPUP UCAPAN TERIMA KASIH (STRUK DIGITAL) === */}
+      {/* MODAL POPUP UCAPAN TERIMA KASIH */}
       {showSuccessModal && (
         <div style={{
           position: 'fixed',
@@ -813,7 +821,6 @@ export default function DynamicCheckoutPage() {
               Pembayaran Anda telah berhasil kami terima. Pesanan papan akrilik NFC Anda segera diproses!
             </p>
 
-            {/* STRUK RINGKAS */}
             <div style={{
               backgroundColor: '#f8fafc',
               borderRadius: '16px',
@@ -843,7 +850,6 @@ export default function DynamicCheckoutPage() {
               </div>
             </div>
 
-            {/* TOMBOL AKSI */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <button
                 onClick={() => window.location.href = '/track'}
