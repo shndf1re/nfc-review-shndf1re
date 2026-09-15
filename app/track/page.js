@@ -15,6 +15,7 @@ export default function TrackOrderPage() {
   const [orderData, setOrderData] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [isMounted, setIsMounted] = useState(false);
+  const [copyStatus, setCopyStatus] = useState('Salin');
 
   useEffect(() => {
     setIsMounted(true);
@@ -74,6 +75,9 @@ export default function TrackOrderPage() {
 
   const getStatusBadge = (status) => {
     const s = (status || '').toLowerCase();
+    if (['shipped', 'dikirim', 'sedang dikirim'].includes(s)) {
+      return { label: '🚚 SEDANG DIKIRIM', bg: '#e0f2fe', color: '#0284c7' };
+    }
     if (['settlement', 'paid', 'success', 'lunas'].includes(s)) {
       return { label: '✅ LUNAS / DIPROSES', bg: '#dcfce7', color: '#15803d' };
     }
@@ -81,6 +85,12 @@ export default function TrackOrderPage() {
       return { label: '⏳ MENUNGGU PEMBAYARAN', bg: '#fef3c7', color: '#b45309' };
     }
     return { label: '❌ BATAL / EXPIRED', bg: '#fee2e2', color: '#dc2626' };
+  };
+
+  const handleCopyResi = (resiText) => {
+    navigator.clipboard.writeText(resiText);
+    setCopyStatus('Tersalin! ✔️');
+    setTimeout(() => setCopyStatus('Salin'), 2000);
   };
 
   if (!isMounted) return null;
@@ -151,6 +161,45 @@ export default function TrackOrderPage() {
                 {getStatusBadge(orderData.payment_status).label}
               </span>
             </div>
+
+            {/* KOTAK NOMOR RESI (JIKA SUDAH DIINPUT ADMIN) */}
+            {orderData.resi_number && (
+              <div style={{
+                backgroundColor: '#eff6ff',
+                border: '1.5px solid #bfdbfe',
+                borderRadius: '14px',
+                padding: '14px',
+                marginBottom: '16px',
+                textAlign: 'center'
+              }}>
+                <span style={{ fontSize: '11px', fontWeight: '700', color: '#1d4ed8', display: 'block', marginBottom: '4px' }}>
+                  🚚 NOMOR RESI PENGIRIMAN:
+                </span>
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
+                  <strong style={{ fontSize: '16px', color: '#1e40af', fontFamily: 'monospace', letterSpacing: '1px' }}>
+                    {orderData.resi_number}
+                  </strong>
+                  <button
+                    onClick={() => handleCopyResi(orderData.resi_number)}
+                    style={{
+                      backgroundColor: '#2563eb',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '4px 8px',
+                      fontSize: '11px',
+                      fontWeight: 'bold',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    📋 {copyStatus}
+                  </button>
+                </div>
+                <span style={{ fontSize: '10px', color: '#60a5fa', display: 'block', marginTop: '4px' }}>
+                  Salin nomor resi untuk cek posisi paket di aplikasi kurir.
+                </span>
+              </div>
+            )}
 
             {/* INFORMASI UTAMA */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px' }}>
