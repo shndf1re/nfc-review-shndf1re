@@ -26,9 +26,10 @@ export default function LandingPage() {
   const [activateError, setActivateError] = useState('');
   const [verifying, setVerifying] = useState(false);
 
+  // HARGA TERBARU (Rp 100.000 -> Rp 65.000)
   const ORIGINAL_PRICE = SITE_CONFIG.pricing?.originalPrice || 100000;
   const DISCOUNT_PRICE = SITE_CONFIG.pricing?.discountPrice || 65000;
-  const PROMO_TAG = SITE_CONFIG.pricing?.promoTag || '🔥 PROMO SPESIAL 60% OFF';
+  const PROMO_TAG = SITE_CONFIG.pricing?.promoTag || '🔥 PROMO SPESIAL 35% OFF';
 
   // Handler Aktivasi Kartu
   const handleVerifyAndRedirect = async (e) => {
@@ -155,11 +156,11 @@ export default function LandingPage() {
           Kumpulkan ulasan Bintang 5 di Google Maps 10x lebih cepat. Pelanggan cukup tap HP ke papan pintar kami tanpa perlu mengetik nama toko Anda.
         </p>
 
-        {/* HARGA HERO */}
+        {/* HARGA HERO TERBARU */}
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '12px', backgroundColor: '#ffffff', padding: '12px 24px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', marginBottom: '32px' }}>
           <span style={{ fontSize: '16px', color: '#94a3b8', textDecoration: 'line-through', fontWeight: '600' }}>Rp {ORIGINAL_PRICE.toLocaleString('id-ID')}</span>
           <span style={{ fontSize: '26px', color: '#16a34a', fontWeight: '900' }}>Rp {DISCOUNT_PRICE.toLocaleString('id-ID')}</span>
-          <span style={{ fontSize: '11px', color: '#dc2626', backgroundColor: '#fee2e2', fontWeight: '700', padding: '2px 8px', borderRadius: '6px' }}>HEMAT 60%</span>
+          <span style={{ fontSize: '11px', color: '#dc2626', backgroundColor: '#fee2e2', fontWeight: '700', padding: '2px 8px', borderRadius: '6px' }}>HEMAT 35%</span>
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', flexWrap: 'wrap' }}>
