@@ -116,7 +116,6 @@ export default function DynamicCheckoutPage() {
   const [errorMessage, setErrorMessage] = useState('');
   const [isFreeShipping, setIsFreeShipping] = useState(false);
   const [loadingPay, setLoadingPay] = useState(false);
-  const [activeSnapToken, setActiveSnapToken] = useState(null);
 
   const currentQty = Math.max(1, parseInt(qty, 10) || 1);
   const rawSubtotal = itemPrice * currentQty;
@@ -288,43 +287,10 @@ export default function DynamicCheckoutPage() {
     setStep(2);
   };
 
-  const triggerSnapPay = (token, orderId) => {
-    if (typeof window !== 'undefined' && window.snap) {
-      window.snap.pay(token, {
-        onSuccess: function () {
-          setSuccessOrderDetails({
-            orderId: orderId || 'NFC-ORDER',
-            name: buyerName,
-            total: totalAmount,
-            qty: currentQty
-          });
-          setShowSuccessModal(true);
-        },
-        onPending: function () {
-          alert('Menunggu Pembayaran. Anda dapat mengubah metode bayar di menu Lacak Pesanan.');
-          window.location.href = '/track';
-        },
-        onError: function () {
-          alert('Pembayaran Gagal!');
-        },
-        onClose: function () {
-          setActiveSnapToken(token);
-        },
-      });
-    } else {
-      alert('SDK Midtrans belum siap di browser. Silakan coba refresh halaman.');
-    }
-  };
-
+  // === HANDLER PEMBAYARAN TRIPAY ===
   const handlePay = async () => {
     if (!selectedCourier || !streetAddress) {
       alert('Lengkapi alamat dan pilih kurir terlebih dahulu.');
-      return;
-    }
-
-    if (activeSnapToken) {
-      const savedOrderId = localStorage.getItem('last_order_id') || 'NFC-ORDER';
-      triggerSnapPay(activeSnapToken, savedOrderId);
       return;
     }
 
@@ -352,8 +318,8 @@ export default function DynamicCheckoutPage() {
 
       const data = await res.json();
 
-      if (!res.ok || !data.token) {
-        alert(data.error || 'Gagal membuat transaksi Midtrans.');
+      if (!res.ok || !data.success || !data.checkoutUrl) {
+        alert(data.error || 'Gagal membuat transaksi pembayaran.');
         setLoadingPay(false);
         return;
       }
@@ -365,12 +331,11 @@ export default function DynamicCheckoutPage() {
         }
       }
 
-      setActiveSnapToken(data.token);
-      triggerSnapPay(data.token, data.orderId);
+      // REDIRECT LANGSUNG KE HALAMAN CHECKOUT TRIPAY (QRIS / VIRTUAL ACCOUNT)
+      window.location.href = data.checkoutUrl;
 
     } catch (err) {
       alert('Terjadi kesalahan koneksi: ' + err.message);
-    } finally {
       setLoadingPay(false);
     }
   };
@@ -525,7 +490,7 @@ export default function DynamicCheckoutPage() {
     },
     btnGreen: (disabled) => ({
       width: '65%',
-      backgroundColor: disabled ? '#94a3b8' : activeSnapToken ? '#0284c7' : '#16a34a',
+      backgroundColor: disabled ? '#94a3b8' : '#16a34a',
       color: '#ffffff',
       padding: '14px',
       borderRadius: '14px',
@@ -854,7 +819,7 @@ export default function DynamicCheckoutPage() {
                 disabled={!selectedCourier || !streetAddress || loadingPay}
                 style={styles.btnGreen(!selectedCourier || !streetAddress || loadingPay)}
               >
-                {loadingPay ? 'Memproses...' : activeSnapToken ? '🔄 Ganti / Bayar Ulang' : '💳 Lanjut Bayar'}
+                {loadingPay ? 'Memproses...' : '💳 Lanjut Bayar'}
               </button>
             </div>
 
