@@ -54,7 +54,7 @@ function loadImageSafe(primarySrc, fallbackSrc) {
 
 async function drawCustomStickerToCanvas(qrText, configCm) {
   try {
-    const canvasWidth = cmToPx(configCm.stikerWidthCm);    
+    const canvasWidth = cmToPx(configCm.stikerWidthCm);  
     const canvasHeight = cmToPx(configCm.stikerHeightCm); 
 
     const canvas = document.createElement('canvas');
@@ -106,6 +106,7 @@ async function drawCustomStickerToCanvas(qrText, configCm) {
 
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userRole, setUserRole] = useState('staff'); // Tambahan Role State
   const [usernameInput, setUsernameInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -168,6 +169,7 @@ export default function AdminPage() {
         setLoginError('Sesi Anda telah berakhir. Silakan login kembali.');
       } else {
         setIsAuthenticated(true);
+        setUserRole(localStorage.getItem('nfc_admin_role') || 'staff'); // Ambil role dari storage
         fetchDashboardData();
       }
     }
@@ -233,6 +235,7 @@ export default function AdminPage() {
         localStorage.setItem('nfc_admin_last_activity', Date.now().toString());
         localStorage.setItem('nfc_admin_role', detectedRole);
         localStorage.setItem('nfc_admin_pin', cleanInput);
+        setUserRole(detectedRole);
 
         setUsernameInput(''); 
         setPasswordInput('');
@@ -247,20 +250,16 @@ export default function AdminPage() {
     }
   };
 
-const handleLogout = (msg) => {
-    // 1. Bersihkan semua memori autentikasi di browser
+  const handleLogout = (msg) => {
     localStorage.removeItem('nfc_admin_session');
     localStorage.removeItem('nfc_admin_last_activity');
     localStorage.removeItem('nfc_admin_role');
     localStorage.removeItem('nfc_admin_pin');
 
-    // 2. Reset state lokal (sebagai formalitas sebelum browser reload)
     setIsAuthenticated(false); 
     setUsernameInput(''); 
     setPasswordInput('');
 
-    // 3. HARD REDIRECT: Paksa lempar ke /admin
-    // Ini memastikan seluruh DOM, State, dan Sidebar di-destroy secara paksa
     if (typeof window !== 'undefined') {
       window.location.href = '/admin';
     }
@@ -274,6 +273,11 @@ const handleLogout = (msg) => {
   };
 
   const handleGenerateNew = async () => {
+    if (userRole !== 'super_admin') {
+      showToast('❌ Akses ditolak: Hanya Super Admin!', 'error');
+      return;
+    }
+
     setLoading(true);
     const randomId = generateUniqueCode();
     const randomPin = Math.floor(100000 + Math.random() * 900000).toString();
@@ -290,7 +294,14 @@ const handleLogout = (msg) => {
     setLoading(false);
   };
 
-  const openBulkGenerateModal = () => setPinModal({ isOpen: true, actionType: 'bulkGenerate', targetDevice: null, bulkQty: 10, pinInput: '', errorMsg: '', isSubmitting: false });
+  const openBulkGenerateModal = () => {
+    if (userRole !== 'super_admin') {
+      showToast('❌ Akses ditolak: Hanya Super Admin!', 'error');
+      return;
+    }
+    setPinModal({ isOpen: true, actionType: 'bulkGenerate', targetDevice: null, bulkQty: 10, pinInput: '', errorMsg: '', isSubmitting: false });
+  };
+
   const handleCopyNfcUrl = (deviceId) => { navigator.clipboard.writeText(`${getNfcBaseUrl()}/r/${deviceId}?src=nfc`); showToast('📋 Link NFC disalin ke clipboard!'); };
   const handleSendWaCustomer = (device) => window.open(`https://wa.me/?text=${encodeURIComponent(`Halo Kak! Terima kasih telah memesan Papan Akrilik Google Review (${SITE_CONFIG.brandName}).\n\nBerikut detail aktivasi papan Anda:\n- ID Kartu: ${device.id}\n- PIN Akses: ${device.pin}\n\nSilakan buka link aktivasi berikut:\n🔗 ${getNfcBaseUrl()}/setup/${device.id}`)}`, '_blank');
 
@@ -353,6 +364,8 @@ const handleLogout = (msg) => {
     setPinModal(prev => ({ ...prev, isSubmitting: true, errorMsg: '' }));
 
     if (pinModal.actionType === 'bulkGenerate') {
+      if (userRole !== 'super_admin') return setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: '❌ Akses ditolak!' }));
+      
       const { data: verifyRes } = await supabase.rpc('verify_sales_pin', { input_pin: pinModal.pinInput.trim() });
       if (!verifyRes || !verifyRes[0]?.is_valid) return setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: '❌ PIN Admin Salah!' }));
       const count = parseInt(pinModal.bulkQty) || 1;
@@ -395,6 +408,7 @@ const handleLogout = (msg) => {
       if (error) return setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: error.message }));
       showToast(`🔄 Kartu ${device.id} berhasil di-reset!`);
     } else if (pinModal.actionType === 'deleteCard') {
+      if (userRole !== 'super_admin') return setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: '❌ Akses Ditolak: Hanya Super Admin!' }));
       const { error } = await supabase.from('devices').delete().eq('id', device.id);
       if (error) return setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: error.message }));
       showToast(`Kartu ${device.id} berhasil dihapus!`, 'error');
@@ -461,6 +475,19 @@ const handleLogout = (msg) => {
       ) : (
         <div style={{ maxWidth: '800px', margin: '0 auto', padding: '24px 16px', boxSizing: 'border-box' }}>
           
+          {/* HEADER DASHBOARD DENGAN INFO ROLE */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#0f172a' }}>Manajemen Papan NFC</h2>
+              <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
+                Login sebagai: <strong style={{ color: userRole === 'super_admin' ? '#2563eb' : '#16a34a' }}>{userRole === 'super_admin' ? 'Super Admin' : 'Admin Staff'}</strong>
+              </p>
+            </div>
+            <Link href="/admin/sales" style={{ padding: '8px 14px', backgroundColor: '#f8fafc', color: '#0f172a', border: '1px solid #cbd5e1', textDecoration: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '700' }}>
+              📊 Laporan Penjualan
+            </Link>
+          </div>
+
           {/* KPI CARDS */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px', marginBottom: '32px' }}>
             <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '20px', border: '1px solid #f1f5f9', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.03)' }}>
@@ -481,12 +508,18 @@ const handleLogout = (msg) => {
 
           {/* QUICK ACTIONS */}
           <div style={{ display: 'flex', gap: '12px', marginBottom: '32px', flexWrap: 'wrap' }}>
-            <button onClick={handleGenerateNew} disabled={loading} style={{ flex: 1, padding: '14px', backgroundColor: loading ? '#94a3b8' : '#0f172a', color: '#ffffff', border: 'none', borderRadius: '12px', fontWeight: '700', fontSize: '13px', cursor: loading ? 'not-allowed' : 'pointer', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
-              + Generate 1 ID
-            </button>
-            <button onClick={openBulkGenerateModal} style={{ flex: 1, padding: '14px', backgroundColor: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '12px', fontWeight: '700', fontSize: '13px', cursor: 'pointer', boxShadow: '0 4px 6px -1px rgba(37,99,235,0.2)' }}>
-              ⚡ Bulk Generate
-            </button>
+            {/* TOMBOL GENERATE HANYA MUNCUL JIKA SUPER ADMIN */}
+            {userRole === 'super_admin' && (
+              <>
+                <button onClick={handleGenerateNew} disabled={loading} style={{ flex: 1, padding: '14px', backgroundColor: loading ? '#94a3b8' : '#0f172a', color: '#ffffff', border: 'none', borderRadius: '12px', fontWeight: '700', fontSize: '13px', cursor: loading ? 'not-allowed' : 'pointer', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
+                  + Generate 1 ID
+                </button>
+                <button onClick={openBulkGenerateModal} style={{ flex: 1, padding: '14px', backgroundColor: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '12px', fontWeight: '700', fontSize: '13px', cursor: 'pointer', boxShadow: '0 4px 6px -1px rgba(37,99,235,0.2)' }}>
+                  ⚡ Bulk Generate
+                </button>
+              </>
+            )}
+            
             <a href="/stiker-template.png" download="stiker-template.png" style={{ flex: 1, padding: '14px', backgroundColor: '#ffffff', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: '12px', fontWeight: '700', fontSize: '13px', textDecoration: 'none', textAlign: 'center', boxSizing: 'border-box' }}>
               🖼️ Download Master
             </a>
@@ -678,9 +711,13 @@ const handleLogout = (msg) => {
                                 🔄 Reset
                               </button>
                             )}
-                            <button onClick={() => setPinModal({ isOpen: true, actionType: 'deleteCard', targetDevice: device, bulkQty: 10, pinInput: '', errorMsg: '', isSubmitting: false })} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', fontWeight: '600', cursor: 'pointer', padding: 0 }}>
-                              🗑️ Hapus
-                            </button>
+                            
+                            {/* TOMBOL HAPUS HANYA UNTUK SUPER ADMIN */}
+                            {userRole === 'super_admin' && (
+                              <button onClick={() => setPinModal({ isOpen: true, actionType: 'deleteCard', targetDevice: device, bulkQty: 10, pinInput: '', errorMsg: '', isSubmitting: false })} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', fontWeight: '600', cursor: 'pointer', padding: 0 }}>
+                                🗑️ Hapus
+                              </button>
+                            )}
                           </div>
                         </div>
                       </>
