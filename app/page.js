@@ -26,7 +26,7 @@ export default function LandingPage() {
   const [activateError, setActivateError] = useState('');
   const [verifying, setVerifying] = useState(false);
 
-  // HARGA TERBARU (Rp 100.000 -> Rp 65.000)
+  // Harga Terbaru
   const ORIGINAL_PRICE = SITE_CONFIG.pricing?.originalPrice || 100000;
   const DISCOUNT_PRICE = SITE_CONFIG.pricing?.discountPrice || 65000;
   const PROMO_TAG = SITE_CONFIG.pricing?.promoTag || '🔥 PROMO SPESIAL 35% OFF';
@@ -156,7 +156,6 @@ export default function LandingPage() {
           Kumpulkan ulasan Bintang 5 di Google Maps 10x lebih cepat. Pelanggan cukup tap HP ke papan pintar kami tanpa perlu mengetik nama toko Anda.
         </p>
 
-        {/* HARGA HERO TERBARU */}
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '12px', backgroundColor: '#ffffff', padding: '12px 24px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', marginBottom: '32px' }}>
           <span style={{ fontSize: '16px', color: '#94a3b8', textDecoration: 'line-through', fontWeight: '600' }}>Rp {ORIGINAL_PRICE.toLocaleString('id-ID')}</span>
           <span style={{ fontSize: '26px', color: '#16a34a', fontWeight: '900' }}>Rp {DISCOUNT_PRICE.toLocaleString('id-ID')}</span>
@@ -173,8 +172,30 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* 3. FEATURE & FITUR UNGULAN */}
-      <section style={{ padding: '60px 24px', maxWidth: '1100px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+      {/* 3. GALERI PRODUK (BARU DITAMBAHKAN) */}
+      <section style={{ padding: '40px 24px 60px 24px', maxWidth: '1100px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+        <h2 style={{ textAlign: 'center', fontSize: '28px', fontWeight: '800', marginBottom: '12px' }}>Lihat Produk Kami</h2>
+        <p style={{ textAlign: 'center', fontSize: '15px', color: '#64748b', marginBottom: '32px' }}>Papan Akrilik tebal dicetak dengan tinta Print UV tahan air dan anti luntur.</p>
+        
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+          {/* Pastikan foto galeri-1.jpg dst sudah ada di folder public */}
+          <div style={{ backgroundColor: '#fff', borderRadius: '16px', overflow: 'hidden', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+            <img src="/galeri-1.jpg" alt="Papan NFC 1" style={{ width: '100%', height: '220px', objectFit: 'cover' }} onError={(e) => { e.target.src = '/app-icon.png'; e.target.style.objectFit = 'contain'; e.target.style.padding = '20px'; e.target.style.backgroundColor = '#f8fafc'; }} />
+          </div>
+          <div style={{ backgroundColor: '#fff', borderRadius: '16px', overflow: 'hidden', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+            <img src="/galeri-2.jpg" alt="Papan NFC 2" style={{ width: '100%', height: '220px', objectFit: 'cover' }} onError={(e) => { e.target.src = '/app-icon.png'; e.target.style.objectFit = 'contain'; e.target.style.padding = '20px'; e.target.style.backgroundColor = '#f8fafc'; }} />
+          </div>
+          <div style={{ backgroundColor: '#fff', borderRadius: '16px', overflow: 'hidden', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+            <img src="/galeri-3.jpg" alt="Papan NFC 3" style={{ width: '100%', height: '220px', objectFit: 'cover' }} onError={(e) => { e.target.src = '/app-icon.png'; e.target.style.objectFit = 'contain'; e.target.style.padding = '20px'; e.target.style.backgroundColor = '#f8fafc'; }} />
+          </div>
+          <div style={{ backgroundColor: '#fff', borderRadius: '16px', overflow: 'hidden', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+            <img src="/galeri-4.jpg" alt="Papan NFC 4" style={{ width: '100%', height: '220px', objectFit: 'cover' }} onError={(e) => { e.target.src = '/app-icon.png'; e.target.style.objectFit = 'contain'; e.target.style.padding = '20px'; e.target.style.backgroundColor = '#f8fafc'; }} />
+          </div>
+        </div>
+      </section>
+
+      {/* 4. FEATURE & FITUR UNGULAN */}
+      <section style={{ padding: '20px 24px 60px 24px', maxWidth: '1100px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
         <h2 style={{ textAlign: 'center', fontSize: '28px', fontWeight: '800', marginBottom: '12px' }}>Desain Pintar Untuk Hasil Maksimal</h2>
         <p style={{ textAlign: 'center', fontSize: '15px', color: '#64748b', marginBottom: '48px' }}>Semua fitur yang Anda butuhkan untuk mendominasi pencarian lokal.</p>
 
@@ -197,7 +218,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* 4. CARA KERJA / EASY STEPS */}
+      {/* 5. CARA KERJA / EASY STEPS */}
       <section style={{ backgroundColor: '#ffffff', padding: '60px 24px', borderTop: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
         <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
           <h2 style={{ textAlign: 'center', fontSize: '28px', fontWeight: '800', marginBottom: '12px' }}>3 Langkah Mudah Penggunaan</h2>
@@ -223,10 +244,38 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* 5. FOOTER */}
-      <footer style={{ marginTop: 'auto', padding: '32px 24px', backgroundColor: '#0f172a', color: '#94a3b8', fontSize: '13px', textAlign: 'center' }}>
-        <p style={{ margin: '0 0 8px 0' }}>© {new Date().getFullYear()} {SITE_CONFIG.brandName}. All rights reserved.</p>
-        <p style={{ margin: 0 }}>Pengiriman ke seluruh Indonesia.</p>
+      {/* 6. FOOTER DENGAN LINK LEGAL TRIPAY */}
+      <footer style={{ marginTop: 'auto', padding: '40px 24px', backgroundColor: '#0f172a', color: '#94a3b8', fontSize: '13px' }}>
+        <div style={{ maxWidth: '1100px', margin: '0 auto', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: '24px' }}>
+          
+          <div style={{ flex: '1 1 250px' }}>
+            <h3 style={{ color: '#ffffff', fontSize: '16px', fontWeight: '700', marginBottom: '12px' }}>{SITE_CONFIG.brandName}</h3>
+            <p style={{ margin: '0 0 8px 0', lineHeight: '1.5' }}>Solusi cerdas kumpulkan ulasan Google Maps Bintang 5 lebih cepat dengan teknologi NFC & QR Code.</p>
+            <p style={{ margin: 0 }}>📍 Samarinda, Kalimantan Timur, Indonesia</p>
+          </div>
+
+          <div style={{ flex: '1 1 150px' }}>
+            <h3 style={{ color: '#ffffff', fontSize: '14px', fontWeight: '700', marginBottom: '12px' }}>Informasi</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <Link href="/about" style={{ color: '#94a3b8', textDecoration: 'none' }}>Tentang Kami</Link>
+              <Link href="/privacy-policy" style={{ color: '#94a3b8', textDecoration: 'none' }}>Kebijakan Privasi</Link>
+              <Link href="/tos" style={{ color: '#94a3b8', textDecoration: 'none' }}>Syarat & Ketentuan</Link>
+              <Link href="/refund-policy" style={{ color: '#94a3b8', textDecoration: 'none' }}>Kebijakan Pengembalian</Link>
+            </div>
+          </div>
+
+          <div style={{ flex: '1 1 150px' }}>
+            <h3 style={{ color: '#ffffff', fontSize: '14px', fontWeight: '700', marginBottom: '12px' }}>Hubungi Kami</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <a href={waUrl} target="_blank" rel="noreferrer" style={{ color: '#94a3b8', textDecoration: 'none' }}>📞 WhatsApp Admin</a>
+              <Link href="/admin" style={{ color: '#94a3b8', textDecoration: 'none' }}>🔑 Admin Login</Link>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ borderTop: '1px solid #334155', marginTop: '32px', paddingTop: '20px', textAlign: 'center' }}>
+          <p style={{ margin: 0 }}>© {new Date().getFullYear()} {SITE_CONFIG.brandName}. All rights reserved.</p>
+        </div>
       </footer>
 
       {/* FLOATING WHATSAPP BUTTON */}
