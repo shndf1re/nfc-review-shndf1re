@@ -22,7 +22,7 @@ export async function POST(req) {
       shippingCost,
       isExpiredPromo,
       discountAmount,
-      paymentMethod // Tambahan opsional: 'QRISC', 'BCAVA', 'BRIVA', 'MANDIRIVA', dll. (Default: QRISC)
+      paymentMethod // Kode channel: 'QRIS2', 'BCAVA', 'BRIVA', 'DANA', dll.
     } = await req.json();
 
     // 1. Tentukan Harga per Pcs berdasarkan Promo Timer
@@ -86,9 +86,9 @@ export async function POST(req) {
       });
     }
 
-    // 6. Payload Request Transaksi ke Tripay
+    // 6. Payload Request Transaksi ke Tripay (MENGGUNAKAN 'QRIS2' SESUAI DASHBOARD TRIPAY)
     const tripayPayload = {
-      method: paymentMethod || 'QRISC', // QRISC adalah kode universal untuk QRIS
+      method: paymentMethod || 'QRIS2', 
       merchant_ref: orderId,
       amount: grossAmount,
       customer_name: customerName || 'Pelanggan NFC',
@@ -147,7 +147,7 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Gagal menyimpan transaksi ke database: ' + dbErr.message }, { status: 500 });
     }
 
-    // 9. Return Response Sukses (Mengirimkan checkout_url untuk redirect di frontend)
+    // 9. Return Response Sukses
     return NextResponse.json({
       success: true,
       checkoutUrl: checkoutUrl,
