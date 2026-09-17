@@ -22,7 +22,7 @@ export async function POST(req) {
       shippingCost,
       isExpiredPromo,
       discountAmount,
-      paymentMethod // Kode channel: 'QRIS2', 'BCAVA', 'BRIVA', 'DANA', dll.
+      paymentMethod // Kode channel: 'QRIS2', 'BCAVA', 'BRIVA', dll.
     } = await req.json();
 
     // 1. Tentukan Harga per Pcs berdasarkan Promo Timer
@@ -86,7 +86,7 @@ export async function POST(req) {
       });
     }
 
-    // 6. Payload Request Transaksi ke Tripay (MENGGUNAKAN 'QRIS2' SESUAI DASHBOARD TRIPAY)
+    // 6. Payload Request Transaksi ke Tripay (Default menggunakan 'QRIS2')
     const tripayPayload = {
       method: paymentMethod || 'QRIS2', 
       merchant_ref: orderId,
