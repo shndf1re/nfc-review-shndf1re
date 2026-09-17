@@ -10,6 +10,11 @@ const supabase = createClient(
 );
 
 export default function SalesPage() {
+  // === STATE AUTENTIKASI & ROLE ===
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authChecking, setAuthChecking] = useState(true);
+  const [userRole, setUserRole] = useState('staff'); // Default 'staff' / 'super_admin'
+
   const [acrylicStock, setAcrylicStock] = useState(0);
   const [stockItemRecord, setStockItemRecord] = useState(null);
   const [salesHistory, setSalesHistory] = useState([]);
@@ -66,31 +71,59 @@ export default function SalesPage() {
   const [newDiscountAmount, setNewDiscountAmount] = useState('');
   const [couponStatusMsg, setCouponStatusMsg] = useState('');
 
+  // === CEK SESSION & ROLE DARI LOCALSTORAGE ===
+  useEffect(() => {
+    const savedSession = localStorage.getItem('nfc_admin_session');
+    const savedRole = localStorage.getItem('nfc_admin_role') || 'staff';
+    const lastActivity = localStorage.getItem('nfc_admin_last_activity');
+    const TIMEOUT_DURATION = 10 * 60 * 1000; // 10 Menit
+
+    if (savedSession === 'true' && lastActivity) {
+      const now = Date.now();
+      if (now - parseInt(lastActivity, 10) < TIMEOUT_DURATION) {
+        setIsAuthenticated(true);
+        setUserRole(savedRole);
+        // Perbarui waktu aktivitas terakhir
+        localStorage.setItem('nfc_admin_last_activity', now.toString());
+      } else {
+        // Sesi kedaluwarsa
+        localStorage.removeItem('nfc_admin_session');
+        localStorage.removeItem('nfc_admin_last_activity');
+        localStorage.removeItem('nfc_admin_role');
+        window.location.href = '/admin';
+        return;
+      }
+    } else {
+      // Belum login sama sekali
+      window.location.href = '/admin';
+      return;
+    }
+    setAuthChecking(false);
+  }, []);
+
   // REALTIME LISTENER SUPABASE
   useEffect(() => {
+    if (!isAuthenticated) return;
+
     fetchData();
-    fetchCoupons();
+    if (userRole === 'super_admin') {
+      fetchCoupons();
+    }
 
     const channel = supabase
       .channel('sales-page-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, () => {
-        fetchData();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-        fetchData();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => {
-        fetchData();
-      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, () => fetchData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => fetchData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => fetchData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'coupons' }, () => {
-        fetchCoupons();
+        if (userRole === 'super_admin') fetchCoupons();
       })
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [selectedMonth]);
+  }, [isAuthenticated, selectedMonth, userRole]);
 
   const fetchCoupons = async () => {
     const { data } = await supabase.from('coupons').select('*').order('created_at', { ascending: false });
@@ -99,6 +132,7 @@ export default function SalesPage() {
 
   const handleAddCoupon = async (e) => {
     e.preventDefault();
+    if (userRole !== 'super_admin') return;
     setCouponStatusMsg('Menyimpan...');
 
     const { error } = await supabase.from('coupons').insert([{
@@ -118,6 +152,7 @@ export default function SalesPage() {
   };
 
   const handleDeleteCoupon = async (id) => {
+    if (userRole !== 'super_admin') return;
     await supabase.from('coupons').delete().eq('id', id);
     fetchCoupons();
   };
@@ -350,10 +385,18 @@ export default function SalesPage() {
   };
 
   const openUpdateStockModal = () => {
+    if (userRole !== 'super_admin') {
+      alert("Hanya Super Admin yang bisa mengupdate stok secara manual.");
+      return;
+    }
     setModalState({ isOpen: true, actionType: 'updateStock', targetData: null, stockInput: acrylicStock.toString(), pinInput: '', errorMsg: '', isVerifying: false });
   };
 
   const openDeleteSaleModal = (sale) => {
+    if (userRole !== 'super_admin') {
+      alert("Hanya Super Admin yang bisa menghapus data transaksi.");
+      return;
+    }
     setModalState({ isOpen: true, actionType: 'delete', targetData: sale, stockInput: '', pinInput: '', errorMsg: '', isVerifying: false });
   };
 
@@ -460,12 +503,23 @@ export default function SalesPage() {
       return acc + subtotalBarang;
     }, 0);
 
+  // Mencegah flash tampilan sebelum verifikasi selesai
+  if (authChecking || !isAuthenticated) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'sans-serif' }}>
+        <p style={{ color: '#64748b', fontSize: '14px', fontWeight: 'bold' }}>🔒 Memeriksa Hak Akses Admin...</p>
+      </div>
+    );
+  }
+
   return (
     <div style={{ maxWidth: '600px', margin: '0 auto', padding: '24px 16px', fontFamily: '-apple-system, sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '700' }}>💰 Laporan Penjualan & Income</h2>
-          <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Realtime Data Transaksi & Stok</p>
+          <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '700' }}>💰 Laporan Penjualan</h2>
+          <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>
+            Login sebagai: <strong style={{ color: userRole === 'super_admin' ? '#2563eb' : '#16a34a' }}>{userRole === 'super_admin' ? 'Super Admin' : 'Admin Staff'}</strong>
+          </p>
         </div>
         <Link href="/admin" style={{ padding: '8px 14px', backgroundColor: '#2563eb', color: '#fff', textDecoration: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '600' }}>
           ⬅️ Dashboard
@@ -479,53 +533,58 @@ export default function SalesPage() {
             {acrylicStock} <span style={{ fontSize: '14px', fontWeight: '500', color: '#64748b' }}>pcs</span>
           </strong>
         </div>
-        <button onClick={openUpdateStockModal} style={{ padding: '10px 16px', fontSize: '12px', backgroundColor: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '10px', cursor: 'pointer', fontWeight: '600' }}>
-          🔒 Update Stok
-        </button>
-      </div>
-
-      {/* MANAJEMEN KODE PROMO (KUPON) */}
-      <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
-        <h3 style={{ margin: '0 0 16px 0', fontSize: '15px', fontWeight: '700' }}>🎟️ Kelola Kode Promo / Diskon (Flat Rp)</h3>
-        
-        <form onSubmit={handleAddCoupon} style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-          <input 
-            type="text" 
-            required 
-            placeholder="Kode (misal: DISKON40K)" 
-            value={newCouponCode} 
-            onChange={(e) => setNewCouponCode(e.target.value)} 
-            style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }} 
-          />
-          <input 
-            type="number" 
-            required 
-            placeholder="Potongan Rp (misal: 40000)" 
-            value={newDiscountAmount} 
-            onChange={(e) => setNewDiscountAmount(e.target.value)} 
-            style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }} 
-          />
-          <button type="submit" style={{ padding: '10px 16px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}>
-            + Tambah
+        {/* HANYA SUPER ADMIN YANG BISA UPDATE STOK MANUAL */}
+        {userRole === 'super_admin' && (
+          <button onClick={openUpdateStockModal} style={{ padding: '10px 16px', fontSize: '12px', backgroundColor: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '10px', cursor: 'pointer', fontWeight: '600' }}>
+            🔒 Update Stok
           </button>
-        </form>
-        {couponStatusMsg && <p style={{ fontSize: '12px', textAlign: 'center', marginBottom: '12px', fontWeight: 'bold', color: couponStatusMsg.startsWith('❌') ? '#dc2626' : '#16a34a' }}>{couponStatusMsg}</p>}
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {couponsList.map((c) => (
-            <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #f1f5f9' }}>
-              <div>
-                <strong style={{ color: '#2563eb', fontFamily: 'monospace', fontSize: '14px' }}>{c.code}</strong>
-                <span style={{ marginLeft: '10px', fontSize: '12px', color: '#16a34a', fontWeight: 'bold' }}>- Rp {parseFloat(c.discount_amount).toLocaleString('id-ID')}</span>
-              </div>
-              <button onClick={() => handleDeleteCoupon(c.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>🗑️ Hapus</button>
-            </div>
-          ))}
-          {couponsList.length === 0 && <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0, textAlign: 'center' }}>Belum ada kode promo aktif.</p>}
-        </div>
+        )}
       </div>
 
-      {/* FORM INPUT MANUAL */}
+      {/* MANAJEMEN KODE PROMO - HANYA DITAMPILKAN UNTUK SUPER ADMIN */}
+      {userRole === 'super_admin' && (
+        <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
+          <h3 style={{ margin: '0 0 16px 0', fontSize: '15px', fontWeight: '700' }}>🎟️ Kelola Kode Promo / Diskon (Flat Rp)</h3>
+          
+          <form onSubmit={handleAddCoupon} style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+            <input 
+              type="text" 
+              required 
+              placeholder="Kode (misal: DISKON40K)" 
+              value={newCouponCode} 
+              onChange={(e) => setNewCouponCode(e.target.value)} 
+              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }} 
+            />
+            <input 
+              type="number" 
+              required 
+              placeholder="Potongan Rp" 
+              value={newDiscountAmount} 
+              onChange={(e) => setNewDiscountAmount(e.target.value)} 
+              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }} 
+            />
+            <button type="submit" style={{ padding: '10px 16px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}>
+              + Tambah
+            </button>
+          </form>
+          {couponStatusMsg && <p style={{ fontSize: '12px', textAlign: 'center', marginBottom: '12px', fontWeight: 'bold', color: couponStatusMsg.startsWith('❌') ? '#dc2626' : '#16a34a' }}>{couponStatusMsg}</p>}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {couponsList.map((c) => (
+              <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #f1f5f9' }}>
+                <div>
+                  <strong style={{ color: '#2563eb', fontFamily: 'monospace', fontSize: '14px' }}>{c.code}</strong>
+                  <span style={{ marginLeft: '10px', fontSize: '12px', color: '#16a34a', fontWeight: 'bold' }}>- Rp {parseFloat(c.discount_amount).toLocaleString('id-ID')}</span>
+                </div>
+                <button onClick={() => handleDeleteCoupon(c.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>🗑️ Hapus</button>
+              </div>
+            ))}
+            {couponsList.length === 0 && <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0, textAlign: 'center' }}>Belum ada kode promo aktif.</p>}
+          </div>
+        </div>
+      )}
+
+      {/* FORM INPUT MANUAL - BISA DIAKSES SEMUA ADMIN */}
       <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
         <h3 style={{ margin: '0 0 16px 0', fontSize: '15px', fontWeight: '700' }}>➕ Input Penjualan Manual (Offline)</h3>
         <form onSubmit={handleAddSale} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -673,7 +732,7 @@ export default function SalesPage() {
                             <option value="DP 50%">⏳ DP 50%</option>
                             <option value="Belum Bayar">❌ Belum Bayar</option>
                           </select>
-                          <button onClick={() => openUpdateStatusModal(sale)} style={{ padding: '2px 6px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '10px', fontWeight: '600', cursor: 'pointer' }}>Simpan (PIN)</button>
+                          <button onClick={() => openUpdateStatusModal(sale)} style={{ padding: '2px 6px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '10px', fontWeight: '600', cursor: 'pointer' }}>Simpan</button>
                           <button onClick={() => setEditingSaleId(null)} style={{ padding: '2px 6px', backgroundColor: '#cbd5e1', color: '#334155', border: 'none', borderRadius: '4px', fontSize: '10px', cursor: 'pointer' }}>X</button>
                         </div>
                       ) : (
@@ -692,10 +751,13 @@ export default function SalesPage() {
                           </button>
                         </div>
                       )}
-
-                      <button onClick={() => openDeleteSaleModal(sale)} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '11px', fontWeight: '600', cursor: 'pointer', padding: 0 }}>
-                        🗑️
-                      </button>
+                      
+                      {/* HANYA SUPER ADMIN YANG BISA MENGHAPUS TRANSAKSI */}
+                      {userRole === 'super_admin' && (
+                        <button onClick={() => openDeleteSaleModal(sale)} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '11px', fontWeight: '600', cursor: 'pointer', padding: 0 }}>
+                          🗑️
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -729,7 +791,7 @@ export default function SalesPage() {
             <form onSubmit={handleSaveResi}>
               <div style={{ marginBottom: '16px' }}>
                 <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b', display: 'block', marginBottom: '4px' }}>
-                  Nomor Resi Ekspedisi (J&T / JNE / POS):
+                  Nomor Resi Ekspedisi (J&T / SiCepat / POS):
                 </label>
                 <input
                   type="text"
