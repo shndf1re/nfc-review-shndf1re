@@ -172,13 +172,11 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* 3. GALERI PRODUK (BARU DITAMBAHKAN) */}
+      {/* 3. GALERI PRODUK */}
       <section style={{ padding: '40px 24px 60px 24px', maxWidth: '1100px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
-        <h2 style={{ textAlign: 'center', fontSize: '28px', fontWeight: '800', marginBottom: '12px' }}>Lihat Produk Kami</h2>
-        <p style={{ textAlign: 'center', fontSize: '15px', color: '#64748b', marginBottom: '32px' }}>Papan Akrilik tebal dicetak dengan tinta Print UV tahan air dan anti luntur.</p>
+        <h2 style={{ textAlign: 'center', fontSize: '28px', fontWeight: '800', marginBottom: '32px' }}>Lihat Produk Kami</h2>
         
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
-          {/* Pastikan foto galeri-1.jpg dst sudah ada di folder public */}
           <div style={{ backgroundColor: '#fff', borderRadius: '16px', overflow: 'hidden', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
             <img src="/galeri-1.jpg" alt="Papan NFC 1" style={{ width: '100%', height: '220px', objectFit: 'cover' }} onError={(e) => { e.target.src = '/app-icon.png'; e.target.style.objectFit = 'contain'; e.target.style.padding = '20px'; e.target.style.backgroundColor = '#f8fafc'; }} />
           </div>
