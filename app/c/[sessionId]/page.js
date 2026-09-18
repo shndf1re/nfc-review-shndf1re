@@ -37,7 +37,7 @@ export default function DynamicCheckoutPage() {
 
   // === HARGA RESMI & PROMO ===
   const ORIGINAL_PRICE_PER_ITEM = 100000; // Harga Normal per Pcs
-  const BASE_PROMO_PRICE = 65000;        // Harga Promo per Pcs
+  const BASE_PROMO_PRICE = 85000;        // Harga Promo per Pcs
 
   const [timeLeft, setTimeLeft] = useState('30:00');
   const [isExpired, setIsExpired] = useState(false);
