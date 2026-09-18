@@ -1,352 +1,191 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
-import Link from 'next/link';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-);
 
 export default function TrackOrderPage() {
-  const [searchInput, setSearchInput] = useState('');
+  const [phone, setPhone] = useState('');
+  const [orderId, setOrderId] = useState('');
   const [loading, setLoading] = useState(false);
-  const [orderData, setOrderData] = useState(null);
-  const [errorMessage, setErrorMessage] = useState('');
-  const [isMounted, setIsMounted] = useState(false);
-  const [copyStatus, setCopyStatus] = useState('Salin');
-  const [autoCheckingCourier, setAutoCheckingCourier] = useState(false);
+  const [orders, setOrders] = useState([]);
+  const [errorMsg, setErrorMsg] = useState('');
 
-  // LOAD MIDTRANS SNAP SDK DINAMIS
+  // Otomatis terisi nomor HP & Order ID dari sesi terakhir jika ada
   useEffect(() => {
-    setIsMounted(true);
-
-    const clientKey = process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY || '';
-    const snapScriptUrl = 'https://app.sandbox.midtrans.com/snap/snap.js';
-
-    if (!document.querySelector(`script[src="${snapScriptUrl}"]`)) {
-      const script = document.createElement('script');
-      script.src = snapScriptUrl;
-      script.setAttribute('data-client-key', clientKey);
-      script.async = true;
-      document.body.appendChild(script);
-    }
-
-    const savedOrderId = localStorage.getItem('last_order_id');
-    const savedPhone = localStorage.getItem('last_customer_phone');
-
-    if (savedOrderId) {
-      setSearchInput(savedOrderId);
-      fetchOrder(savedOrderId);
-    } else if (savedPhone) {
-      setSearchInput(savedPhone);
-      fetchOrder(savedPhone);
+    if (typeof window !== 'undefined') {
+      const savedPhone = localStorage.getItem('last_customer_phone') || '';
+      const savedOrder = localStorage.getItem('last_order_id') || '';
+      if (savedPhone) setPhone(savedPhone);
+      if (savedOrder) setOrderId(savedOrder);
+      
+      if (savedPhone || savedOrder) {
+        fetchOrders(savedPhone, savedOrder);
+      }
     }
   }, []);
 
-  const fetchOrder = async (queryTerm) => {
-    const term = (queryTerm || searchInput).trim();
-    if (!term) {
-      setErrorMessage('Masukkan Nomor WA atau Order ID Anda.');
-      return;
-    }
-
+  const fetchOrders = async (searchPhone, searchOrder) => {
     setLoading(true);
-    setErrorMessage('');
-    setOrderData(null);
+    setErrorMsg('');
+    setOrders([]);
 
     try {
-      let { data, error } = await supabase
-        .from('orders')
-        .select('*')
-        .or(`order_id.eq.${term},customer_phone.eq.${term}`)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const res = await fetch('/api/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: searchPhone || phone,
+          orderId: searchOrder || orderId
+        })
+      });
 
-      if (error) {
-        setErrorMessage('Gagal mengambil data: ' + error.message);
-      } else if (!data) {
-        setErrorMessage('Pesanan tidak ditemukan. Pastikan Nomor WA atau ID Order sudah benar.');
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setErrorMsg(data.error || 'Pesanan tidak ditemukan.');
       } else {
-        setOrderData(data);
-
-        // OTOMATISASI: Jika status 'Sedang Dikirim' & ada Nomor Resi, cek status langsung ke Kurir
-        const currentStatus = (data.payment_status || '').toLowerCase();
-        if (['shipped', 'dikirim', 'sedang dikirim'].includes(currentStatus) && data.resi_number) {
-          checkCourierDeliveryStatus(data);
-        }
+        setOrders(data.orders || []);
       }
     } catch (err) {
-      setErrorMessage('Terjadi kesalahan koneksi.');
+      setErrorMsg('Gagal terhubung ke server. Coba lagi nanti.');
     } finally {
       setLoading(false);
     }
   };
 
-  // OTOMATIS CEK STATUS RESI VIA BITESHIP
-  const checkCourierDeliveryStatus = async (order) => {
-    setAutoCheckingCourier(true);
-    try {
-      const res = await fetch('/api/track-status', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderDbId: order.id,
-          resiNumber: order.resi_number,
-          courierCode: order.courier || 'jne'
-        })
-      });
-
-      const data = await res.json();
-      if (data.isFinished) {
-        // Update state lokal agar badge berubah jadi Selesai
-        setOrderData(prev => prev ? { ...prev, payment_status: 'Selesai' } : prev);
-      }
-    } catch (err) {
-      console.log('Cek resi otomatis di latar belakang:', err.message);
-    } finally {
-      setAutoCheckingCourier(false);
-    }
-  };
-
-  const handleSearchSubmit = (e) => {
+  const handleSearch = (e) => {
     e.preventDefault();
-    fetchOrder();
-  };
-
-  const handleOpenSnapPayment = () => {
-    if (!orderData || !orderData.snap_token) {
-      alert('Token pembayaran tidak ditemukan. Silakan hubungi admin via WA.');
+    if (!phone && !orderId) {
+      alert('Masukkan Nomor WA atau Order ID terlebih dahulu.');
       return;
     }
-
-    if (typeof window !== 'undefined' && window.snap) {
-      window.snap.pay(orderData.snap_token, {
-        onSuccess: function () {
-          alert('Pembayaran Berhasil!');
-          fetchOrder(orderData.order_id);
-        },
-        onPending: function () {
-          alert('Menunggu Pembayaran...');
-          fetchOrder(orderData.order_id);
-        },
-        onError: function () {
-          alert('Pembayaran Gagal!');
-        },
-        onClose: function () {
-          // Tutup tanpa error
-        },
-      });
-    } else {
-      alert('Sistem pembayaran Midtrans sedang memuat, silakan coba 2 detik lagi.');
-    }
+    fetchOrders(phone, orderId);
   };
-
-  const getStatusBadge = (status) => {
-    const s = (status || '').toLowerCase();
-    if (['selesai', 'finished', 'completed'].includes(s)) {
-      return { label: '🎉 PESANAN SELESAI', bg: '#dcfce7', color: '#15803d' };
-    }
-    if (['shipped', 'dikirim', 'sedang dikirim'].includes(s)) {
-      return { label: '🚚 SEDANG DIKIRIM', bg: '#e0f2fe', color: '#0284c7' };
-    }
-    if (['settlement', 'paid', 'success', 'lunas'].includes(s)) {
-      return { label: '✅ LUNAS / DIPROSES', bg: '#dcfce7', color: '#15803d' };
-    }
-    if (['pending', 'belum bayar'].includes(s)) {
-      return { label: '⏳ MENUNGGU PEMBAYARAN', bg: '#fef3c7', color: '#b45309' };
-    }
-    return { label: '❌ BATAL / EXPIRED', bg: '#fee2e2', color: '#dc2626' };
-  };
-
-  const handleCopyResi = (resiText) => {
-    navigator.clipboard.writeText(resiText);
-    setCopyStatus('Tersalin! ✔️');
-    setTimeout(() => setCopyStatus('Salin'), 2000);
-  };
-
-  if (!isMounted) return null;
-
-  const statusRaw = (orderData?.payment_status || '').toLowerCase();
-  const isPendingPayment = ['pending', 'belum bayar'].includes(statusRaw);
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', padding: '24px 16px', fontFamily: '-apple-system, sans-serif' }}>
-      <div style={{ maxWidth: '440px', margin: '0 auto' }}>
+    <div style={{
+      minHeight: '100vh',
+      backgroundColor: '#f8fafc',
+      padding: '24px 14px',
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'flex-start',
+      boxSizing: 'border-box',
+      fontFamily: 'sans-serif'
+    }}>
+      <div style={{
+        width: '100%',
+        maxWidth: '440px',
+        backgroundColor: '#ffffff',
+        borderRadius: '24px',
+        padding: '24px',
+        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.05)',
+        border: '1px solid #e2e8f0'
+      }}>
         
-        {/* HEADER */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#0f172a' }}>📦 Lacak Pesanan</h2>
-            <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Cek status pengiriman & cetak akrilik</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <a href="/" style={{ color: '#64748b', textDecoration: 'none', fontSize: '13px', fontWeight: '600' }}>← Ke Beranda</a>
+          <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#2563eb', backgroundColor: '#eff6ff', padding: '4px 10px', borderRadius: '20px' }}>📦 Lacak Pesanan</span>
+        </div>
+
+        <h1 style={{ fontSize: '20px', fontWeight: '800', color: '#0f172a', marginBottom: '8px' }}>Cek Status Pesanan</h1>
+        <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '20px', lineHeight: '1.4' }}>
+          Masukkan Nomor WhatsApp atau ID Pesanan Anda untuk melihat status pembayaran dan pengiriman.
+        </p>
+
+        <form onSubmit={handleSearch} style={{ marginBottom: '24px' }}>
+          <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>Nomor WhatsApp</label>
+          <input
+            type="tel"
+            placeholder="Contoh: 08123456789"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            style={{
+              width: '100%', padding: '12px', borderRadius: '12px', border: '1.5px solid #cbd5e1',
+              fontSize: '14px', marginBottom: '12px', boxSizing: 'border-box', outline: 'none'
+            }}
+          />
+
+          <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>Order ID (Opsional)</label>
+          <input
+            type="text"
+            placeholder="Contoh: NFC-1718000000-123"
+            value={orderId}
+            onChange={(e) => setOrderId(e.target.value)}
+            style={{
+              width: '100%', padding: '12px', borderRadius: '12px', border: '1.5px solid #cbd5e1',
+              fontSize: '14px', marginBottom: '16px', boxSizing: 'border-box', outline: 'none'
+            }}
+          />
+
+          <button
+            type="submit"
+            disabled={loading}
+            style={{
+              width: '100%', backgroundColor: '#2563eb', color: '#ffffff', padding: '14px',
+              borderRadius: '12px', border: 'none', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(37, 99, 235, 0.2)'
+            }}
+          >
+            {loading ? 'Mencari Data...' : '🔍 Cari Pesanan'}
+          </button>
+        </form>
+
+        {errorMsg && (
+          <div style={{ backgroundColor: '#fef2f2', color: '#dc2626', padding: '12px', borderRadius: '12px', fontSize: '13px', border: '1px solid #fee2e2', marginBottom: '16px' }}>
+            ❌ {errorMsg}
           </div>
-          <Link href="/" style={{ fontSize: '12px', color: '#2563eb', textDecoration: 'none', fontWeight: '600' }}>
-            ← Utama
-          </Link>
-        </div>
+        )}
 
-        {/* FORM PENCARIAN */}
-        <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '20px', border: '1px solid #e2e8f0', marginBottom: '20px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.03)' }}>
-          <form onSubmit={handleSearchSubmit}>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '8px' }}>
-              Nomor WhatsApp / Order ID *
-            </label>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <input
-                type="text"
-                required
-                placeholder="Contoh: 08123456789 atau NFC-..."
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                style={{ flex: 1, padding: '12px 14px', borderRadius: '12px', border: '1.5px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
-              />
-              <button
-                type="submit"
-                disabled={loading}
-                style={{ backgroundColor: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '12px', padding: '0 16px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer' }}
-              >
-                {loading ? '...' : '🔍 Lacak'}
-              </button>
-            </div>
-          </form>
+        {/* DAFTAR PESANAN YANG DITEMUKAN */}
+        {orders.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <h2 style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a', margin: 0 }}>Hasil Pencarian ({orders.length})</h2>
 
-          {errorMessage && (
-            <p style={{ marginTop: '12px', fontSize: '12px', color: '#dc2626', fontWeight: '600', marginBottom: 0 }}>
-              {errorMessage}
-            </p>
-          )}
-        </div>
+            {orders.map((item) => {
+              const isPaid = item.payment_status === 'paid' || item.payment_status === 'PAID' || item.payment_status === 'Lunas';
+              const isPending = item.payment_status === 'pending' || item.payment_status === 'UNPAID';
 
-        {/* DETAIL PESANAN */}
-        {orderData && (
-          <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '20px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.03)' }}>
-            
-            {/* STATUS BADGE */}
-            <div style={{ textAlign: 'center', marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px dashed #e2e8f0' }}>
-              <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '600', display: 'block', marginBottom: '6px' }}>Status Pesanan:</span>
-              <span style={{ 
-                padding: '6px 14px', 
-                borderRadius: '20px', 
-                backgroundColor: getStatusBadge(orderData.payment_status).bg, 
-                color: getStatusBadge(orderData.payment_status).color,
-                fontWeight: '800',
-                fontSize: '12px',
-                letterSpacing: '0.5px'
-              }}>
-                {getStatusBadge(orderData.payment_status).label}
-              </span>
-              {autoCheckingCourier && (
-                <span style={{ fontSize: '10px', color: '#0284c7', display: 'block', marginTop: '6px', fontWeight: '500' }}>
-                  🔄 Memverifikasi posisi resi di kurir...
-                </span>
-              )}
-            </div>
+              return (
+                <div key={item.order_id} style={{
+                  backgroundColor: '#f8fafc', borderRadius: '16px', padding: '16px', border: '1px solid #e2e8f0'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{ fontFamily: 'monospace', fontWeight: 'bold', fontSize: '13px', color: '#0f172a' }}>{item.order_id}</span>
+                    <span style={{
+                      fontSize: '11px', fontWeight: '800', padding: '4px 8px', borderRadius: '8px',
+                      backgroundColor: isPaid ? '#dcfce7' : (isPending ? '#fef3c7' : '#f1f5f9'),
+                      color: isPaid ? '#15803d' : (isPending ? '#b45309' : '#64748b')
+                    }}>
+                      {isPaid ? 'LUNAS / ON PROGRESS' : (isPending ? 'BELUM DIBAYAR' : item.payment_status.toUpperCase())}
+                    </span>
+                  </div>
 
-            {/* KOTAK TOMBOL GANTI METODE BAYAR (JIKA BELUM BAYAR) */}
-            {isPendingPayment && orderData.snap_token && (
-              <div style={{
-                backgroundColor: '#fffbe6',
-                border: '1.5px solid #ffe58f',
-                borderRadius: '14px',
-                padding: '14px',
-                marginBottom: '16px',
-                textAlign: 'center'
-              }}>
-                <span style={{ fontSize: '12px', fontWeight: '700', color: '#d48806', display: 'block', marginBottom: '8px' }}>
-                  ⚡ Pembayaran Belum Selesai
-                </span>
-                <button
-                  onClick={handleOpenSnapPayment}
-                  style={{
-                    width: '100%',
-                    backgroundColor: '#16a34a',
-                    color: '#ffffff',
-                    border: 'none',
-                    borderRadius: '10px',
-                    padding: '12px',
-                    fontSize: '13px',
-                    fontWeight: 'bold',
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 10px rgba(22, 163, 74, 0.2)'
-                  }}
-                >
-                  💳 Bayar Sekarang / Ganti Metode Bayar
-                </button>
-              </div>
-            )}
+                  <div style={{ fontSize: '12px', color: '#475569', marginBottom: '6px' }}>
+                    <strong>Pemesan:</strong> {item.customer_name} ({item.quantity} Pcs)
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#475569', marginBottom: '6px' }}>
+                    <strong>Kurir:</strong> {item.courier || 'Reguler'}
+                  </div>
+                  <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#16a34a', marginBottom: '12px' }}>
+                    Total Tagihan: Rp {Number(item.total_price || 0).toLocaleString('id-ID')}
+                  </div>
 
-            {/* KOTAK NOMOR RESI (JIKA SUDAH DIINPUT ADMIN) */}
-            {orderData.resi_number && (
-              <div style={{
-                backgroundColor: '#eff6ff',
-                border: '1.5px solid #bfdbfe',
-                borderRadius: '14px',
-                padding: '14px',
-                marginBottom: '16px',
-                textAlign: 'center'
-              }}>
-                <span style={{ fontSize: '11px', fontWeight: '700', color: '#1d4ed8', display: 'block', marginBottom: '4px' }}>
-                  🚚 NOMOR RESI PENGIRIMAN:
-                </span>
-                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
-                  <strong style={{ fontSize: '16px', color: '#1e40af', fontFamily: 'monospace', letterSpacing: '1px' }}>
-                    {orderData.resi_number}
-                  </strong>
-                  <button
-                    onClick={() => handleCopyResi(orderData.resi_number)}
-                    style={{
-                      backgroundColor: '#2563eb',
-                      color: '#ffffff',
-                      border: 'none',
-                      borderRadius: '8px',
-                      padding: '4px 8px',
-                      fontSize: '11px',
-                      fontWeight: 'bold',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    📋 {copyStatus}
-                  </button>
+                  {/* TOMBOL BAYAR SEKARANG JIKA MASIH PENDING */}
+                  {isPending && item.checkout_url && (
+                    <button
+                      onClick={() => window.location.href = item.checkout_url}
+                      style={{
+                        width: '100%', backgroundColor: '#16a34a', color: '#ffffff', padding: '10px',
+                        borderRadius: '10px', border: 'none', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer',
+                        display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px'
+                      }}
+                    >
+                      💳 Lanjutkan Pembayaran (Tripay)
+                    </button>
+                  )}
                 </div>
-              </div>
-            )}
-
-            {/* INFORMASI UTAMA */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#64748b' }}>Order ID:</span>
-                <strong style={{ color: '#0f172a' }}>{orderData.order_id || orderData.id}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#64748b' }}>Nama Pemesan:</span>
-                <strong style={{ color: '#0f172a' }}>{orderData.customer_name}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#64748b' }}>Jumlah Pesanan:</span>
-                <strong style={{ color: '#0f172a' }}>{orderData.quantity || 1} Pcs (Papan Akrilik NFC)</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#64748b' }}>Ekspedisi / Kurir:</span>
-                <strong style={{ color: '#2563eb' }}>{orderData.courier || 'Ekspedisi Reguler'}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #f1f5f9', paddingTop: '10px', marginTop: '4px' }}>
-                <span style={{ color: '#64748b' }}>Total Pembayaran:</span>
-                <strong style={{ color: '#16a34a', fontSize: '15px' }}>
-                  Rp {(parseFloat(orderData.total_price) || 0).toLocaleString('id-ID')}
-                </strong>
-              </div>
-            </div>
-
-            {/* ALAMAT PENGIRIMAN */}
-            <div style={{ marginTop: '16px', backgroundColor: '#f8fafc', padding: '12px', borderRadius: '12px', border: '1px solid #f1f5f9' }}>
-              <span style={{ fontSize: '11px', fontWeight: '700', color: '#475569', display: 'block', marginBottom: '4px' }}>📍 Alamat Tujuan:</span>
-              <p style={{ margin: 0, fontSize: '12px', color: '#334155', lineHeight: '1.4' }}>
-                {orderData.shipping_address || 'Alamat tidak dicantumkan'}
-              </p>
-            </div>
-
+              );
+            })}
           </div>
         )}
 
