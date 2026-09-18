@@ -11,10 +11,11 @@ export default function DynamicCheckoutPage() {
   const [isMounted, setIsMounted] = useState(false);
   const [isValidSession, setIsValidSession] = useState(false);
 
-  // === MODAL THANK YOU STATE ===
+  // === MODAL SUCCESS & REDIRECT STATE ===
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successOrderDetails, setSuccessOrderDetails] = useState({
     orderId: '',
+    checkoutUrl: '', // Tambahan state untuk menyimpan URL Tripay
     name: '',
     total: 0,
     qty: 1
@@ -330,9 +331,16 @@ export default function DynamicCheckoutPage() {
           localStorage.setItem('last_order_id', data.orderId);
         }
         
-        // PESAN SUKSES & REDIRECT PAKSA KE TRIPAY
-        alert('Data pesanan berhasil disimpan! Anda akan diarahkan ke halaman pembayaran.');
-        window.location.replace(data.checkoutUrl);
+        // PESAN SUKSES & MUNCULKAN MODAL KONFIRMASI MODERN
+        setSuccessOrderDetails({
+          orderId: data.orderId,
+          checkoutUrl: data.checkoutUrl, // Simpan Link Tripay
+          name: buyerName,
+          total: totalAmount,
+          qty: currentQty
+        });
+        setLoadingPay(false);
+        setShowSuccessModal(true);
       }
 
     } catch (err) {
@@ -757,7 +765,7 @@ export default function DynamicCheckoutPage() {
               {appliedDiscount > 0 && <p style={{ fontSize: '11px', color: '#16a34a', marginTop: '6px', margin: 0, fontWeight: 'bold' }}>🎉 Potongan Rp {appliedDiscount.toLocaleString('id-ID')} ({appliedCode}) berhasil diterapkan!</p>}
             </div>
 
-            {/* RINGKASAN HARGA */}
+            {/* RINGKASAN HARGA BERSIH & MODERN */}
             <div style={styles.summaryCard}>
               <div style={styles.summaryRow}>
                 <span>Harga Produk ({currentQty} Pcs):</span>
@@ -820,7 +828,7 @@ export default function DynamicCheckoutPage() {
                 disabled={!selectedCourier || !streetAddress || loadingPay}
                 style={styles.btnGreen(!selectedCourier || !streetAddress || loadingPay)}
               >
-                {loadingPay ? 'Mengalihkan...' : '💳 Lanjut Bayar'}
+                {loadingPay ? 'Memproses...' : '💳 Lanjut Bayar'}
               </button>
             </div>
 
@@ -828,6 +836,107 @@ export default function DynamicCheckoutPage() {
         )}
 
       </div>
+
+      {/* MODAL POP-UP MODERN KONFIRMASI PEMBAYARAN */}
+      {showSuccessModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.75)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 999,
+          padding: '16px'
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '24px',
+            padding: '28px 24px',
+            maxWidth: '380px',
+            width: '100%',
+            textAlign: 'center',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            border: '1px solid #e2e8f0'
+          }}>
+            <div style={{ fontSize: '48px', marginBottom: '12px' }}>🧾</div>
+            <h2 style={{ fontSize: '20px', fontWeight: '800', color: '#0f172a', margin: '0 0 6px 0' }}>
+              Pesanan Berhasil Dibuat!
+            </h2>
+            <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 20px 0', lineHeight: '1.4' }}>
+              Data pesanan Anda telah tersimpan. Silakan lanjutkan untuk melakukan pembayaran.
+            </p>
+
+            <div style={{
+              backgroundColor: '#f8fafc',
+              borderRadius: '16px',
+              padding: '16px',
+              border: '1.5px dashed #cbd5e1',
+              marginBottom: '20px',
+              textAlign: 'left',
+              fontSize: '13px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ color: '#64748b' }}>Order ID:</span>
+                <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>{successOrderDetails.orderId}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ color: '#64748b' }}>Pemesan:</span>
+                <strong style={{ color: '#0f172a' }}>{successOrderDetails.name}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ color: '#64748b' }}>Jumlah:</span>
+                <strong style={{ color: '#0f172a' }}>{successOrderDetails.qty} Pcs</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e2e8f0', paddingTop: '8px', marginTop: '4px' }}>
+                <span style={{ color: '#64748b' }}>Total Tagihan:</span>
+                <strong style={{ color: '#16a34a', fontSize: '14px' }}>
+                  Rp {(successOrderDetails.total || 0).toLocaleString('id-ID')}
+                </strong>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <button
+                onClick={() => window.location.href = successOrderDetails.checkoutUrl}
+                style={{
+                  width: '100%',
+                  backgroundColor: '#16a34a',
+                  color: '#ffffff',
+                  padding: '14px',
+                  borderRadius: '12px',
+                  border: 'none',
+                  fontWeight: 'bold',
+                  fontSize: '15px',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(22, 163, 74, 0.2)'
+                }}
+              >
+                💳 Bayar Sekarang
+              </button>
+
+              <button
+                onClick={() => window.location.href = '/track'}
+                style={{
+                  width: '100%',
+                  backgroundColor: '#ffffff',
+                  color: '#0f172a',
+                  padding: '12px',
+                  borderRadius: '12px',
+                  border: '1.5px solid #cbd5e1',
+                  fontWeight: 'bold',
+                  fontSize: '13px',
+                  cursor: 'pointer'
+                }}
+              >
+                📦 Nanti Saja / Cek Status Pesanan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
