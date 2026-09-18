@@ -23,7 +23,7 @@ export async function POST(req) {
       shippingCost,
       isExpiredPromo,
       discountAmount,
-      paymentMethod // Jika dikirim dari frontend ('BCAVA', 'BRIVA', 'QRIS2', dll)
+      paymentMethod
     } = await req.json();
 
     // 1. Hitung Harga per Item berdasarkan Promo Timer
@@ -85,8 +85,7 @@ export async function POST(req) {
       });
     }
 
-    // 6. Payload Request Transaksi ke Tripay
-    // Menggunakan paymentMethod jika ada, atau default 'QRIS2'
+    // 6. Payload Request Transaksi ke Tripay (Default menggunakan 'QRIS2')
     const tripayPayload = {
       method: paymentMethod || 'QRIS2', 
       merchant_ref: orderId,
