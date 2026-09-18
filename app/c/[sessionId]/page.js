@@ -329,10 +329,11 @@ export default function DynamicCheckoutPage() {
         if (data.orderId) {
           localStorage.setItem('last_order_id', data.orderId);
         }
+        
+        // PESAN SUKSES & REDIRECT PAKSA KE TRIPAY
+        alert('Data pesanan berhasil disimpan! Anda akan diarahkan ke halaman pembayaran.');
+        window.location.replace(data.checkoutUrl);
       }
-
-      // REDIRECT LANGSUNG KE HALAMAN CHECKOUT TRIPAY (QRIS / VIRTUAL ACCOUNT)
-      window.location.href = data.checkoutUrl;
 
     } catch (err) {
       alert('Terjadi kesalahan koneksi: ' + err.message);
@@ -756,7 +757,7 @@ export default function DynamicCheckoutPage() {
               {appliedDiscount > 0 && <p style={{ fontSize: '11px', color: '#16a34a', marginTop: '6px', margin: 0, fontWeight: 'bold' }}>🎉 Potongan Rp {appliedDiscount.toLocaleString('id-ID')} ({appliedCode}) berhasil diterapkan!</p>}
             </div>
 
-            {/* RINGKASAN HARGA BERSIH & MODERN */}
+            {/* RINGKASAN HARGA */}
             <div style={styles.summaryCard}>
               <div style={styles.summaryRow}>
                 <span>Harga Produk ({currentQty} Pcs):</span>
@@ -819,7 +820,7 @@ export default function DynamicCheckoutPage() {
                 disabled={!selectedCourier || !streetAddress || loadingPay}
                 style={styles.btnGreen(!selectedCourier || !streetAddress || loadingPay)}
               >
-                {loadingPay ? 'Memproses...' : '💳 Lanjut Bayar'}
+                {loadingPay ? 'Mengalihkan...' : '💳 Lanjut Bayar'}
               </button>
             </div>
 
@@ -827,106 +828,6 @@ export default function DynamicCheckoutPage() {
         )}
 
       </div>
-
-      {/* MODAL POPUP UCAPAN TERIMA KASIH */}
-      {showSuccessModal && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          backgroundColor: 'rgba(15, 23, 42, 0.75)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 999,
-          padding: '16px'
-        }}>
-          <div style={{
-            backgroundColor: '#ffffff',
-            borderRadius: '24px',
-            padding: '28px 24px',
-            maxWidth: '380px',
-            width: '100%',
-            textAlign: 'center',
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-            border: '1px solid #e2e8f0'
-          }}>
-            <div style={{ fontSize: '48px', marginBottom: '12px' }}>🥳</div>
-            <h2 style={{ fontSize: '20px', fontWeight: '800', color: '#0f172a', margin: '0 0 6px 0' }}>
-              Terima Kasih!
-            </h2>
-            <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 20px 0', lineHeight: '1.4' }}>
-              Pembayaran Anda telah berhasil kami terima. Pesanan papan akrilik NFC Anda segera diproses!
-            </p>
-
-            <div style={{
-              backgroundColor: '#f8fafc',
-              borderRadius: '16px',
-              padding: '16px',
-              border: '1.5px dashed #cbd5e1',
-              marginBottom: '20px',
-              textAlign: 'left',
-              fontSize: '13px'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <span style={{ color: '#64748b' }}>Order ID:</span>
-                <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>{successOrderDetails.orderId}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <span style={{ color: '#64748b' }}>Pemesan:</span>
-                <strong style={{ color: '#0f172a' }}>{successOrderDetails.name}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <span style={{ color: '#64748b' }}>Jumlah:</span>
-                <strong style={{ color: '#0f172a' }}>{successOrderDetails.qty} Pcs</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e2e8f0', paddingTop: '8px', marginTop: '4px' }}>
-                <span style={{ color: '#64748b' }}>Total Lunas:</span>
-                <strong style={{ color: '#16a34a', fontSize: '14px' }}>
-                  Rp {(successOrderDetails.total || 0).toLocaleString('id-ID')}
-                </strong>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <button
-                onClick={() => window.location.href = '/track'}
-                style={{
-                  width: '100%',
-                  backgroundColor: '#2563eb',
-                  color: '#ffffff',
-                  padding: '12px',
-                  borderRadius: '12px',
-                  border: 'none',
-                  fontWeight: 'bold',
-                  fontSize: '14px',
-                  cursor: 'pointer'
-                }}
-              >
-                📦 Lacak Pesanan Saya
-              </button>
-
-              <button
-                onClick={() => window.location.href = '/'}
-                style={{
-                  width: '100%',
-                  backgroundColor: '#ffffff',
-                  color: '#475569',
-                  padding: '12px',
-                  borderRadius: '12px',
-                  border: '1.5px solid #cbd5e1',
-                  fontWeight: 'bold',
-                  fontSize: '13px',
-                  cursor: 'pointer'
-                }}
-              >
-                🏠 Kembali ke Beranda
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
     </div>
   );
 }
