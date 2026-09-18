@@ -25,7 +25,6 @@ export async function POST(req) {
       paymentMethod
     } = await req.json();
 
-    // 1. Hitung Harga per Item
     const BASE_PROMO_PRICE = 65000;
     const ORIGINAL_PRICE = 100000;
     const itemUnitPrice = isExpiredPromo ? ORIGINAL_PRICE : BASE_PROMO_PRICE;
@@ -38,22 +37,18 @@ export async function POST(req) {
     const shipCostVal = parseFloat(shippingCost) || 0;
     const grossAmount = Math.round(finalSubtotal + shipCostVal);
 
-    // 2. Buat Order ID
     const uniqueSuffix = Math.floor(100 + Math.random() * 900);
     const orderId = `NFC-${Date.now()}-${uniqueSuffix}`;
 
-    // 3. Kredensial Tripay
     const apiKey = process.env.TRIPAY_API_KEY || '';
     const privateKey = process.env.TRIPAY_PRIVATE_KEY || '';
     const merchantCode = process.env.TRIPAY_MERCHANT_CODE || '';
 
-    // 4. Buat Signature HMAC-SHA256
     const signature = crypto
       .createHmac('sha256', privateKey)
       .update(merchantCode + orderId + grossAmount)
       .digest('hex');
 
-    // 5. Rincian Item (Order Items)
     const orderItems = [
       {
         sku: 'NFC-ACRYLIC',
@@ -81,7 +76,6 @@ export async function POST(req) {
       });
     }
 
-    // 6. Payload Request ke Tripay
     const tripayPayload = {
       method: paymentMethod || 'QRIS2', 
       merchant_ref: orderId,
@@ -95,29 +89,29 @@ export async function POST(req) {
       signature: signature
     };
 
-    // 7. Konfigurasi Fetch dengan Safe Dynamic Proxy
-    const fetchOptions = {
-      method: 'POST',
+    const axiosOptions = {
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(tripayPayload)
+      }
     };
 
-    // Gunakan proxy Fixie HANYA jika variabel FIXIE_URL ada dari Vercel
     if (process.env.FIXIE_URL) {
       try {
         const { HttpsProxyAgent } = await import('https-proxy-agent');
-        fetchOptions.agent = new HttpsProxyAgent(process.env.FIXIE_URL);
+        axiosOptions.httpsAgent = new HttpsProxyAgent(process.env.FIXIE_URL);
+        // Menonaktifkan default proxy Axios agar fokus menggunakan HttpsProxyAgent
+        axiosOptions.proxy = false; 
       } catch (err) {
         console.error('Proxy Gagal Dimuat, melanjutkan tanpa proxy:', err);
       }
     }
 
-    // Hit API Tripay Production
-    const tripayRes = await fetch('https://tripay.co.id/api/transaction/create', fetchOptions);
-    const tripayData = await tripayRes.json();
+    // Dynamic import Axios agar aman saat build Vercel
+    const axios = (await import('axios')).default;
+    
+    const tripayRes = await axios.post('https://tripay.co.id/api/transaction/create', tripayPayload, axiosOptions);
+    const tripayData = tripayRes.data;
 
     if (!tripayData.success) {
       return NextResponse.json({ error: 'Gagal membuat transaksi Tripay: ' + (tripayData.message || 'Error API') }, { status: 400 });
@@ -125,7 +119,6 @@ export async function POST(req) {
 
     const checkoutUrl = tripayData.data.checkout_url;
 
-    // 8. Simpan Pesanan ke Tabel 'orders' Supabase
     const { data: orderData, error: dbErr } = await supabase
       .from('orders')
       .insert([
@@ -152,7 +145,6 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Gagal menyimpan transaksi ke database: ' + dbErr.message }, { status: 500 });
     }
 
-    // 9. Return Response Sukses
     return NextResponse.json({
       success: true,
       checkoutUrl: checkoutUrl,
@@ -161,6 +153,9 @@ export async function POST(req) {
     });
 
   } catch (err) {
-    return NextResponse.json({ error: 'Server Error: ' + err.message }, { status: 500 });
+    console.error('Checkout API Error:', err);
+    // Menangkap pesan error spesifik dari Axios jika Tripay menolak
+    const errorMessage = err.response?.data?.message || err.message;
+    return NextResponse.json({ error: 'Server Error: ' + errorMessage }, { status: 500 });
   }
 }
