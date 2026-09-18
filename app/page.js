@@ -28,7 +28,7 @@ export default function LandingPage() {
 
   // Harga Terbaru
   const ORIGINAL_PRICE = SITE_CONFIG.pricing?.originalPrice || 100000;
-  const DISCOUNT_PRICE = SITE_CONFIG.pricing?.discountPrice || 85000;
+  const DISCOUNT_PRICE = SITE_CONFIG.pricing?.discountPrice || 80000;
   const PROMO_TAG = SITE_CONFIG.pricing?.promoTag || '🔥 PROMO SPESIAL 20% OFF';
 
   // Handler Aktivasi Kartu
