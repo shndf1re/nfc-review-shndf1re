@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -22,10 +23,10 @@ export async function POST(req) {
       shippingCost,
       isExpiredPromo,
       discountAmount,
-      paymentMethod // Kode channel: 'QRIS2', 'BCAVA', 'BRIVA', dll.
+      paymentMethod
     } = await req.json();
 
-    // 1. Tentukan Harga per Pcs berdasarkan Promo Timer
+    // 1. Hitung Harga per Item berdasarkan Promo Timer
     const BASE_PROMO_PRICE = 65000;
     const ORIGINAL_PRICE = 100000;
     const itemUnitPrice = isExpiredPromo ? ORIGINAL_PRICE : BASE_PROMO_PRICE;
@@ -66,7 +67,6 @@ export async function POST(req) {
       }
     ];
 
-    // Jika ada diskon kupon, tambahkan sebagai item minus/potongan
     if (discountVal > 0) {
       orderItems.push({
         sku: 'DISCOUNT-PROMO',
@@ -76,7 +76,6 @@ export async function POST(req) {
       });
     }
 
-    // Jika ada biaya ongkir
     if (shipCostVal > 0) {
       orderItems.push({
         sku: 'SHIPPING-FEE',
@@ -92,24 +91,30 @@ export async function POST(req) {
       merchant_ref: orderId,
       amount: grossAmount,
       customer_name: customerName || 'Pelanggan NFC',
-      customer_email: 'pembeli@reviewmaps.link', // Tripay mewajibkan parameter email
+      customer_email: 'pembeli@reviewmaps.link', 
       customer_phone: customerPhone || '08000000000',
       order_items: orderItems,
-      return_url: 'https://reviewmaps.link', // Mengarahkan kembali pelanggan setelah bayar
-      expired_time: Math.floor(Date.now() / 1000) + (24 * 60 * 60), // Kadaluarsa transaksi dalam 24 jam
+      return_url: 'https://reviewmaps.link', 
+      expired_time: Math.floor(Date.now() / 1000) + (24 * 60 * 60), 
       signature: signature
     };
 
-    // 7. Hit API Tripay Production
-    const tripayRes = await fetch('https://tripay.co.id/api/transaction/create', {
+    // 7. Konfigurasi Fetch menggunakan Fixie Proxy jika FIXIE_URL tersedia
+    const fetchOptions = {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(tripayPayload)
-    });
+    };
 
+    if (process.env.FIXIE_URL) {
+      fetchOptions.agent = new HttpsProxyAgent(process.env.FIXIE_URL);
+    }
+
+    // Hit API Tripay Production lewat IP Statis Fixie
+    const tripayRes = await fetch('https://tripay.co.id/api/transaction/create', fetchOptions);
     const tripayData = await tripayRes.json();
 
     if (!tripayData.success) {
