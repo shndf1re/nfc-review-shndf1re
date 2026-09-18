@@ -22,22 +22,23 @@ export async function POST(req) {
       .update(rawBody)
       .digest('hex');
 
-    // 3. Validasi: Jika tidak cocok, tolak request
+    // 3. Validasi Signature
     if (signature !== tripaySignature) {
+      console.error('Callback Signature Mismatch!');
       return NextResponse.json({ success: false, message: 'Invalid Signature' }, { status: 403 });
     }
 
-    // 4. Cek jenis Event dari Tripay (pastikan event payment_status)
+    // 4. Filter Event Pembayaran dari Tripay
     const callbackEvent = req.headers.get('x-callback-event');
     if (callbackEvent !== 'payment_status') {
-      return NextResponse.json({ success: true, message: 'Event ignored' });
+      return NextResponse.json({ success: true, message: 'Event Ignored' });
     }
 
     const { merchant_ref, status } = body;
 
-    // 5. Proses jika status pembayaran Lunas (PAID)
+    // 5. Jika Status Pembayaran LUNAS (PAID)
     if (status === 'PAID') {
-      // Ambil data order dari Supabase terlebih dahulu
+      // A. Ambil Data Order dari tabel 'orders'
       const { data: order, error: fetchErr } = await supabase
         .from('orders')
         .select('*')
@@ -45,52 +46,60 @@ export async function POST(req) {
         .single();
 
       if (fetchErr || !order) {
-        console.error('Order tidak ditemukan:', merchant_ref);
+        console.error('Order tidak ditemukan di Supabase:', merchant_ref);
         return NextResponse.json({ success: false, message: 'Order Not Found' }, { status: 404 });
       }
 
-      // Hindari pemotongan stok berulang jika sudah pernah ditandai paid/Lunas
+      // Cegah pemotongan ganda jika status pesanan sudah 'paid' atau 'Lunas'
       if (order.payment_status === 'paid' || order.payment_status === 'PAID' || order.payment_status === 'Lunas') {
         return NextResponse.json({ success: true, message: 'Order sudah lunas sebelumnya' });
       }
 
-      // A. Update status order menjadi 'paid'
+      // B. Update Status Pesanan Menjadi 'paid'
       const { error: updateErr } = await supabase
         .from('orders')
         .update({ payment_status: 'paid' })
         .eq('order_id', merchant_ref);
 
       if (updateErr) {
-        console.error('Supabase Update Error:', updateErr);
-        return NextResponse.json({ success: false, message: 'Database Update Error' }, { status: 500 });
+        console.error('Gagal update status pesanan:', updateErr);
       }
 
-      // B. Potong stok barang otomatis pada tabel products
+      // C. Potong Stok Akrilik Otomatis di Tabel 'inventory' (Kolom 'stock_quantity')
       const purchasedQty = parseInt(order.quantity, 10) || 1;
 
-      const { data: product, error: prodErr } = await supabase
-        .from('products')
-        .select('id, stock')
-        .eq('sku', 'NFC-ACRYLIC')
+      // Ambil data barang Papan Akrilik (id = 1) dari tabel inventory
+      const { data: inventoryItem, error: invErr } = await supabase
+        .from('inventory')
+        .select('id, stock_quantity')
+        .eq('id', 1)
         .single();
 
-      if (!prodErr && product) {
-        const newStock = Math.max(0, (product.stock || 0) - purchasedQty);
-        
-        await supabase
-          .from('products')
-          .update({ stock: newStock })
-          .eq('id', product.id);
+      if (!invErr && inventoryItem) {
+        const currentStock = parseInt(inventoryItem.stock_quantity, 10) || 0;
+        const newStock = Math.max(0, currentStock - purchasedQty);
 
-        console.log(`Stok berhasil dipotong! Stok baru: ${newStock}`);
+        const { error: stockUpdateErr } = await supabase
+          .from('inventory')
+          .update({ 
+            stock_quantity: newStock,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', 1);
+
+        if (stockUpdateErr) {
+          console.error('Gagal update stock_quantity di tabel inventory:', stockUpdateErr);
+        } else {
+          console.log(`STOK SUCCESS! Stok Papan Akrilik terpotong ${purchasedQty} pcs. Dari ${currentStock} menjadi ${newStock}`);
+        }
       } else {
-        console.warn('Produk SKU NFC-ACRYLIC tidak ditemukan di tabel products, pemotongan stok dilewati.');
+        console.error('Gagal mengambil data dari tabel inventory:', invErr);
       }
 
-      return NextResponse.json({ success: true, message: 'Pembayaran berhasil & stok diperbarui' });
+      return NextResponse.json({ success: true, message: 'Pembayaran Lunas & Stok Inventory Berhasil Dipotong' });
     }
 
-    // 6. Jika status pembayaran EXPIRED atau FAILED
+    // 6. Jika Status EXPIRED / FAILED
     if (status === 'EXPIRED' || status === 'FAILED') {
       await supabase
         .from('orders')
@@ -101,7 +110,7 @@ export async function POST(req) {
     return NextResponse.json({ success: true });
 
   } catch (error) {
-    console.error('Callback Error:', error);
+    console.error('Callback Server Error:', error);
     return NextResponse.json({ success: false, message: 'Server Error: ' + error.message }, { status: 500 });
   }
 }
