@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Memaksa Vercel agar tidak mem-cache halaman pengalihan ini
 export const dynamic = 'force-dynamic';
 
 const supabase = createClient(
@@ -9,7 +8,6 @@ const supabase = createClient(
 );
 
 export default async function RedirectPage({ params, searchParams }) {
-  // 1. Unwrapping params & searchParams secara aman
   const resolvedParams = await params;
   const rawId = resolvedParams?.id || '';
   const cleanId = rawId.split('?')[0].trim();
@@ -30,7 +28,7 @@ export default async function RedirectPage({ params, searchParams }) {
     );
   }
 
-  // 2. Ambil data perangkat dari Supabase
+  // 1. Ambil data perangkat dari Supabase
   const { data: device, error: fetchErr } = await supabase
     .from('devices')
     .select('id, target_url, is_active, nfc_scans, qr_scans')
@@ -45,22 +43,20 @@ export default async function RedirectPage({ params, searchParams }) {
     statusMessage = 'Kartu belum diaktifkan. Mengalihkan ke halaman setup...';
     destinationUrl = `/setup/${cleanId}`;
   } else {
-    // Format URL Tujuan
     destinationUrl = device.target_url.trim();
     if (!destinationUrl.startsWith('http://') && !destinationUrl.startsWith('https://')) {
       destinationUrl = `https://${destinationUrl}`;
     }
 
-    // 3. CATAT STATISTIK LANGSUNG DI SERVER (100% GARANSI MASUK)
+    // 2. Insert ke device_stats (Biarkan created_at & id diisi otomatis oleh Supabase)
     await supabase.from('device_stats').insert([
       {
         device_id: cleanId,
-        type: type,
-        created_at: new Date().toISOString()
+        type: type
       }
     ]);
 
-    // 4. UPDATE COUNTER SCANS DI TABEL DEVICES
+    // 3. Update counter scans pada tabel devices
     if (type === 'nfc') {
       const currentNfc = Number(device.nfc_scans) || 0;
       await supabase.from('devices').update({ nfc_scans: currentNfc + 1 }).eq('id', cleanId);
@@ -82,7 +78,6 @@ export default async function RedirectPage({ params, searchParams }) {
       padding: '20px',
       textAlign: 'center'
     }}>
-      {/* Fallback Redirect */}
       <meta httpEquiv="refresh" content={`1;url=${destinationUrl}`} />
 
       <div style={{
@@ -151,7 +146,6 @@ export default async function RedirectPage({ params, searchParams }) {
         }} />
       </div>
 
-      {/* Script Pengalihan Langsung yang Mulus */}
       <script
         dangerouslySetInnerHTML={{
           __html: `
