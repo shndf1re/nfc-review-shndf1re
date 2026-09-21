@@ -8,9 +8,12 @@ const supabase = createClient(
 
 export async function GET(req, { params }) {
   try {
-    const { deviceId } = params;
+    // FIX: Gunakan await params untuk Next.js App Router terbaru
+    const resolvedParams = await params;
+    const deviceId = resolvedParams?.deviceId;
+    
     const { searchParams } = new URL(req.url);
-    const type = searchParams.get('type') || 'nfc'; // Default 'nfc' atau 'qr'
+    const type = searchParams.get('type') || 'nfc';
 
     if (!deviceId) {
       return NextResponse.redirect(new URL('/', req.url));
@@ -27,12 +30,12 @@ export async function GET(req, { params }) {
     await supabase.from('device_stats').insert([
       {
         device_id: deviceId,
-        type: type, // 'nfc' atau 'qr'
+        type: type,
         created_at: new Date().toISOString()
       }
     ]);
 
-    // 3. Redirect ke Google Maps Toko (atau ke halaman utama jika target_url belum diset)
+    // 3. Redirect ke Google Maps Toko
     if (deviceData && deviceData.target_url) {
       return NextResponse.redirect(deviceData.target_url);
     } else {
