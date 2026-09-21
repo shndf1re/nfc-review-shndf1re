@@ -83,10 +83,8 @@ export default function SalesPage() {
       if (now - parseInt(lastActivity, 10) < TIMEOUT_DURATION) {
         setIsAuthenticated(true);
         setUserRole(savedRole);
-        // Perbarui waktu aktivitas terakhir
         localStorage.setItem('nfc_admin_last_activity', now.toString());
       } else {
-        // Sesi kedaluwarsa
         localStorage.removeItem('nfc_admin_session');
         localStorage.removeItem('nfc_admin_last_activity');
         localStorage.removeItem('nfc_admin_role');
@@ -94,7 +92,6 @@ export default function SalesPage() {
         return;
       }
     } else {
-      // Belum login sama sekali
       window.location.href = '/admin';
       return;
     }
@@ -288,6 +285,7 @@ export default function SalesPage() {
     }
   };
 
+  // === FIX PENTING: INPUT PENJUALAN MANUAL + POTONG STOK AKURAT ===
   const handleAddSale = async (e) => {
     e.preventDefault();
     setSubmitStatus('');
@@ -325,18 +323,26 @@ export default function SalesPage() {
       return;
     }
 
+    // HITUNG STOK BARU
     const newStock = Math.max(0, acrylicStock - qtyNumber);
-    const targetId = stockItemRecord?.id || 1;
 
+    // Dapatkan ID tabel inventory secara pasti
+    const targetInventoryId = stockItemRecord?.id || 1;
+
+    // UPDATE STOK DI TABEL INVENTORY
     const { error: stockUpdateErr } = await supabase
       .from('inventory')
-      .update({ stock_quantity: newStock })
-      .eq('id', targetId);
+      .update({ 
+        stock_quantity: newStock,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', targetInventoryId);
 
     if (stockUpdateErr) {
       setSubmitStatus('⚠️ Transaksi tercatat, tetapi gagal memotong stok: ' + stockUpdateErr.message);
     } else {
-      setSubmitStatus('✅ Penjualan berhasil dicatat!');
+      setSubmitStatus('✅ Penjualan berhasil dicatat & stok terpotong!');
+      setAcrylicStock(newStock);
     }
 
     setCustomerName('');
@@ -431,7 +437,10 @@ export default function SalesPage() {
     if (modalState.actionType === 'updateStock') {
       const { data: updatedRows, error: updateErr } = await supabase
         .from('inventory')
-        .update({ stock_quantity: newStockVal })
+        .update({ 
+          stock_quantity: newStockVal,
+          updated_at: new Date().toISOString()
+        })
         .eq('id', targetId)
         .select();
 
@@ -458,7 +467,7 @@ export default function SalesPage() {
       }
 
       const restoredStock = acrylicStock + (parseInt(sale.quantity, 10) || 1);
-      await supabase.from('inventory').update({ stock_quantity: restoredStock }).eq('id', targetId);
+      await supabase.from('inventory').update({ stock_quantity: restoredStock, updated_at: new Date().toISOString() }).eq('id', targetId);
 
     } else if (modalState.actionType === 'updateStatus') {
       const sale = modalState.targetData;
@@ -503,7 +512,6 @@ export default function SalesPage() {
       return acc + subtotalBarang;
     }, 0);
 
-  // Mencegah flash tampilan sebelum verifikasi selesai
   if (authChecking || !isAuthenticated) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'sans-serif' }}>
@@ -533,7 +541,6 @@ export default function SalesPage() {
             {acrylicStock} <span style={{ fontSize: '14px', fontWeight: '500', color: '#64748b' }}>pcs</span>
           </strong>
         </div>
-        {/* HANYA SUPER ADMIN YANG BISA UPDATE STOK MANUAL */}
         {userRole === 'super_admin' && (
           <button onClick={openUpdateStockModal} style={{ padding: '10px 16px', fontSize: '12px', backgroundColor: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '10px', cursor: 'pointer', fontWeight: '600' }}>
             🔒 Update Stok
@@ -541,7 +548,7 @@ export default function SalesPage() {
         )}
       </div>
 
-      {/* MANAJEMEN KODE PROMO - HANYA DITAMPILKAN UNTUK SUPER ADMIN */}
+      {/* MANAJEMEN KODE PROMO - HANYA SUPER ADMIN */}
       {userRole === 'super_admin' && (
         <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
           <h3 style={{ margin: '0 0 16px 0', fontSize: '15px', fontWeight: '700' }}>🎟️ Kelola Kode Promo / Diskon (Flat Rp)</h3>
@@ -584,7 +591,7 @@ export default function SalesPage() {
         </div>
       )}
 
-      {/* FORM INPUT MANUAL - BISA DIAKSES SEMUA ADMIN */}
+      {/* FORM INPUT MANUAL */}
       <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
         <h3 style={{ margin: '0 0 16px 0', fontSize: '15px', fontWeight: '700' }}>➕ Input Penjualan Manual (Offline)</h3>
         <form onSubmit={handleAddSale} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -752,7 +759,6 @@ export default function SalesPage() {
                         </div>
                       )}
                       
-                      {/* HANYA SUPER ADMIN YANG BISA MENGHAPUS TRANSAKSI */}
                       {userRole === 'super_admin' && (
                         <button onClick={() => openDeleteSaleModal(sale)} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '11px', fontWeight: '600', cursor: 'pointer', padding: 0 }}>
                           🗑️
