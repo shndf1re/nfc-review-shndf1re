@@ -52,20 +52,25 @@ export default function RedirectPage({ params }) {
           destinationUrl = `https://${destinationUrl}`;
         }
 
-        // 4. Catat Log Statistik Scan/Tap ke tabel 'device_stats' (Sesuai dengan Stats Page)
+        // 4. Catat Log Statistik Scan/Tap ke tabel 'device_stats'
         try {
           const urlParams = new URLSearchParams(window.location.search);
-          const srcType = urlParams.get('src') === 'qr' ? 'qr' : 'nfc';
+          // Mengakomodasi param ?type=qr ATAU ?src=qr
+          const srcType = (urlParams.get('type') === 'qr' || urlParams.get('src') === 'qr') ? 'qr' : 'nfc';
 
-          await supabase.from('device_stats').insert([
+          const { error: statErr } = await supabase.from('device_stats').insert([
             {
               device_id: id,
-              type: srcType
+              type: srcType,
+              created_at: new Date().toISOString()
             }
           ]);
+          
+          if (statErr) {
+            console.error('Supabase Stat Insert Error:', statErr);
+          }
         } catch (logErr) {
           console.error('Gagal mencatat statistik:', logErr);
-          // Abaikan error log agar redirect utama tetap berjalan mulus
         }
 
         // 5. Eksekusi Pengalihan Langsung (Direct Redirect)
