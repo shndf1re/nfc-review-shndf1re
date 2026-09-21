@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
 
-// 1. WAJIB: Cegah Vercel melakukan cache agar setiap kali ditap, selalu terhitung interaksi baru
 export const dynamic = 'force-dynamic';
 
 const supabase = createClient(
@@ -9,12 +8,10 @@ const supabase = createClient(
 );
 
 export default async function RedirectPage({ params, searchParams }) {
-  // 2. Unwrapping Params (Sesuai standar Next.js App Router terbaru)
   const resolvedParams = await params;
   const id = resolvedParams?.id;
 
   const resolvedSearch = await searchParams;
-  // Deteksi Tap NFC atau Scan QR langsung dari URL
   const type = (resolvedSearch?.type === 'qr' || resolvedSearch?.src === 'qr') ? 'qr' : 'nfc';
 
   let destinationUrl = '';
@@ -30,7 +27,7 @@ export default async function RedirectPage({ params, searchParams }) {
     );
   }
 
-  // 3. Ambil data dari Supabase (DI EKSEKUSI OLEH SERVER VERCEL)
+  // 1. Ambil data perangkat
   const { data: device, error } = await supabase
     .from('devices')
     .select('*')
@@ -50,22 +47,25 @@ export default async function RedirectPage({ params, searchParams }) {
       destinationUrl = `https://${destinationUrl}`;
     }
 
-    // 4. MENCATAT STATISTIK LANGSUNG DARI SERVER (100% ANTI GAGAL)
-    // Karena ini dieksekusi oleh Server Vercel, browser HP pelanggan TIDAK BISA membatalkannya!
-    const { error: statErr } = await supabase.from('device_stats').insert([
+    // 2. CATAT KE TABEL device_stats
+    await supabase.from('device_stats').insert([
       {
         device_id: id,
         type: type,
         created_at: new Date().toISOString()
       }
     ]);
-    
-    if (statErr) {
-      console.error('Server Insert Error:', statErr.message);
+
+    // 3. UPDATE JUGA KOLOM SCAN DI TABEL devices
+    if (type === 'nfc') {
+      const currentNfc = Number(device.nfc_scans) || 0;
+      await supabase.from('devices').update({ nfc_scans: currentNfc + 1 }).eq('id', id);
+    } else {
+      const currentQr = Number(device.qr_scans) || 0;
+      await supabase.from('devices').update({ qr_scans: currentQr + 1 }).eq('id', id);
     }
   }
 
-  // 5. Render Antarmuka Visual (Sama persis seperti UI asli Anda)
   return (
     <div style={{
       minHeight: '100vh',
@@ -78,7 +78,6 @@ export default async function RedirectPage({ params, searchParams }) {
       padding: '20px',
       textAlign: 'center'
     }}>
-      {/* Fallback Redirect jika JavaScript di HP pembeli mati lambat */}
       <meta httpEquiv="refresh" content={`1;url=${destinationUrl}`} />
 
       <div style={{
@@ -90,7 +89,6 @@ export default async function RedirectPage({ params, searchParams }) {
         maxWidth: '360px',
         width: '100%'
       }}>
-        {/* ANIMASI SPINNER LOGO GOOGLE */}
         <div style={{
           width: '56px',
           height: '56px',
@@ -111,33 +109,18 @@ export default async function RedirectPage({ params, searchParams }) {
           <img
             src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg"
             alt="Google Logo"
-            style={{
-              position: 'absolute',
-              width: '24px',
-              height: '24px'
-            }}
+            style={{ position: 'absolute', width: '24px', height: '24px' }}
           />
         </div>
 
-        <h3 style={{
-          margin: '0 0 8px 0',
-          fontSize: '16px',
-          fontWeight: '700',
-          color: isError ? '#dc2626' : '#0f172a'
-        }}>
+        <h3 style={{ margin: '0 0 8px 0', fontSize: '16px', fontWeight: '700', color: isError ? '#dc2626' : '#0f172a' }}>
           {isError ? 'Gagal Mengalihkan' : 'Menghubungkan Papan Review'}
         </h3>
 
-        <p style={{
-          margin: 0,
-          fontSize: '13px',
-          color: '#64748b',
-          lineHeight: '1.5'
-        }}>
+        <p style={{ margin: 0, fontSize: '13px', color: '#64748b', lineHeight: '1.5' }}>
           {statusMessage}
         </p>
 
-        {/* Karena ini bukan 'use client', kita gunakan tag style standar */}
         <style dangerouslySetInnerHTML={{ __html: `
           @keyframes spin {
             0% { transform: rotate(0deg); }
@@ -146,7 +129,6 @@ export default async function RedirectPage({ params, searchParams }) {
         `}} />
       </div>
 
-      {/* Script Pengalihan Langsung yang Mulus */}
       <script
         dangerouslySetInnerHTML={{
           __html: `
