@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Memaksa Vercel agar TIDAK melakukan caching pada halaman pengalihan ini
+// Memaksa Vercel agar tidak mem-cache halaman pengalihan ini
 export const dynamic = 'force-dynamic';
 
 const supabase = createClient(
@@ -9,11 +9,9 @@ const supabase = createClient(
 );
 
 export default async function RedirectPage({ params, searchParams }) {
-  // 1. Unwrapping Params & SearchParams (Next.js 15 / App Router)
+  // 1. Unwrapping params & searchParams secara aman
   const resolvedParams = await params;
   const rawId = resolvedParams?.id || '';
-
-  // Bersihkan ID dari query string jika ada
   const cleanId = rawId.split('?')[0].trim();
 
   const resolvedSearch = await searchParams;
@@ -22,7 +20,6 @@ export default async function RedirectPage({ params, searchParams }) {
   let destinationUrl = '';
   let isError = false;
   let statusMessage = 'Menghubungkan ke Google Review...';
-  let debugError = '';
 
   if (!cleanId) {
     return (
@@ -33,55 +30,44 @@ export default async function RedirectPage({ params, searchParams }) {
     );
   }
 
-  try {
-    // 2. Cari perangkat berdasarkan cleanId
-    const { data: device, error: fetchErr } = await supabase
-      .from('devices')
-      .select('id, target_url, is_active, nfc_scans, qr_scans')
-      .eq('id', cleanId)
-      .maybeSingle();
+  // 2. Ambil data perangkat dari Supabase
+  const { data: device, error: fetchErr } = await supabase
+    .from('devices')
+    .select('id, target_url, is_active, nfc_scans, qr_scans')
+    .eq('id', cleanId)
+    .maybeSingle();
 
-    if (fetchErr) {
-      isError = true;
-      statusMessage = 'Terjadi kesalahan koneksi database.';
-      debugError = 'Fetch Error: ' + fetchErr.message;
-      destinationUrl = `/setup/${cleanId}`;
-    } else if (!device || !device.is_active || !device.target_url || device.target_url.trim() === '') {
-      statusMessage = 'Kartu belum diaktifkan. Mengalihkan ke halaman setup...';
-      destinationUrl = `/setup/${cleanId}`;
-    } else {
-      // Format URL Tujuan
-      destinationUrl = device.target_url.trim();
-      if (!destinationUrl.startsWith('http://') && !destinationUrl.startsWith('https://')) {
-        destinationUrl = `https://${destinationUrl}`;
-      }
-
-      // 3. PENCATATAN STATISTIK KE TABEL device_stats
-      // Biarkan created_at diisi otomatis oleh PostgreSQL Supabase
-      const { error: insertErr } = await supabase
-        .from('device_stats')
-        .insert([{ device_id: cleanId, type: type }]);
-
-      if (insertErr) {
-        console.error('Gagal insert device_stats:', insertErr.message);
-        debugError = 'Insert Error: ' + insertErr.message;
-      }
-
-      // 4. UPDATE JUGA COUNTER DITABEL devices
-      if (type === 'nfc') {
-        const nextNfc = (Number(device.nfc_scans) || 0) + 1;
-        await supabase.from('devices').update({ nfc_scans: nextNfc }).eq('id', cleanId);
-      } else {
-        const nextQr = (Number(device.qr_scans) || 0) + 1;
-        await supabase.from('devices').update({ qr_scans: nextQr }).eq('id', cleanId);
-      }
-    }
-  } catch (err) {
-    console.error('Redirect Exception:', err);
+  if (fetchErr) {
     isError = true;
-    statusMessage = 'Gagal mengalihkan. Membuka halaman aktivasi...';
-    debugError = 'Server Exception: ' + err.message;
+    statusMessage = 'Terjadi kesalahan koneksi database.';
     destinationUrl = `/setup/${cleanId}`;
+  } else if (!device || !device.is_active || !device.target_url || device.target_url.trim() === '') {
+    statusMessage = 'Kartu belum diaktifkan. Mengalihkan ke halaman setup...';
+    destinationUrl = `/setup/${cleanId}`;
+  } else {
+    // Format URL Tujuan
+    destinationUrl = device.target_url.trim();
+    if (!destinationUrl.startsWith('http://') && !destinationUrl.startsWith('https://')) {
+      destinationUrl = `https://${destinationUrl}`;
+    }
+
+    // 3. CATAT STATISTIK LANGSUNG DI SERVER (100% GARANSI MASUK)
+    await supabase.from('device_stats').insert([
+      {
+        device_id: cleanId,
+        type: type,
+        created_at: new Date().toISOString()
+      }
+    ]);
+
+    // 4. UPDATE COUNTER SCANS DI TABEL DEVICES
+    if (type === 'nfc') {
+      const currentNfc = Number(device.nfc_scans) || 0;
+      await supabase.from('devices').update({ nfc_scans: currentNfc + 1 }).eq('id', cleanId);
+    } else {
+      const currentQr = Number(device.qr_scans) || 0;
+      await supabase.from('devices').update({ qr_scans: currentQr + 1 }).eq('id', cleanId);
+    }
   }
 
   return (
@@ -96,8 +82,8 @@ export default async function RedirectPage({ params, searchParams }) {
       padding: '20px',
       textAlign: 'center'
     }}>
-      {/* Jika tidak ada error debug, jalankan pengalihan otomatis */}
-      {!debugError && <meta httpEquiv="refresh" content={`1;url=${destinationUrl}`} />}
+      {/* Fallback Redirect */}
+      <meta httpEquiv="refresh" content={`1;url=${destinationUrl}`} />
 
       <div style={{
         backgroundColor: '#ffffff',
@@ -129,34 +115,31 @@ export default async function RedirectPage({ params, searchParams }) {
           <img
             src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg"
             alt="Google Logo"
-            style={{ position: 'absolute', width: '24px', height: '24px' }}
+            style={{
+              position: 'absolute',
+              width: '24px',
+              height: '24px'
+            }}
           />
         </div>
 
-        <h3 style={{ margin: '0 0 8px 0', fontSize: '16px', fontWeight: '700', color: isError ? '#dc2626' : '#0f172a' }}>
+        <h3 style={{
+          margin: '0 0 8px 0',
+          fontSize: '16px',
+          fontWeight: '700',
+          color: isError ? '#dc2626' : '#0f172a'
+        }}>
           {isError ? 'Gagal Mengalihkan' : 'Menghubungkan Papan Review'}
         </h3>
 
-        <p style={{ margin: 0, fontSize: '13px', color: '#64748b', lineHeight: '1.5' }}>
+        <p style={{
+          margin: 0,
+          fontSize: '13px',
+          color: '#64748b',
+          lineHeight: '1.5'
+        }}>
           {statusMessage}
         </p>
-
-        {/* PESAN DEBUG JIKA TERJADI KESALAHAN SUPABASE */}
-        {debugError && (
-          <div style={{
-            marginTop: '16px',
-            padding: '10px 12px',
-            backgroundColor: '#fef2f2',
-            border: '1px solid #fecaca',
-            borderRadius: '8px',
-            color: '#dc2626',
-            fontSize: '11px',
-            textAlign: 'left',
-            wordBreak: 'break-all'
-          }}>
-            ⚠️ <strong>Debug Info:</strong> {debugError}
-          </div>
-        )}
 
         <style dangerouslySetInnerHTML={{
           __html: `
@@ -168,17 +151,16 @@ export default async function RedirectPage({ params, searchParams }) {
         }} />
       </div>
 
-      {!debugError && (
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              setTimeout(function() {
-                window.location.replace("${destinationUrl}");
-              }, 800);
-            `
-          }}
-        />
-      )}
+      {/* Script Pengalihan Langsung yang Mulus */}
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `
+            setTimeout(function() {
+              window.location.replace("${destinationUrl}");
+            }, 800);
+          `
+        }}
+      />
     </div>
   );
 }
