@@ -12,94 +12,76 @@ export async function POST(req) {
     const rawBody = await req.text();
     const body = JSON.parse(rawBody);
 
-    // 1. Ambil Signature dari header yang dikirim Tripay
     const tripaySignature = req.headers.get('x-callback-signature');
     const privateKey = process.env.TRIPAY_PRIVATE_KEY || '';
 
-    // 2. Buat Signature pembanding untuk validasi keamanan
     const signature = crypto
       .createHmac('sha256', privateKey)
       .update(rawBody)
       .digest('hex');
 
-    // 3. Validasi Signature
     if (signature !== tripaySignature) {
       console.error('Callback Signature Mismatch!');
       return NextResponse.json({ success: false, message: 'Invalid Signature' }, { status: 403 });
     }
 
-    // 4. Filter Event Pembayaran dari Tripay
     const callbackEvent = req.headers.get('x-callback-event');
-    if (callbackEvent !== 'payment_status') {
+    if (callbackEvent && callbackEvent !== 'payment_status') {
       return NextResponse.json({ success: true, message: 'Event Ignored' });
     }
 
     const { merchant_ref, status } = body;
 
-    // 5. Jika Status Pembayaran LUNAS (PAID)
     if (status === 'PAID') {
-      // A. Ambil Data Order dari tabel 'orders'
+      // 1. Cari Order di database
       const { data: order, error: fetchErr } = await supabase
         .from('orders')
         .select('*')
         .eq('order_id', merchant_ref)
-        .single();
+        .maybeSingle();
 
       if (fetchErr || !order) {
         console.error('Order tidak ditemukan di Supabase:', merchant_ref);
         return NextResponse.json({ success: false, message: 'Order Not Found' }, { status: 404 });
       }
 
-      // Cegah pemotongan ganda jika status pesanan sudah 'paid' atau 'Lunas'
-      if (order.payment_status === 'paid' || order.payment_status === 'PAID' || order.payment_status === 'Lunas') {
+      if (['paid', 'PAID', 'Lunas'].includes(order.payment_status)) {
         return NextResponse.json({ success: true, message: 'Order sudah lunas sebelumnya' });
       }
 
-      // B. Update Status Pesanan Menjadi 'paid'
-      const { error: updateErr } = await supabase
+      // 2. Update status order jadi paid
+      await supabase
         .from('orders')
         .update({ payment_status: 'paid' })
         .eq('order_id', merchant_ref);
 
-      if (updateErr) {
-        console.error('Gagal update status pesanan:', updateErr);
-      }
-
-      // C. Potong Stok Akrilik Otomatis di Tabel 'inventory' (Kolom 'stock_quantity')
+      // 3. Potong stok di tabel inventory
       const purchasedQty = parseInt(order.quantity, 10) || 1;
 
-      // Ambil data barang Papan Akrilik (id = 1) dari tabel inventory
-      const { data: inventoryItem, error: invErr } = await supabase
+      const { data: inventoryItem } = await supabase
         .from('inventory')
         .select('id, stock_quantity')
         .eq('id', 1)
-        .single();
+        .maybeSingle();
 
-      if (!invErr && inventoryItem) {
+      if (inventoryItem) {
         const currentStock = parseInt(inventoryItem.stock_quantity, 10) || 0;
         const newStock = Math.max(0, currentStock - purchasedQty);
 
-        const { error: stockUpdateErr } = await supabase
+        await supabase
           .from('inventory')
           .update({ 
             stock_quantity: newStock,
             updated_at: new Date().toISOString()
           })
-          .eq('id', 1);
+          .eq('id', inventoryItem.id);
 
-        if (stockUpdateErr) {
-          console.error('Gagal update stock_quantity di tabel inventory:', stockUpdateErr);
-        } else {
-          console.log(`STOK SUCCESS! Stok Papan Akrilik terpotong ${purchasedQty} pcs. Dari ${currentStock} menjadi ${newStock}`);
-        }
-      } else {
-        console.error('Gagal mengambil data dari tabel inventory:', invErr);
+        console.log(`STOK ONLINE BERHASIL DIPOTONG! Dari ${currentStock} menjadi ${newStock}`);
       }
 
-      return NextResponse.json({ success: true, message: 'Pembayaran Lunas & Stok Inventory Berhasil Dipotong' });
+      return NextResponse.json({ success: true, message: 'Pembayaran Lunas & Stok Berhasil Dipotong' });
     }
 
-    // 6. Jika Status EXPIRED / FAILED
     if (status === 'EXPIRED' || status === 'FAILED') {
       await supabase
         .from('orders')
