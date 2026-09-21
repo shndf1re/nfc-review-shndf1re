@@ -14,7 +14,7 @@ const supabase = createClient(
 
 export default function StatsPage() {
   const [stats, setStats] = useState([]);
-  const [topDevices, setTopDevices] = useState([]); // State Top 5 Devices
+  const [topDevices, setTopDevices] = useState([]);
   const [totalScans, setTotalScans] = useState(0);
   const [nfcCount, setNfcCount] = useState(0);
   const [qrCount, setQrCount] = useState(0);
@@ -24,7 +24,7 @@ export default function StatsPage() {
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
   const [pinModal, setPinModal] = useState({
     isOpen: false,
-    actionType: null, // 'resetAll' atau 'resetSingle'
+    actionType: null,
     targetDeviceId: null,
     pinInput: '',
     errorMsg: '',
@@ -59,39 +59,44 @@ export default function StatsPage() {
     };
   }, []);
 
+  // FUNGSI FETCH STATS (LANGKAH 2 PERBAIKAN)
   const fetchStats = async () => {
     setLoading(true);
 
-    const { data: statsData, error: statsErr } = await supabase
+    // 1. Fetch seluruh entri log dari device_stats
+    const { data: statsData } = await supabase
       .from('device_stats')
       .select('device_id, type, created_at')
       .order('created_at', { ascending: false });
 
+    // 2. Fetch seluruh data perangkat dari devices
     const { data: devicesData } = await supabase
       .from('devices')
-      .select('id, label_name');
+      .select('id, label_name, nfc_scans, qr_scans');
 
     const deviceMap = {};
     if (devicesData) {
       devicesData.forEach(d => {
-        deviceMap[d.id] = d.label_name || null;
+        deviceMap[d.id] = {
+          labelName: d.label_name || null,
+          nfcScans: Number(d.nfc_scans) || 0,
+          qrScans: Number(d.qr_scans) || 0
+        };
       });
     }
 
-    if (!statsErr && statsData) {
-      setTotalScans(statsData.length);
-
+    if (statsData) {
       let totalNfc = 0;
       let totalQr = 0;
 
       const grouped = statsData.reduce((acc, curr) => {
         const id = curr.device_id || 'Unknown';
-        const labelName = deviceMap[id] || null;
+        const info = deviceMap[id] || { labelName: null };
 
         if (!acc[id]) {
           acc[id] = {
             id,
-            labelName,
+            labelName: info.labelName,
             nfc: 0,
             qr: 0,
             total: 0,
@@ -111,11 +116,11 @@ export default function StatsPage() {
 
       const allStatsList = Object.values(grouped);
 
-      // Urutkan berdasarkan interaksi terbanyak untuk Widget Top 5
       const sortedTop = [...allStatsList]
         .sort((a, b) => b.total - a.total)
         .slice(0, 5);
 
+      setTotalScans(statsData.length);
       setNfcCount(totalNfc);
       setQrCount(totalQr);
       setStats(allStatsList);
@@ -197,7 +202,7 @@ export default function StatsPage() {
         </div>
       </div>
 
-      {/* WIDGET TOP PERFORMING DEVICES (BARU) */}
+      {/* WIDGET TOP PERFORMING DEVICES */}
       <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
         <h3 style={{ margin: '0 0 14px 0', fontSize: '15px', fontWeight: '700', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
           🏆 Top Performing Devices (Toko Teraktif)
