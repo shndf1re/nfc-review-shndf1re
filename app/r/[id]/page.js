@@ -17,12 +17,15 @@ export default function RedirectPage({ params }) {
   const router = useRouter();
   const [statusMessage, setStatusMessage] = useState('Menghubungkan ke Google Review...');
   const [isError, setIsError] = useState(false);
+  const [hasLogged, setHasLogged] = useState(false); // Mencegah double insert statistik
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || hasLogged) return;
 
     const executeRedirect = async () => {
       try {
+        setHasLogged(true); // Tandai bahwa proses sedang/sudah berjalan
+
         // 1. Ambil data kartu dari database Supabase
         const { data: device, error } = await supabase
           .from('devices')
@@ -88,7 +91,7 @@ export default function RedirectPage({ params }) {
     };
 
     executeRedirect();
-  }, [id, router]);
+  }, [id, router, hasLogged]);
 
   return (
     <div style={{
