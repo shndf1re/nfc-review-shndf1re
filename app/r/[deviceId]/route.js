@@ -6,27 +6,26 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 );
 
-export async function GET(req, { params }) {
+export async function GET(req, context) {
   try {
-    // FIX: Gunakan await params untuk Next.js App Router terbaru
-    const resolvedParams = await params;
-    const deviceId = resolvedParams?.deviceId;
-    
-    const { searchParams } = new URL(req.url);
-    const type = searchParams.get('type') || 'nfc';
+    const params = await context.params;
+    const deviceId = params?.deviceId;
 
     if (!deviceId) {
       return NextResponse.redirect(new URL('/', req.url));
     }
 
-    // 1. Cari target URL Google Maps dari tabel 'devices'
+    const { searchParams } = new URL(req.url);
+    const type = searchParams.get('type') || 'nfc';
+
+    // 1. Ambil URL tujuan dari tabel devices
     const { data: deviceData } = await supabase
       .from('devices')
-      .select('target_url, is_active')
+      .select('target_url')
       .eq('id', deviceId)
       .maybeSingle();
 
-    // 2. Catat Interaksi ke tabel 'device_stats' secara otomatis
+    // 2. Tambah statistik ke device_stats
     await supabase.from('device_stats').insert([
       {
         device_id: deviceId,
@@ -35,13 +34,12 @@ export async function GET(req, { params }) {
       }
     ]);
 
-    // 3. Redirect ke Google Maps Toko
-    if (deviceData && deviceData.target_url) {
+    // 3. Redirect ke Google Review
+    if (deviceData?.target_url) {
       return NextResponse.redirect(deviceData.target_url);
-    } else {
-      return NextResponse.redirect(new URL('/', req.url));
     }
 
+    return NextResponse.redirect(new URL('/', req.url));
   } catch (err) {
     console.error('Redirect Error:', err);
     return NextResponse.redirect(new URL('/', req.url));
