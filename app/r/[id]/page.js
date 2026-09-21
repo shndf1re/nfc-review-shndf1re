@@ -72,6 +72,10 @@ export default function RedirectPage({ params }) {
           if (statErr) {
             console.error('Supabase Stat Insert Error:', statErr);
           }
+
+          // BERI JEDA 400ms: Memastikan request jaringan dari HP pembeli tuntas terkirim sebelum redirect
+          await new Promise(resolve => setTimeout(resolve, 400));
+
         } catch (logErr) {
           console.error('Gagal mencatat statistik:', logErr);
         }
