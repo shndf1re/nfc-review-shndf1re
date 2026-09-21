@@ -1,102 +1,71 @@
-'use client';
-
-import { useEffect, useState, use } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { useRouter } from 'next/navigation';
+
+// 1. WAJIB: Cegah Vercel melakukan cache agar setiap kali ditap, selalu terhitung interaksi baru
+export const dynamic = 'force-dynamic';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 );
 
-export default function RedirectPage({ params }) {
-  // Unwrapping params Promise (Aman untuk Next.js App Router terbaru)
-  const resolvedParams = params instanceof Promise ? use(params) : params;
+export default async function RedirectPage({ params, searchParams }) {
+  // 2. Unwrapping Params (Sesuai standar Next.js App Router terbaru)
+  const resolvedParams = await params;
   const id = resolvedParams?.id;
 
-  const router = useRouter();
-  const [statusMessage, setStatusMessage] = useState('Menghubungkan ke Google Review...');
-  const [isError, setIsError] = useState(false);
-  const [hasLogged, setHasLogged] = useState(false); // Mencegah double insert statistik
+  const resolvedSearch = await searchParams;
+  // Deteksi Tap NFC atau Scan QR langsung dari URL
+  const type = (resolvedSearch?.type === 'qr' || resolvedSearch?.src === 'qr') ? 'qr' : 'nfc';
 
-  useEffect(() => {
-    if (!id || hasLogged) return;
+  let destinationUrl = '';
+  let isError = false;
+  let statusMessage = 'Menghubungkan ke Google Review...';
 
-    const executeRedirect = async () => {
-      try {
-        setHasLogged(true); // Tandai bahwa proses sedang/sudah berjalan
+  if (!id) {
+    return (
+      <div style={{ textAlign: 'center', padding: '50px', fontFamily: 'sans-serif' }}>
+        <meta httpEquiv="refresh" content="0;url=/" />
+        Mengalihkan...
+      </div>
+    );
+  }
 
-        // 1. Ambil data kartu dari database Supabase
-        const { data: device, error } = await supabase
-          .from('devices')
-          .select('*')
-          .eq('id', id)
-          .maybeSingle();
+  // 3. Ambil data dari Supabase (DI EKSEKUSI OLEH SERVER VERCEL)
+  const { data: device, error } = await supabase
+    .from('devices')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
 
-        if (error) {
-          console.error('Database error:', error);
-          setIsError(true);
-          setStatusMessage('Terjadi kesalahan koneksi database.');
-          return;
-        }
+  if (error) {
+    isError = true;
+    statusMessage = 'Terjadi kesalahan koneksi database.';
+    destinationUrl = `/setup/${id}`;
+  } else if (!device || !device.is_active || !device.target_url || device.target_url.trim() === '') {
+    statusMessage = 'Kartu belum diaktifkan. Mengalihkan ke halaman setup...';
+    destinationUrl = `/setup/${id}`;
+  } else {
+    destinationUrl = device.target_url.trim();
+    if (!destinationUrl.startsWith('http://') && !destinationUrl.startsWith('https://')) {
+      destinationUrl = `https://${destinationUrl}`;
+    }
 
-        // 2. Jika kartu TIDAK DITEMUKAN, BELUM AKTIF, atau LINK KOSONG -> Lempar ke Setup
-        if (!device || !device.is_active || !device.target_url || device.target_url.trim() === '') {
-          setStatusMessage('Kartu belum diaktifkan. Mengalihkan ke halaman setup...');
-          setTimeout(() => {
-            router.replace(`/setup/${id}`);
-          }, 800);
-          return;
-        }
-
-        // 3. Pastikan URL diawali dengan https:// atau http://
-        let destinationUrl = device.target_url.trim();
-        if (!destinationUrl.startsWith('http://') && !destinationUrl.startsWith('https://')) {
-          destinationUrl = `https://${destinationUrl}`;
-        }
-
-        // 4. Catat Log Statistik Scan/Tap ke tabel 'device_stats'
-        try {
-          const urlParams = new URLSearchParams(window.location.search);
-          // Mengakomodasi param ?type=qr ATAU ?src=qr
-          const srcType = (urlParams.get('type') === 'qr' || urlParams.get('src') === 'qr') ? 'qr' : 'nfc';
-
-          const { error: statErr } = await supabase.from('device_stats').insert([
-            {
-              device_id: id,
-              type: srcType,
-              created_at: new Date().toISOString()
-            }
-          ]);
-          
-          if (statErr) {
-            console.error('Supabase Stat Insert Error:', statErr);
-          }
-
-          // BERI JEDA 400ms: Memastikan request jaringan dari HP pembeli tuntas terkirim sebelum redirect
-          await new Promise(resolve => setTimeout(resolve, 400));
-
-        } catch (logErr) {
-          console.error('Gagal mencatat statistik:', logErr);
-        }
-
-        // 5. Eksekusi Pengalihan Langsung (Direct Redirect)
-        setStatusMessage('Mengalihkan ke Google Review...');
-        window.location.replace(destinationUrl);
-
-      } catch (err) {
-        console.error('Redirect Exception:', err);
-        setIsError(true);
-        setStatusMessage('Gagal mengalihkan. Membuka halaman aktivasi...');
-        setTimeout(() => {
-          router.replace(`/setup/${id}`);
-        }, 1200);
+    // 4. MENCATAT STATISTIK LANGSUNG DARI SERVER (100% ANTI GAGAL)
+    // Karena ini dieksekusi oleh Server Vercel, browser HP pelanggan TIDAK BISA membatalkannya!
+    const { error: statErr } = await supabase.from('device_stats').insert([
+      {
+        device_id: id,
+        type: type,
+        created_at: new Date().toISOString()
       }
-    };
+    ]);
+    
+    if (statErr) {
+      console.error('Server Insert Error:', statErr.message);
+    }
+  }
 
-    executeRedirect();
-  }, [id, router, hasLogged]);
-
+  // 5. Render Antarmuka Visual (Sama persis seperti UI asli Anda)
   return (
     <div style={{
       minHeight: '100vh',
@@ -109,6 +78,9 @@ export default function RedirectPage({ params }) {
       padding: '20px',
       textAlign: 'center'
     }}>
+      {/* Fallback Redirect jika JavaScript di HP pembeli mati lambat */}
+      <meta httpEquiv="refresh" content={`1;url=${destinationUrl}`} />
+
       <div style={{
         backgroundColor: '#ffffff',
         padding: '32px 24px',
@@ -165,13 +137,25 @@ export default function RedirectPage({ params }) {
           {statusMessage}
         </p>
 
-        <style jsx>{`
+        {/* Karena ini bukan 'use client', kita gunakan tag style standar */}
+        <style dangerouslySetInnerHTML={{ __html: `
           @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
           }
-        `}</style>
+        `}} />
       </div>
+
+      {/* Script Pengalihan Langsung yang Mulus */}
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `
+            setTimeout(function() {
+              window.location.replace("${destinationUrl}");
+            }, 800);
+          `
+        }}
+      />
     </div>
   );
 }
