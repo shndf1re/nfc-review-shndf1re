@@ -4,48 +4,63 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET(request) {
-  const { searchParams } = new URL(request.url);
-  const id = searchParams.get('id') || 'NFC-a9N6y37D';
-  const scanType = searchParams.get('src') === 'qr' ? 'qr' : 'nfc';
+export async function GET(request, { params }) {
+  const resolvedParams = await params;
+  const rawId = resolvedParams?.id || '';
+  const cleanId = rawId.split('?')[0].trim();
 
-  // 1. Cek pembacaan ENV di Server Vercel
+  const { searchParams } = new URL(request.url);
+  const rawSrc = String(searchParams.get('src') || searchParams.get('type') || '').toLowerCase();
+  const scanType = rawSrc === 'qr' ? 'qr' : 'nfc';
+
+  if (!cleanId) {
+    return NextResponse.redirect(new URL('/', request.url));
+  }
+
+  // Menghubungkan ke Supabase dengan SERVICE_ROLE_KEY (Bypass RLS secara aman)
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://wseqokwtcvwuhhykuxhy.supabase.co';
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-
-  if (!supabaseKey) {
-    return NextResponse.json({ 
-      success: false, 
-      error: 'CRITICAL: Supabase Key tidak terbaca di Vercel Server!' 
-    });
-  }
-
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  // 2. Cek Eksekusi Insert
-  const { data: insertData, error: insertErr } = await supabase
-    .from('device_stats')
-    .insert([{ device_id: id, type: scanType }])
-    .select();
+  let destinationUrl = `/setup/${cleanId}`;
 
-  if (insertErr) {
-    return NextResponse.json({
-      success: false,
-      step: 'INSERT_DEVICE_STATS_FAILED',
-      errorMessage: insertErr.message,
-      errorDetails: insertErr.details,
-      errorHint: insertErr.hint,
-      usedKeyType: process.env.SUPABASE_SERVICE_ROLE_KEY ? 'SERVICE_ROLE' : 'ANON_KEY'
-    });
+  try {
+    const { data: device, error: fetchErr } = await supabase
+      .from('devices')
+      .select('id, target_url, is_active, nfc_scans, qr_scans')
+      .eq('id', cleanId)
+      .maybeSingle();
+
+    if (!fetchErr && device && device.is_active && device.target_url) {
+      let target = device.target_url.trim();
+      if (!target.startsWith('http://') && !target.startsWith('https://')) {
+        target = `https://${target}`;
+      }
+      destinationUrl = target;
+
+      // 1. Insert Log Statistik ke device_stats
+      await supabase.from('device_stats').insert([{ device_id: cleanId, type: scanType }]);
+
+      // 2. Update Scan Counter pada tabel devices
+      if (scanType === 'nfc') {
+        const nextNfc = (Number(device.nfc_scans) || 0) + 1;
+        await supabase.from('devices').update({ nfc_scans: nextNfc }).eq('id', cleanId);
+      } else {
+        const nextQr = (Number(device.qr_scans) || 0) + 1;
+        await supabase.from('devices').update({ qr_scans: nextQr }).eq('id', cleanId);
+      }
+    }
+  } catch (err) {
+    console.error('Redirect Error:', err);
   }
 
-  // 3. Cek Eksekusi Update Counter
-  const { error: updateErr } = await supabase.rpc('increment_scans', { device_id_input: id, scan_type: scanType });
-
-  return NextResponse.json({
-    success: true,
-    message: 'BERHASIL INSERT DATA!',
-    insertedRecord: insertData,
-    usedKeyType: process.env.SUPABASE_SERVICE_ROLE_KEY ? 'SERVICE_ROLE' : 'ANON_KEY'
+  // Response HTTP 307 dengan header Anti-Cache Ketat
+  return NextResponse.redirect(destinationUrl, {
+    status: 307,
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0, s-maxage=0',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+    },
   });
 }
