@@ -6,30 +6,27 @@ export const revalidate = 0;
 
 export async function GET(request) {
   const requestUrl = new URL(request.url);
-  const fullUrl = request.url.toLowerCase();
 
-  // 1. Ambil ID dari searchParams
+  // 1. Ambil ID & bersihkan dari query string jika tersangkut
   let rawId = (requestUrl.searchParams.get('id') || '').trim();
-  
-  // Bersihkan ID jika ada sisa query string yang terbawa
   let cleanId = rawId.split('?')[0].split('&')[0].trim();
 
-  // 2. Deteksi tipe scan secara menyeluruh dari seluruh URL
-  let scanType = 'nfc';
-  if (
-    fullUrl.includes('src=qr') ||
-    fullUrl.includes('type=qr') ||
-    requestUrl.searchParams.get('src') === 'qr' ||
-    requestUrl.searchParams.get('type') === 'qr'
-  ) {
-    scanType = 'qr';
+  // 2. Cek apakah ada query string yang terbawa di dalam nilai id (misal: id=NFC-xxx?src=qr)
+  let rawSrc = String(requestUrl.searchParams.get('src') || requestUrl.searchParams.get('type') || '').toLowerCase();
+  
+  // Jika src tidak ketemu, cari kata "src=qr" atau "type=qr" di seluruh string URL
+  const fullUrl = request.url.toLowerCase();
+  if (!rawSrc && (fullUrl.includes('src=qr') || fullUrl.includes('type=qr'))) {
+    rawSrc = 'qr';
   }
+
+  const scanType = rawSrc === 'qr' ? 'qr' : 'nfc';
 
   if (!cleanId) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
-  // Koneksi Supabase Service Role Key
+  // Supabase Client dengan Service Role Key
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://wseqokwtcvwuhhykuxhy.supabase.co';
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
   const supabase = createClient(supabaseUrl, supabaseKey);
@@ -50,12 +47,12 @@ export async function GET(request) {
       }
       destinationUrl = target;
 
-      // Catat log ke device_stats (QR / NFC)
+      // Mandatory await insert log statistik (QR / NFC)
       await supabase
         .from('device_stats')
         .insert([{ device_id: cleanId, type: scanType }]);
 
-      // Update counter di tabel devices
+      // Mandatory await update total counter
       const currentCount = scanType === 'nfc' ? Number(device.nfc_scans || 0) : Number(device.qr_scans || 0);
       const updateData = scanType === 'nfc' 
         ? { nfc_scans: currentCount + 1 } 
@@ -70,7 +67,7 @@ export async function GET(request) {
     console.error('API Redirect Error:', err);
   }
 
-  // Response 200 Client Side Redirect
+  // Response 200 Client-Side Redirect
   const htmlContent = `<!DOCTYPE html>
 <html>
   <head>
