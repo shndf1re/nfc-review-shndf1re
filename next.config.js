@@ -4,7 +4,7 @@ const nextConfig = {
   async rewrites() {
     return [
       {
-        // Meneruskan /r/ID beserta query string (?src=nfc dll) ke /api/redirect
+        // Menangkap rute /r/ID beserta query parameters (?src=nfc dll) dan mengarahkan ke /api/redirect
         source: '/r/:id',
         destination: '/api/redirect?id=:id',
       },
