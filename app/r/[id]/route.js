@@ -17,23 +17,15 @@ export async function GET(request, { params }) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
+  // Menggunakan SERVICE_ROLE_KEY untuk bypass RLS dari server Vercel
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://wseqokwtcvwuhhykuxhy.supabase.co';
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   let destinationUrl = `/setup/${cleanId}`;
 
-  // 1. UTAMAKAN MENCATAT STATISTIK KE device_stats TERLEBIH DAHULU
   try {
-    await supabase
-      .from('device_stats')
-      .insert([{ device_id: cleanId, type: scanType }]);
-  } catch (err) {
-    console.error('Insert Stat Exception:', err);
-  }
-
-  // 2. AMBIL URL TUJUAN & UPDATE COUNTER DEVICES secara terpisah
-  try {
+    // 1. Ambil data perangkat
     const { data: device } = await supabase
       .from('devices')
       .select('id, target_url, is_active, nfc_scans, qr_scans')
@@ -47,7 +39,16 @@ export async function GET(request, { params }) {
       }
       destinationUrl = target;
 
-      // Update counter dengan konversi Number pasti
+      // 2. TUNGGU (AWAIT) INSERT STATISTIK HINGGA BENAR-BENAR SELESAI
+      const { error: insertErr } = await supabase
+        .from('device_stats')
+        .insert([{ device_id: cleanId, type: scanType }]);
+
+      if (insertErr) {
+        console.error('Insert Stat Error:', insertErr.message);
+      }
+
+      // 3. TUNGGU (AWAIT) UPDATE COUNTER PADA TABEL DEVICES
       const currentCount = scanType === 'nfc' ? Number(device.nfc_scans || 0) : Number(device.qr_scans || 0);
       const updateData = scanType === 'nfc' 
         ? { nfc_scans: currentCount + 1 } 
@@ -59,10 +60,10 @@ export async function GET(request, { params }) {
         .eq('id', cleanId);
     }
   } catch (err) {
-    console.error('Device Processing Exception:', err);
+    console.error('Execution Exception:', err);
   }
 
-  // 3. RESPONS HTML DENGAN STATUS 200 (MEMAKSA BYPASS CACHE BROWSER & CDN)
+  // 4. KIRIM RESPONSE DENGAN DELAY 300MS AGAR KONEKSI DATABASE DIPASTIKAN TERNAMA SANGAT LENGKAP
   const htmlContent = `<!DOCTYPE html>
 <html>
   <head>
@@ -70,12 +71,16 @@ export async function GET(request, { params }) {
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <meta http-equiv="refresh" content="0;url=${destinationUrl}">
     <title>Redirecting...</title>
   </head>
-  <body>
+  <body style="background:#f8fafc; display:flex; align-items:center; justify-content:center; height:100vh; font-family:sans-serif;">
+    <div style="text-align:center;">
+      <p style="color:#64748b; font-size:14px;">Menghubungkan ke Google Review...</p>
+    </div>
     <script>
-      window.location.replace("${destinationUrl}");
+      setTimeout(function() {
+        window.location.href = "${destinationUrl}";
+      }, 300);
     </script>
   </body>
 </html>`;
