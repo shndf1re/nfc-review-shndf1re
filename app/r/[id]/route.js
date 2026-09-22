@@ -7,12 +7,12 @@ export const revalidate = 0;
 export async function GET(request) {
   const requestUrl = new URL(request.url);
 
-  // 1. Ambil ID murni dari pathname URL (misal: /r/NFC-sjP6d9LC -> NFC-sjP6d9LC)
+  // 1. Ambil ID murni dari URL path
   const pathSegments = requestUrl.pathname.split('/').filter(Boolean);
   const lastSegment = pathSegments[pathSegments.length - 1] || '';
   const cleanId = lastSegment.split('?')[0].split('&')[0].trim();
 
-  // 2. Ambil tipe scan (nfc / qr)
+  // 2. Ambil tipe scan
   const rawSrc = String(requestUrl.searchParams.get('src') || requestUrl.searchParams.get('type') || '').toLowerCase();
   const scanType = rawSrc === 'qr' ? 'qr' : 'nfc';
 
@@ -20,7 +20,7 @@ export async function GET(request) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
-  // Supabase Client dengan Service Role Key
+  // Koneksi Supabase dengan Service Role Key
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://wseqokwtcvwuhhykuxhy.supabase.co';
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
   const supabase = createClient(supabaseUrl, supabaseKey);
@@ -28,7 +28,6 @@ export async function GET(request) {
   let destinationUrl = `/setup/${cleanId}`;
 
   try {
-    // 3. Query Supabase dengan cleanId yang dijamin murni
     const { data: device, error: fetchErr } = await supabase
       .from('devices')
       .select('id, target_url, is_active, nfc_scans, qr_scans')
@@ -42,16 +41,12 @@ export async function GET(request) {
       }
       destinationUrl = target;
 
-      // 4. Catat Log ke device_stats
-      const { error: insertErr } = await supabase
+      // 3. Catat statistik secara sinkron (AWAIT)
+      await supabase
         .from('device_stats')
         .insert([{ device_id: cleanId, type: scanType }]);
 
-      if (insertErr) {
-        console.error('Insert Error:', insertErr.message);
-      }
-
-      // 5. Update Total Counter di devices
+      // 4. Update counter di devices (AWAIT)
       const currentCount = scanType === 'nfc' ? Number(device.nfc_scans || 0) : Number(device.qr_scans || 0);
       const updateData = scanType === 'nfc' 
         ? { nfc_scans: currentCount + 1 } 
@@ -61,14 +56,17 @@ export async function GET(request) {
         .from('devices')
         .update(updateData)
         .eq('id', cleanId);
-    } else {
-      console.error('Device tidak ditemukan atau tidak aktif untuk ID:', cleanId);
     }
   } catch (err) {
-    console.error('Route Execution Exception:', err);
+    console.error('Route Execution Error:', err);
   }
 
-  // 6. Return Response HTML 200 Client Redirect (Bypass Caching HP & Cloudflare)
+  // Tambahkan query parameter unik (Timestamp) pada URL tujuan agar browser HP wajib memuat ulang
+  const finalDestination = destinationUrl.includes('?')
+    ? `${destinationUrl}&_cb=${Date.now()}`
+    : `${destinationUrl}?_cb=${Date.now()}`;
+
+  // 5. Kembalikan HTML dengan Header Anti-Cache Paling Ketat (Status 200)
   const htmlContent = `<!DOCTYPE html>
 <html>
   <head>
@@ -78,9 +76,12 @@ export async function GET(request) {
     <meta http-equiv="Expires" content="0">
     <title>Redirecting...</title>
   </head>
-  <body>
+  <body style="display:flex; justify-content:center; align-items:center; height:100vh; font-family:sans-serif; background:#f9fafb;">
+    <p style="color:#6b7280; font-size:14px;">Menghubungkan ke Google Review...</p>
     <script>
-      window.location.replace("${destinationUrl}");
+      setTimeout(function() {
+        window.location.replace("${finalDestination}");
+      }, 150);
     </script>
   </body>
 </html>`;
@@ -89,9 +90,10 @@ export async function GET(request) {
     status: 200,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
-      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0, s-maxage=0',
       'Pragma': 'no-cache',
       'Expires': '0',
+      'Surrogate-Control': 'no-store',
     },
   });
 }
