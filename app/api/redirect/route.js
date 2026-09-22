@@ -6,22 +6,26 @@ export const revalidate = 0;
 
 export async function GET(request) {
   const requestUrl = new URL(request.url);
+  const fullUrl = request.url.toLowerCase();
 
-  // 1. Ambil ID & bersihkan dari query string jika tersangkut
+  // 1. Ambil ID mentah & bersihkan dari karakter query string jika tersangkut
   let rawId = (requestUrl.searchParams.get('id') || '').trim();
+  
+  // Ekstrak ID murni (mengambil string sebelum karakter ? atau &)
   let cleanId = rawId.split('?')[0].split('&')[0].trim();
 
-  // 2. Cek apakah ada query string yang terbawa di dalam nilai id (misal: id=NFC-xxx?src=qr)
-  let rawSrc = String(requestUrl.searchParams.get('src') || requestUrl.searchParams.get('type') || '').toLowerCase();
-  
-  // Jika src tidak ketemu, cari kata "src=qr" atau "type=qr" di seluruh string URL
-  const fullUrl = request.url.toLowerCase();
-  if (!rawSrc && (fullUrl.includes('src=qr') || fullUrl.includes('type=qr'))) {
-    rawSrc = 'qr';
+  // 2. Deteksi tipe scan (QR atau NFC) secara presisi dari seluruh string URL
+  let scanType = 'nfc';
+  if (
+    fullUrl.includes('src=qr') ||
+    fullUrl.includes('type=qr') ||
+    requestUrl.searchParams.get('src') === 'qr' ||
+    requestUrl.searchParams.get('type') === 'qr'
+  ) {
+    scanType = 'qr';
   }
 
-  const scanType = rawSrc === 'qr' ? 'qr' : 'nfc';
-
+  // Jika ID tidak ditemukan sama sekali baru redirect ke home
   if (!cleanId) {
     return NextResponse.redirect(new URL('/', request.url));
   }
@@ -47,12 +51,12 @@ export async function GET(request) {
       }
       destinationUrl = target;
 
-      // Mandatory await insert log statistik (QR / NFC)
+      // Mandatory await insert log statistik ke device_stats
       await supabase
         .from('device_stats')
         .insert([{ device_id: cleanId, type: scanType }]);
 
-      // Mandatory await update total counter
+      // Mandatory await update total counter pada devices
       const currentCount = scanType === 'nfc' ? Number(device.nfc_scans || 0) : Number(device.qr_scans || 0);
       const updateData = scanType === 'nfc' 
         ? { nfc_scans: currentCount + 1 } 
