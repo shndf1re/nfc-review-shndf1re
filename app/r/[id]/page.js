@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Mencegah Vercel mem-cache halaman pengalihan ini
+// Mencegah cache agar halaman selalu tereksekusi ulang saat ditap
 export const dynamic = 'force-dynamic';
 
 const supabase = createClient(
@@ -9,18 +9,14 @@ const supabase = createClient(
 );
 
 export default async function RedirectPage({ params, searchParams }) {
-  // 1. Unwrapping params (Mendapatkan ID murni tanpa query string)
+  // 1. Unwrapping params (Next.js 15+)
   const resolvedParams = await params;
   const rawId = resolvedParams?.id || '';
-  
-  // Bersihkan ID jika ada karakter aneh/query string yang terselip
   const cleanId = rawId.split('?')[0].trim();
 
-  // 2. Unwrapping searchParams (Membaca ?src=qr atau ?src=nfc)
+  // 2. Unwrapping searchParams untuk mendeteksi ?src=nfc atau ?src=qr
   const resolvedSearch = await searchParams;
-  const rawSrc = (resolvedSearch?.src || resolvedSearch?.type || '').toLowerCase();
-  
-  // Jika src bernilai 'qr' maka tipe qr, selain itu (nfc/kosong) dianggap 'nfc'
+  const rawSrc = String(resolvedSearch?.src || resolvedSearch?.type || '').toLowerCase();
   const scanType = rawSrc === 'qr' ? 'qr' : 'nfc';
 
   let destinationUrl = '';
@@ -37,7 +33,7 @@ export default async function RedirectPage({ params, searchParams }) {
   }
 
   try {
-    // 3. Cari perangkat di database berdasarkan ID Murni (misal: NFC-a9N6y37D)
+    // 3. Ambil data perangkat
     const { data: device, error: fetchErr } = await supabase
       .from('devices')
       .select('id, target_url, is_active, nfc_scans, qr_scans')
@@ -52,27 +48,22 @@ export default async function RedirectPage({ params, searchParams }) {
       statusMessage = 'Kartu belum diaktifkan. Mengalihkan ke halaman setup...';
       destinationUrl = `/setup/${cleanId}`;
     } else {
-      // Format URL Tujuan
+      // 4. Format URL Tujuan
       destinationUrl = device.target_url.trim();
       if (!destinationUrl.startsWith('http://') && !destinationUrl.startsWith('https://')) {
         destinationUrl = `https://${destinationUrl}`;
       }
 
-      // 4. MENCATAT STATISTIK LANGSUNG KE TABEL device_stats
+      // 5. Pencatatan ke device_stats
       const { error: insertErr } = await supabase
         .from('device_stats')
-        .insert([
-          {
-            device_id: cleanId,
-            type: scanType
-          }
-        ]);
+        .insert([{ device_id: cleanId, type: scanType }]);
 
       if (insertErr) {
-        console.error('Gagal insert device_stats:', insertErr.message);
+        console.error('Insert Error:', insertErr.message);
       }
 
-      // 5. UPDATE COUNTER SCANS DITABEL devices
+      // 6. Update counter di tabel devices
       if (scanType === 'nfc') {
         const nextNfc = (Number(device.nfc_scans) || 0) + 1;
         await supabase.from('devices').update({ nfc_scans: nextNfc }).eq('id', cleanId);
@@ -100,7 +91,6 @@ export default async function RedirectPage({ params, searchParams }) {
       padding: '20px',
       textAlign: 'center'
     }}>
-      {/* Fallback Redirect */}
       <meta httpEquiv="refresh" content={`1;url=${destinationUrl}`} />
 
       <div style={{
@@ -112,7 +102,6 @@ export default async function RedirectPage({ params, searchParams }) {
         maxWidth: '360px',
         width: '100%'
       }}>
-        {/* ANIMASI SPINNER LOGO GOOGLE */}
         <div style={{
           width: '56px',
           height: '56px',
@@ -133,29 +122,15 @@ export default async function RedirectPage({ params, searchParams }) {
           <img
             src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg"
             alt="Google Logo"
-            style={{
-              position: 'absolute',
-              width: '24px',
-              height: '24px'
-            }}
+            style={{ position: 'absolute', width: '24px', height: '24px' }}
           />
         </div>
 
-        <h3 style={{
-          margin: '0 0 8px 0',
-          fontSize: '16px',
-          fontWeight: '700',
-          color: isError ? '#dc2626' : '#0f172a'
-        }}>
+        <h3 style={{ margin: '0 0 8px 0', fontSize: '16px', fontWeight: '700', color: isError ? '#dc2626' : '#0f172a' }}>
           {isError ? 'Gagal Mengalihkan' : 'Menghubungkan Papan Review'}
         </h3>
 
-        <p style={{
-          margin: 0,
-          fontSize: '13px',
-          color: '#64748b',
-          lineHeight: '1.5'
-        }}>
+        <p style={{ margin: 0, fontSize: '13px', color: '#64748b', lineHeight: '1.5' }}>
           {statusMessage}
         </p>
 
