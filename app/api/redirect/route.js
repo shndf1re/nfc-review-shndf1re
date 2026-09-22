@@ -5,23 +5,28 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export async function GET(request) {
-  const { searchParams } = new URL(request.url);
+  const requestUrl = new URL(request.url);
 
-  // 1. Ambil ID & bersihkan jika tersangkut query string dari Cloudflare Redirect
-  let id = (searchParams.get('id') || '').trim();
+  // 1. Ambil ID dari query parameter atau dari gabungan string Cloudflare
+  let rawId = (requestUrl.searchParams.get('id') || '').trim();
   
-  if (id.includes('?')) {
-    id = id.split('?')[0];
-  }
-  if (id.includes('&')) {
-    id = id.split('&')[0];
+  // Bersihkan ID dari query string tambahan jika tersangkut
+  let cleanId = rawId.split('?')[0].split('&')[0].trim();
+
+  // 2. Deteksi tipe scan secara presisi dari seluruh string URL
+  const fullUrlString = request.url.toLowerCase();
+  let scanType = 'nfc';
+
+  if (
+    fullUrlString.includes('src=qr') || 
+    fullUrlString.includes('type=qr') || 
+    requestUrl.searchParams.get('src') === 'qr' ||
+    requestUrl.searchParams.get('type') === 'qr'
+  ) {
+    scanType = 'qr';
   }
 
-  // 2. Ambil tipe scan
-  const rawSrc = String(searchParams.get('src') || searchParams.get('type') || '').toLowerCase();
-  const scanType = rawSrc === 'qr' ? 'qr' : 'nfc';
-
-  if (!id) {
+  if (!cleanId) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
@@ -30,14 +35,13 @@ export async function GET(request) {
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  let destinationUrl = `/setup/${id}`;
+  let destinationUrl = `/setup/${cleanId}`;
 
   try {
-    // 3. Query Device berdasarkan ID yang sudah dipastikan murni
     const { data: device, error: fetchErr } = await supabase
       .from('devices')
       .select('id, target_url, is_active, nfc_scans, qr_scans')
-      .eq('id', id)
+      .eq('id', cleanId)
       .maybeSingle();
 
     if (!fetchErr && device && device.is_active && device.target_url) {
@@ -47,12 +51,12 @@ export async function GET(request) {
       }
       destinationUrl = target;
 
-      // 4. Mandatory Await Insert ke device_stats
+      // 3. Catat ke device_stats dengan scanType yang akurat
       await supabase
         .from('device_stats')
-        .insert([{ device_id: id, type: scanType }]);
+        .insert([{ device_id: cleanId, type: scanType }]);
 
-      // 5. Mandatory Await Update Scan Counter
+      // 4. Update total counter di tabel devices (nfc_scans atau qr_scans)
       const currentCount = scanType === 'nfc' ? Number(device.nfc_scans || 0) : Number(device.qr_scans || 0);
       const updateData = scanType === 'nfc' 
         ? { nfc_scans: currentCount + 1 } 
@@ -61,13 +65,13 @@ export async function GET(request) {
       await supabase
         .from('devices')
         .update(updateData)
-        .eq('id', id);
+        .eq('id', cleanId);
     }
   } catch (err) {
     console.error('API Redirect Error:', err);
   }
 
-  // 6. Response Redirect 200 Client Side
+  // 5. Response HTTP 200 Client-Side Redirect
   const htmlContent = `<!DOCTYPE html>
 <html>
   <head>
