@@ -17,66 +17,52 @@ export async function GET(request, { params }) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
-  // Menggunakan SERVICE_ROLE_KEY untuk bypass RLS secara total dari server
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://wseqokwtcvwuhhykuxhy.supabase.co';
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   let destinationUrl = `/setup/${cleanId}`;
 
+  // 1. UTAMAKAN MENCATAT STATISTIK KE device_stats TERLEBIH DAHULU
   try {
-    // 1. Ambil target_url dari tabel devices
+    await supabase
+      .from('device_stats')
+      .insert([{ device_id: cleanId, type: scanType }]);
+  } catch (err) {
+    console.error('Insert Stat Exception:', err);
+  }
+
+  // 2. AMBIL URL TUJUAN & UPDATE COUNTER DEVICES secara terpisah
+  try {
     const { data: device } = await supabase
       .from('devices')
       .select('id, target_url, is_active, nfc_scans, qr_scans')
       .eq('id', cleanId)
       .maybeSingle();
 
-    if (device && device.is_active && device.target_url && device.target_url.trim() !== '') {
+    if (device && device.is_active && device.target_url) {
       let target = device.target_url.trim();
       if (!target.startsWith('http://') && !target.startsWith('https://')) {
         target = `https://${target}`;
       }
       destinationUrl = target;
+
+      // Update counter dengan konversi Number pasti
+      const currentCount = scanType === 'nfc' ? Number(device.nfc_scans || 0) : Number(device.qr_scans || 0);
+      const updateData = scanType === 'nfc' 
+        ? { nfc_scans: currentCount + 1 } 
+        : { qr_scans: currentCount + 1 };
+
+      await supabase
+        .from('devices')
+        .update(updateData)
+        .eq('id', cleanId);
     }
-
-    // 2. MENCATAT STATISTIK (Dijalankan secara terisolasi tanpa await penahan)
-    const recordStats = async () => {
-      try {
-        // Insert log statistik
-        await supabase
-          .from('device_stats')
-          .insert([{ device_id: cleanId, type: scanType }]);
-
-        // Update scan counter di tabel devices (jika perangkat ditemukan)
-        if (device) {
-          if (scanType === 'nfc') {
-            const currentNfc = Number(device.nfc_scans) || 0;
-            await supabase
-              .from('devices')
-              .update({ nfc_scans: currentNfc + 1 })
-              .eq('id', cleanId);
-          } else {
-            const currentQr = Number(device.qr_scans) || 0;
-            await supabase
-              .from('devices')
-              .update({ qr_scans: currentQr + 1 })
-              .eq('id', cleanId);
-          }
-        }
-      } catch (err) {
-        console.error('Error recording stats:', err);
-      }
-    };
-
-    // Jalankan pencatatan statistik
-    await recordStats();
-
   } catch (err) {
-    console.error('Route Execution Exception:', err);
+    console.error('Device Processing Exception:', err);
   }
 
-  // 3. Kembalikan Response HTML dengan status 200 agar TIDAK DI-CACHE oleh Cloudflare/Browser HP
+  // 3. RESPONS HTML DENGAN STATUS 200 (MEMAKSA BYPASS CACHE BROWSER & CDN)
   const htmlContent = `<!DOCTYPE html>
 <html>
   <head>
