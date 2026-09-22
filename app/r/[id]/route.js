@@ -37,12 +37,12 @@ export async function GET(request, { params }) {
       }
       destinationUrl = target;
 
-      // 1. Await Insert Log Statistik
+      // 1. Insert ke device_stats
       await supabase
         .from('device_stats')
         .insert([{ device_id: cleanId, type: scanType }]);
 
-      // 2. Await Update Total Counter di Tabel devices
+      // 2. Update scan counter
       const currentCount = scanType === 'nfc' ? Number(device.nfc_scans || 0) : Number(device.qr_scans || 0);
       const updateData = scanType === 'nfc' 
         ? { nfc_scans: currentCount + 1 } 
@@ -57,8 +57,7 @@ export async function GET(request, { params }) {
     console.error('Execution Exception:', err);
   }
 
-  // Menggunakan status 200 + Meta Refresh & JS Replace
-  // Mencegah browser HP meng-cache redirect 301/302/307
+  // Gunakan HTML response 200 agar bypass cache Cloudflare & Browser
   const htmlContent = `<!DOCTYPE html>
 <html>
   <head>
@@ -66,7 +65,6 @@ export async function GET(request, { params }) {
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <meta http-equiv="refresh" content="0;url=${destinationUrl}">
     <title>Redirecting...</title>
   </head>
   <body>
