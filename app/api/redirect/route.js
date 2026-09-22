@@ -5,17 +5,27 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export async function GET(request) {
-  // 1. Ambil seluruh URL mentah dalam huruf kecil
-  const fullUrl = request.url.toLowerCase();
-  const requestUrl = new URL(request.url);
+  const rawUrl = request.url;
+  const urlObj = new URL(rawUrl);
 
-  // 2. Ekstrak ID murni (buang query string ? atau & yang tersangkut dari Cloudflare)
-  let rawId = (requestUrl.searchParams.get('id') || '').trim();
-  let cleanId = rawId.split('?')[0].split('&')[0].trim();
+  // 1. Ekstrak nilai 'id' mentah dari searchParams
+  let rawIdParam = urlObj.searchParams.get('id') || '';
 
-  // 3. DETEKSI PRESISI: Jika ada tulisan "src=qr" di dalam URL, paksa nilai scanType jadi 'qr'
+  // 2. Ambil ID murni (mengambil teks sebelum '?' atau '&')
+  const cleanId = rawIdParam.split('?')[0].split('&')[0].trim();
+
+  // 3. LOGIKA DETEKSI AKURAT: Cari parameter 'src' di seluruh URL mentah
   let scanType = 'nfc';
-  if (fullUrl.includes('src=qr') || fullUrl.includes('type=qr')) {
+
+  // Decode URL untuk menangani karakter ter-encode seperti %3F atau %26
+  const decodedUrl = decodeURIComponent(rawUrl).toLowerCase();
+
+  if (
+    decodedUrl.includes('src=qr') ||
+    decodedUrl.includes('type=qr') ||
+    urlObj.searchParams.get('src') === 'qr' ||
+    urlObj.searchParams.get('type') === 'qr'
+  ) {
     scanType = 'qr';
   }
 
@@ -44,12 +54,12 @@ export async function GET(request) {
       }
       destinationUrl = target;
 
-      // Mandatory Await: Insert log ke device_stats dengan scanType yang sudah tervalidasi (qr / nfc)
+      // Mandatory Await: Insert log statistik acuan tipe scan (qr / nfc)
       await supabase
         .from('device_stats')
         .insert([{ device_id: cleanId, type: scanType }]);
 
-      // Mandatory Await: Update total counter di devices
+      // Mandatory Await: Update total counter di tabel devices
       const currentCount = scanType === 'nfc' ? Number(device.nfc_scans || 0) : Number(device.qr_scans || 0);
       const updateData = scanType === 'nfc' 
         ? { nfc_scans: currentCount + 1 } 
@@ -64,7 +74,7 @@ export async function GET(request) {
     console.error('API Redirect Error:', err);
   }
 
-  // Response HTTP 200 Client Redirect (Bypass Cache Browser & CDN)
+  // Response HTTP 200 Client Redirect
   const htmlContent = `<!DOCTYPE html>
 <html>
   <head>
