@@ -5,32 +5,25 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export async function GET(request) {
-  const requestUrl = new URL(request.url);
+  // 1. Ambil seluruh URL mentah dalam huruf kecil
   const fullUrl = request.url.toLowerCase();
+  const requestUrl = new URL(request.url);
 
-  // 1. Ambil ID mentah & bersihkan dari karakter query string jika tersangkut
+  // 2. Ekstrak ID murni (buang query string ? atau & yang tersangkut dari Cloudflare)
   let rawId = (requestUrl.searchParams.get('id') || '').trim();
-  
-  // Ekstrak ID murni (mengambil string sebelum karakter ? atau &)
   let cleanId = rawId.split('?')[0].split('&')[0].trim();
 
-  // 2. Deteksi tipe scan (QR atau NFC) secara presisi dari seluruh string URL
+  // 3. DETEKSI PRESISI: Jika ada tulisan "src=qr" di dalam URL, paksa nilai scanType jadi 'qr'
   let scanType = 'nfc';
-  if (
-    fullUrl.includes('src=qr') ||
-    fullUrl.includes('type=qr') ||
-    requestUrl.searchParams.get('src') === 'qr' ||
-    requestUrl.searchParams.get('type') === 'qr'
-  ) {
+  if (fullUrl.includes('src=qr') || fullUrl.includes('type=qr')) {
     scanType = 'qr';
   }
 
-  // Jika ID tidak ditemukan sama sekali baru redirect ke home
   if (!cleanId) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
-  // Supabase Client dengan Service Role Key
+  // Koneksi Supabase Service Role Key
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://wseqokwtcvwuhhykuxhy.supabase.co';
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
   const supabase = createClient(supabaseUrl, supabaseKey);
@@ -51,12 +44,12 @@ export async function GET(request) {
       }
       destinationUrl = target;
 
-      // Mandatory await insert log statistik ke device_stats
+      // Mandatory Await: Insert log ke device_stats dengan scanType yang sudah tervalidasi (qr / nfc)
       await supabase
         .from('device_stats')
         .insert([{ device_id: cleanId, type: scanType }]);
 
-      // Mandatory await update total counter pada devices
+      // Mandatory Await: Update total counter di devices
       const currentCount = scanType === 'nfc' ? Number(device.nfc_scans || 0) : Number(device.qr_scans || 0);
       const updateData = scanType === 'nfc' 
         ? { nfc_scans: currentCount + 1 } 
@@ -71,7 +64,7 @@ export async function GET(request) {
     console.error('API Redirect Error:', err);
   }
 
-  // Response 200 Client-Side Redirect
+  // Response HTTP 200 Client Redirect (Bypass Cache Browser & CDN)
   const htmlContent = `<!DOCTYPE html>
 <html>
   <head>
