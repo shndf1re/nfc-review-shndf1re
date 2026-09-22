@@ -4,7 +4,7 @@ const nextConfig = {
   async rewrites() {
     return [
       {
-        // Meneruskan traffic /r/[id] ke /api/redirect?id=[id]
+        // Meneruskan path /r/:id beserta seluruh query parameters ke /api/redirect
         source: '/r/:id',
         destination: '/api/redirect?id=:id',
       },
