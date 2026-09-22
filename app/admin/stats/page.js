@@ -59,68 +59,70 @@ export default function StatsPage() {
     };
   }, []);
 
-  // FUNGSI FETCH STATS (LANGKAH 2 PERBAIKAN)
+  // FUNGSI FETCH STATS (DIREVISI TOTAL AGAR HINDARI DATA HILANG/STUCK)
   const fetchStats = async () => {
     setLoading(true);
 
-    // 1. Fetch seluruh entri log dari device_stats
-    const { data: statsData } = await supabase
+    // 1. Ambil seluruh log dari device_stats
+    const { data: statsData, error: statsErr } = await supabase
       .from('device_stats')
       .select('device_id, type, created_at')
       .order('created_at', { ascending: false });
 
-    // 2. Fetch seluruh data perangkat dari devices
+    // 2. Ambil data nama label dari tabel devices
     const { data: devicesData } = await supabase
       .from('devices')
-      .select('id, label_name, nfc_scans, qr_scans');
+      .select('id, label_name');
 
     const deviceMap = {};
     if (devicesData) {
       devicesData.forEach(d => {
-        deviceMap[d.id] = {
-          labelName: d.label_name || null,
-          nfcScans: Number(d.nfc_scans) || 0,
-          qrScans: Number(d.qr_scans) || 0
-        };
+        deviceMap[d.id] = d.label_name || null;
       });
     }
 
-    if (statsData) {
+    if (!statsErr && statsData) {
+      // SET TOTAL KESELURUHAN LANGSUNG DARI PANJANG ARRAY (TIDAK AKAN STUCK DI 88)
+      setTotalScans(statsData.length);
+
       let totalNfc = 0;
       let totalQr = 0;
 
-      const grouped = statsData.reduce((acc, curr) => {
-        const id = curr.device_id || 'Unknown';
-        const info = deviceMap[id] || { labelName: null };
+      const grouped = {};
 
-        if (!acc[id]) {
-          acc[id] = {
-            id,
-            labelName: info.labelName,
+      statsData.forEach(curr => {
+        const rawId = curr.device_id ? String(curr.device_id).trim() : 'Unknown';
+        const labelName = deviceMap[rawId] || null;
+
+        if (!grouped[rawId]) {
+          grouped[rawId] = {
+            id: rawId,
+            labelName,
             nfc: 0,
             qr: 0,
             total: 0,
             lastScan: curr.created_at
           };
         }
-        if (curr.type === 'nfc') {
-          acc[id].nfc += 1;
+
+        const scanType = (curr.type || '').toLowerCase();
+        if (scanType === 'nfc') {
+          grouped[rawId].nfc += 1;
           totalNfc += 1;
         } else {
-          acc[id].qr += 1;
+          grouped[rawId].qr += 1;
           totalQr += 1;
         }
-        acc[id].total += 1;
-        return acc;
-      }, {});
+        grouped[rawId].total += 1;
+      });
 
       const allStatsList = Object.values(grouped);
 
+      // Top 5 Peringkat Toko
       const sortedTop = [...allStatsList]
         .sort((a, b) => b.total - a.total)
         .slice(0, 5);
 
-      setTotalScans(statsData.length);
       setNfcCount(totalNfc);
       setQrCount(totalQr);
       setStats(allStatsList);
@@ -300,7 +302,7 @@ export default function StatsPage() {
                     <span>📱 NFC: <strong>{item.nfc}</strong></span>
                     <span>📷 QR: <strong>{item.qr}</strong></span>
                   </div>
-                  <span>Terakhir: {new Date(item.lastScan).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
+                  <span>Terakhir: {item.lastScan ? new Date(item.lastScan).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : '-'}</span>
                 </div>
               </div>
             ))}
