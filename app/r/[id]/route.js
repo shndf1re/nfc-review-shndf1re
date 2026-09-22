@@ -4,21 +4,23 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET(request, context) {
-  // 1. Ambil params ID
-  const params = await context.params;
-  const rawId = params?.id || '';
-  const cleanId = rawId.split('?')[0].trim();
+export async function GET(request) {
+  const requestUrl = new URL(request.url);
 
-  // 2. Ambil parameter src
-  const { searchParams } = new URL(request.url);
-  const rawSrc = String(searchParams.get('src') || searchParams.get('type') || '').toLowerCase();
+  // 1. Ambil ID murni dari pathname URL (misal: /r/NFC-sjP6d9LC -> NFC-sjP6d9LC)
+  const pathSegments = requestUrl.pathname.split('/').filter(Boolean);
+  const lastSegment = pathSegments[pathSegments.length - 1] || '';
+  const cleanId = lastSegment.split('?')[0].split('&')[0].trim();
+
+  // 2. Ambil tipe scan (nfc / qr)
+  const rawSrc = String(requestUrl.searchParams.get('src') || requestUrl.searchParams.get('type') || '').toLowerCase();
   const scanType = rawSrc === 'qr' ? 'qr' : 'nfc';
 
   if (!cleanId) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
+  // Supabase Client dengan Service Role Key
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://wseqokwtcvwuhhykuxhy.supabase.co';
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
   const supabase = createClient(supabaseUrl, supabaseKey);
@@ -26,24 +28,30 @@ export async function GET(request, context) {
   let destinationUrl = `/setup/${cleanId}`;
 
   try {
-    const { data: device } = await supabase
+    // 3. Query Supabase dengan cleanId yang dijamin murni
+    const { data: device, error: fetchErr } = await supabase
       .from('devices')
       .select('id, target_url, is_active, nfc_scans, qr_scans')
       .eq('id', cleanId)
       .maybeSingle();
 
-    if (device && device.is_active && device.target_url) {
+    if (!fetchErr && device && device.is_active && device.target_url) {
       let target = device.target_url.trim();
       if (!target.startsWith('http://') && !target.startsWith('https://')) {
         target = `https://${target}`;
       }
       destinationUrl = target;
 
-      // Mandatory Await untuk mematikan potensi aborted request di background
-      await supabase
+      // 4. Catat Log ke device_stats
+      const { error: insertErr } = await supabase
         .from('device_stats')
         .insert([{ device_id: cleanId, type: scanType }]);
 
+      if (insertErr) {
+        console.error('Insert Error:', insertErr.message);
+      }
+
+      // 5. Update Total Counter di devices
       const currentCount = scanType === 'nfc' ? Number(device.nfc_scans || 0) : Number(device.qr_scans || 0);
       const updateData = scanType === 'nfc' 
         ? { nfc_scans: currentCount + 1 } 
@@ -53,32 +61,26 @@ export async function GET(request, context) {
         .from('devices')
         .update(updateData)
         .eq('id', cleanId);
+    } else {
+      console.error('Device tidak ditemukan atau tidak aktif untuk ID:', cleanId);
     }
   } catch (err) {
-    console.error('Route Execution Error:', err);
+    console.error('Route Execution Exception:', err);
   }
 
-  // Tambahkan timestamp unik di URL redirect agar browser HP menganggapnya request baru
-  const finalDestination = destinationUrl.includes('?') 
-    ? `${destinationUrl}&_t=${Date.now()}` 
-    : `${destinationUrl}?_t=${Date.now()}`;
-
-  // Mengembalikan HTML 200 + Anti-Cache Headers yang Sangat Agresif
+  // 6. Return Response HTML 200 Client Redirect (Bypass Caching HP & Cloudflare)
   const htmlContent = `<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8">
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate, max-age=0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>Mengarahkan...</title>
+    <title>Redirecting...</title>
   </head>
-  <body style="display:flex; justify-content:center; align-items:center; height:100vh; font-family:sans-serif; background-color:#f9fafb;">
-    <p style="color:#4b5563;">Menghubungkan ke Google Review...</p>
+  <body>
     <script>
-      setTimeout(function() {
-        window.location.replace("${finalDestination}");
-      }, 100);
+      window.location.replace("${destinationUrl}");
     </script>
   </body>
 </html>`;
@@ -87,10 +89,9 @@ export async function GET(request, context) {
     status: 200,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
-      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0, s-maxage=0',
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
       'Pragma': 'no-cache',
       'Expires': '0',
-      'Surrogate-Control': 'no-store',
     },
   });
 }
