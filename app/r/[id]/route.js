@@ -7,7 +7,7 @@ export const revalidate = 0;
 export async function GET(request, { params }) {
   // Gunakan fallback variabel langsung agar pasti terhubung ke Supabase Anda
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://wseqokwtcvwuhhykuxhy.supabase.co';
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndzZXFva3d0Y3Z3dWhoeWt1eGh5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjY0Njg4OTQsImV4cCI6MjA0MjA0NDzg0fQ...'; // Kunci anon Anda
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndzZXFva3d0Y3Z3dWhoeWt1eGh5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc1NjY2NDYsImV4cCI6MjEwMzE0MjY0Nn0.Hy-Zu8ETu3j3pIXbZeyKH8gCGwuN-9hfq9_rch6Scd8'; // Kunci anon Anda
 
   const supabase = createClient(supabaseUrl, supabaseKey);
 
