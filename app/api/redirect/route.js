@@ -6,22 +6,19 @@ export const revalidate = 0;
 
 export async function GET(request) {
   const requestUrl = new URL(request.url);
+  const fullUrl = request.url.toLowerCase();
 
-  // 1. Ambil ID dari query parameter atau dari gabungan string Cloudflare
+  // 1. Ambil ID dari query parameter
   let rawId = (requestUrl.searchParams.get('id') || '').trim();
-  
-  // Bersihkan ID dari query string tambahan jika tersangkut
   let cleanId = rawId.split('?')[0].split('&')[0].trim();
 
-  // 2. Deteksi tipe scan secara presisi dari seluruh string URL
-  const fullUrlString = request.url.toLowerCase();
+  // 2. Deteksi scanType secara agresif dari parameter maupun string URL
   let scanType = 'nfc';
-
   if (
-    fullUrlString.includes('src=qr') || 
-    fullUrlString.includes('type=qr') || 
     requestUrl.searchParams.get('src') === 'qr' ||
-    requestUrl.searchParams.get('type') === 'qr'
+    requestUrl.searchParams.get('type') === 'qr' ||
+    fullUrl.includes('src=qr') ||
+    fullUrl.includes('type=qr')
   ) {
     scanType = 'qr';
   }
@@ -30,7 +27,6 @@ export async function GET(request) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
-  // Koneksi Supabase Service Role Key
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://wseqokwtcvwuhhykuxhy.supabase.co';
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
   const supabase = createClient(supabaseUrl, supabaseKey);
@@ -51,12 +47,12 @@ export async function GET(request) {
       }
       destinationUrl = target;
 
-      // 3. Catat ke device_stats dengan scanType yang akurat
+      // Catat ke device_stats dengan scanType yang sesuai
       await supabase
         .from('device_stats')
         .insert([{ device_id: cleanId, type: scanType }]);
 
-      // 4. Update total counter di tabel devices (nfc_scans atau qr_scans)
+      // Update total counter
       const currentCount = scanType === 'nfc' ? Number(device.nfc_scans || 0) : Number(device.qr_scans || 0);
       const updateData = scanType === 'nfc' 
         ? { nfc_scans: currentCount + 1 } 
@@ -71,7 +67,6 @@ export async function GET(request) {
     console.error('API Redirect Error:', err);
   }
 
-  // 5. Response HTTP 200 Client-Side Redirect
   const htmlContent = `<!DOCTYPE html>
 <html>
   <head>
