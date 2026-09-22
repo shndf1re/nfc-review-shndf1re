@@ -17,7 +17,6 @@ export async function GET(request, { params }) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
-  // Menggunakan SERVICE_ROLE_KEY untuk bypass RLS dari server Vercel
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://wseqokwtcvwuhhykuxhy.supabase.co';
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
   const supabase = createClient(supabaseUrl, supabaseKey);
@@ -25,7 +24,6 @@ export async function GET(request, { params }) {
   let destinationUrl = `/setup/${cleanId}`;
 
   try {
-    // 1. Ambil data perangkat
     const { data: device } = await supabase
       .from('devices')
       .select('id, target_url, is_active, nfc_scans, qr_scans')
@@ -39,16 +37,12 @@ export async function GET(request, { params }) {
       }
       destinationUrl = target;
 
-      // 2. TUNGGU (AWAIT) INSERT STATISTIK HINGGA BENAR-BENAR SELESAI
-      const { error: insertErr } = await supabase
+      // 1. Await Insert Log Statistik
+      await supabase
         .from('device_stats')
         .insert([{ device_id: cleanId, type: scanType }]);
 
-      if (insertErr) {
-        console.error('Insert Stat Error:', insertErr.message);
-      }
-
-      // 3. TUNGGU (AWAIT) UPDATE COUNTER PADA TABEL DEVICES
+      // 2. Await Update Total Counter di Tabel devices
       const currentCount = scanType === 'nfc' ? Number(device.nfc_scans || 0) : Number(device.qr_scans || 0);
       const updateData = scanType === 'nfc' 
         ? { nfc_scans: currentCount + 1 } 
@@ -63,7 +57,8 @@ export async function GET(request, { params }) {
     console.error('Execution Exception:', err);
   }
 
-  // 4. KIRIM RESPONSE DENGAN DELAY 300MS AGAR KONEKSI DATABASE DIPASTIKAN TERNAMA SANGAT LENGKAP
+  // Menggunakan status 200 + Meta Refresh & JS Replace
+  // Mencegah browser HP meng-cache redirect 301/302/307
   const htmlContent = `<!DOCTYPE html>
 <html>
   <head>
@@ -71,16 +66,12 @@ export async function GET(request, { params }) {
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
+    <meta http-equiv="refresh" content="0;url=${destinationUrl}">
     <title>Redirecting...</title>
   </head>
-  <body style="background:#f8fafc; display:flex; align-items:center; justify-content:center; height:100vh; font-family:sans-serif;">
-    <div style="text-align:center;">
-      <p style="color:#64748b; font-size:14px;">Menghubungkan ke Google Review...</p>
-    </div>
+  <body>
     <script>
-      setTimeout(function() {
-        window.location.href = "${destinationUrl}";
-      }, 300);
+      window.location.replace("${destinationUrl}");
     </script>
   </body>
 </html>`;
