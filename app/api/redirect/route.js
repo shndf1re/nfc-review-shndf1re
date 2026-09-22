@@ -6,8 +6,8 @@ export const revalidate = 0;
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
-  
-  // Mengambil ID dan membersihkan query string tambahan jika ada
+
+  // Ambil ID dan bersihkan jika ada karakter query berlebih
   let id = (searchParams.get('id') || '').trim();
   if (id.includes('?')) {
     id = id.split('?')[0];
@@ -20,7 +20,6 @@ export async function GET(request) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
-  // Koneksi Supabase dengan Service Role Key
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://wseqokwtcvwuhhykuxhy.supabase.co';
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
   const supabase = createClient(supabaseUrl, supabaseKey);
@@ -41,7 +40,7 @@ export async function GET(request) {
       }
       destinationUrl = target;
 
-      // 1. Catat ke device_stats (AWAIT)
+      // 1. Insert ke device_stats (AWAIT)
       await supabase
         .from('device_stats')
         .insert([{ device_id: id, type: scanType }]);
@@ -61,7 +60,7 @@ export async function GET(request) {
     console.error('API Redirect Exception:', err);
   }
 
-  // Response 200 HTML Client-Side Redirect (Bypass Caching HP & Cloudflare)
+  // Response HTTP 200 Client-Side Redirect (Bypass Cache Browser & Cloudflare)
   const htmlContent = `<!DOCTYPE html>
 <html>
   <head>
