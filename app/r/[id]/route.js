@@ -1,7 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
-// Memaksa Vercel agar TIDAK PERNAH mem-cache endpoint ini!
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -10,12 +9,12 @@ export async function GET(request, { params }) {
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  // 1. Ambil ID dari URL Params
+  // 1. Resolve Params
   const resolvedParams = await params;
   const rawId = resolvedParams?.id || '';
   const cleanId = rawId.split('?')[0].trim();
 
-  // 2. Ambil query parameter ?src=nfc atau ?src=qr
+  // 2. Resolve SearchParams (?src=nfc / ?src=qr)
   const { searchParams } = new URL(request.url);
   const rawSrc = String(searchParams.get('src') || searchParams.get('type') || '').toLowerCase();
   const scanType = rawSrc === 'qr' ? 'qr' : 'nfc';
@@ -27,7 +26,7 @@ export async function GET(request, { params }) {
   }
 
   try {
-    // 3. Ambil data kartu dari Supabase
+    // 3. Ambil Data Perangkat dari Supabase
     const { data: device, error: fetchErr } = await supabase
       .from('devices')
       .select('id, target_url, is_active, nfc_scans, qr_scans')
@@ -68,8 +67,7 @@ export async function GET(request, { params }) {
     console.error('Route Exception:', err);
   }
 
-  // 6. Lakukan HTTP 307 Temporary Redirect murni dari Server
-  // Menggunakan 'No-Cache' Header agar browser HP & Vercel CDN wajib mengeksekusi ulang tiap kali ditap
+  // 6. Direct HTTP 307 Redirect Tanpa Cache
   return NextResponse.redirect(destinationUrl, {
     status: 307,
     headers: {
