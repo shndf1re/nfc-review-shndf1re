@@ -1,6 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  async rewrites() {
+    return [
+      {
+        // Meneruskan traffic /r/[id] ke /api/redirect?id=[id]
+        source: '/r/:id',
+        destination: '/api/redirect?id=:id',
+      },
+    ];
+  },
   async headers() {
     return [
       {
