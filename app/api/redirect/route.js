@@ -14,8 +14,9 @@ export async function GET(request) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
+  // Menggunakan SERVICE_ROLE_KEY agar otomatis bypass RLS
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://wseqokwtcvwuhhykuxhy.supabase.co';
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'; // Supabase Anon Key Kamu
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   let destinationUrl = `/setup/${id}`;
@@ -29,12 +30,12 @@ export async function GET(request) {
 
     if (!fetchErr && device && device.is_active && device.target_url) {
       let target = device.target_url.trim();
-      if (!target.startsWith('http')) {
+      if (!target.startsWith('http://') && !target.startsWith('https://')) {
         target = `https://${target}`;
       }
       destinationUrl = target;
 
-      // 1. MENCATAT STATISTIK LANGSUNG
+      // 1. Insert log statistik
       const { error: insertErr } = await supabase
         .from('device_stats')
         .insert([{ device_id: id, type: scanType }]);
@@ -43,7 +44,7 @@ export async function GET(request) {
         console.error('Insert Stat Error:', insertErr.message);
       }
 
-      // 2. UPDATE COUNTER DEVICE
+      // 2. Update counter pada tabel devices
       if (scanType === 'nfc') {
         const nextNfc = (Number(device.nfc_scans) || 0) + 1;
         await supabase.from('devices').update({ nfc_scans: nextNfc }).eq('id', id);
@@ -56,7 +57,6 @@ export async function GET(request) {
     console.error('API Redirect Exception:', err);
   }
 
-  // Header anti-cache ketat
   return NextResponse.redirect(destinationUrl, {
     status: 307,
     headers: {
