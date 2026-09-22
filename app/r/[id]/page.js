@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 
+// Mencegah Vercel mem-cache halaman pengalihan ini
 export const dynamic = 'force-dynamic';
 
 const supabase = createClient(
@@ -8,12 +9,19 @@ const supabase = createClient(
 );
 
 export default async function RedirectPage({ params, searchParams }) {
+  // 1. Unwrapping params (Mendapatkan ID murni tanpa query string)
   const resolvedParams = await params;
   const rawId = resolvedParams?.id || '';
+  
+  // Bersihkan ID jika ada karakter aneh/query string yang terselip
   const cleanId = rawId.split('?')[0].trim();
 
+  // 2. Unwrapping searchParams (Membaca ?src=qr atau ?src=nfc)
   const resolvedSearch = await searchParams;
-  const type = (resolvedSearch?.type === 'qr' || resolvedSearch?.src === 'qr') ? 'qr' : 'nfc';
+  const rawSrc = (resolvedSearch?.src || resolvedSearch?.type || '').toLowerCase();
+  
+  // Jika src bernilai 'qr' maka tipe qr, selain itu (nfc/kosong) dianggap 'nfc'
+  const scanType = rawSrc === 'qr' ? 'qr' : 'nfc';
 
   let destinationUrl = '';
   let isError = false;
@@ -28,42 +36,56 @@ export default async function RedirectPage({ params, searchParams }) {
     );
   }
 
-  // 1. Ambil data perangkat dari Supabase
-  const { data: device, error: fetchErr } = await supabase
-    .from('devices')
-    .select('id, target_url, is_active, nfc_scans, qr_scans')
-    .eq('id', cleanId)
-    .maybeSingle();
+  try {
+    // 3. Cari perangkat di database berdasarkan ID Murni (misal: NFC-a9N6y37D)
+    const { data: device, error: fetchErr } = await supabase
+      .from('devices')
+      .select('id, target_url, is_active, nfc_scans, qr_scans')
+      .eq('id', cleanId)
+      .maybeSingle();
 
-  if (fetchErr) {
-    isError = true;
-    statusMessage = 'Terjadi kesalahan koneksi database.';
-    destinationUrl = `/setup/${cleanId}`;
-  } else if (!device || !device.is_active || !device.target_url || device.target_url.trim() === '') {
-    statusMessage = 'Kartu belum diaktifkan. Mengalihkan ke halaman setup...';
-    destinationUrl = `/setup/${cleanId}`;
-  } else {
-    destinationUrl = device.target_url.trim();
-    if (!destinationUrl.startsWith('http://') && !destinationUrl.startsWith('https://')) {
-      destinationUrl = `https://${destinationUrl}`;
-    }
-
-    // 2. Insert ke device_stats (Biarkan created_at & id diisi otomatis oleh Supabase)
-    await supabase.from('device_stats').insert([
-      {
-        device_id: cleanId,
-        type: type
-      }
-    ]);
-
-    // 3. Update counter scans pada tabel devices
-    if (type === 'nfc') {
-      const currentNfc = Number(device.nfc_scans) || 0;
-      await supabase.from('devices').update({ nfc_scans: currentNfc + 1 }).eq('id', cleanId);
+    if (fetchErr || !device) {
+      isError = true;
+      statusMessage = 'Kartu belum diaktifkan atau tidak ditemukan.';
+      destinationUrl = `/setup/${cleanId}`;
+    } else if (!device.is_active || !device.target_url || device.target_url.trim() === '') {
+      statusMessage = 'Kartu belum diaktifkan. Mengalihkan ke halaman setup...';
+      destinationUrl = `/setup/${cleanId}`;
     } else {
-      const currentQr = Number(device.qr_scans) || 0;
-      await supabase.from('devices').update({ qr_scans: currentQr + 1 }).eq('id', cleanId);
+      // Format URL Tujuan
+      destinationUrl = device.target_url.trim();
+      if (!destinationUrl.startsWith('http://') && !destinationUrl.startsWith('https://')) {
+        destinationUrl = `https://${destinationUrl}`;
+      }
+
+      // 4. MENCATAT STATISTIK LANGSUNG KE TABEL device_stats
+      const { error: insertErr } = await supabase
+        .from('device_stats')
+        .insert([
+          {
+            device_id: cleanId,
+            type: scanType
+          }
+        ]);
+
+      if (insertErr) {
+        console.error('Gagal insert device_stats:', insertErr.message);
+      }
+
+      // 5. UPDATE COUNTER SCANS DITABEL devices
+      if (scanType === 'nfc') {
+        const nextNfc = (Number(device.nfc_scans) || 0) + 1;
+        await supabase.from('devices').update({ nfc_scans: nextNfc }).eq('id', cleanId);
+      } else {
+        const nextQr = (Number(device.qr_scans) || 0) + 1;
+        await supabase.from('devices').update({ qr_scans: nextQr }).eq('id', cleanId);
+      }
     }
+  } catch (err) {
+    console.error('Redirect Exception:', err);
+    isError = true;
+    statusMessage = 'Gagal mengalihkan. Membuka halaman aktivasi...';
+    destinationUrl = `/setup/${cleanId}`;
   }
 
   return (
@@ -78,6 +100,7 @@ export default async function RedirectPage({ params, searchParams }) {
       padding: '20px',
       textAlign: 'center'
     }}>
+      {/* Fallback Redirect */}
       <meta httpEquiv="refresh" content={`1;url=${destinationUrl}`} />
 
       <div style={{
