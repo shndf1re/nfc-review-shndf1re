@@ -33,7 +33,7 @@ export default function SetupPage({ params }) {
   const [message, setMessage] = useState({ type: '', text: '' });
   const [modalError, setModalError] = useState('');
 
-  const waAdminNumber = '6285156534909'; 
+  const waAdminNumber = '6285183144404'; 
   const waHelpMessage = `Halo Admin! Saya baru saja membeli Papan Review Akrilik.\n\nSaya ingin meminta PIN Akses untuk aktivasi:\n- ID Kartu: ${id || ''}\n\nMohon bantuannya ya, terima kasih!`;
   const waHelpUrl = `https://wa.me/${waAdminNumber}?text=${encodeURIComponent(waHelpMessage)}`;
 
