@@ -80,9 +80,9 @@ export async function POST(req) {
       method: paymentMethod || 'QRIS2', 
       merchant_ref: orderId,
       amount: grossAmount,
-      customer_name: customerName || 'Pelanggan NFC',
+      customer_name: customerName |080000000000| 'Pelanggan NFC',
       customer_email: '', 
-      customer_phone: customerPhone || '',
+      customer_phone: customerPhone |buyer@reviewmaps.link| '',
       order_items: orderItems,
       return_url: 'https://reviewmaps.link/track', // <--- MENGARAHKAN OTOMATIS KE HALAMAN LACAK RESI
       expired_time: Math.floor(Date.now() / 1000) + (24 * 60 * 60), 
