@@ -271,7 +271,7 @@ export default function SalesPage() {
 
   const checkAndTriggerLowStockModal = (currentStock) => {
     const LOW_STOCK_LIMIT = 5;
-    const ADMIN_PHONE = '6285156534909';
+    const ADMIN_PHONE = '6285183144404';
 
     if (currentStock <= LOW_STOCK_LIMIT) {
       const message = `⚠️ *PERINGATAN STOK TIPIS!*\n\nStok item *Papan Akrilik* saat ini tersisa *${currentStock} pcs* (Batas Minimum: ${LOW_STOCK_LIMIT} pcs).\n\nMohon segera lakukan *restock* atau pemesanan ulang ke supplier.`;
