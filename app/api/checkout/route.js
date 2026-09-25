@@ -25,7 +25,7 @@ export async function POST(req) {
       paymentMethod
     } = await req.json();
 
-    const BASE_PROMO_PRICE = 80000;
+    const BASE_PROMO_PRICE = 50000;
     const ORIGINAL_PRICE = 100000;
     const itemUnitPrice = isExpiredPromo ? ORIGINAL_PRICE : BASE_PROMO_PRICE;
 
