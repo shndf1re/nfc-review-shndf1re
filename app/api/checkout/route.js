@@ -25,7 +25,7 @@ export async function POST(req) {
       paymentMethod
     } = await req.json();
 
-    const BASE_PROMO_PRICE = 50000;
+    const BASE_PROMO_PRICE = 80000;
     const ORIGINAL_PRICE = 100000;
     const itemUnitPrice = isExpiredPromo ? ORIGINAL_PRICE : BASE_PROMO_PRICE;
 
@@ -80,9 +80,9 @@ export async function POST(req) {
       method: paymentMethod || 'QRIS2', 
       merchant_ref: orderId,
       amount: grossAmount,
-      customer_name: customerName |080000000000| 'Pelanggan NFC',
-      customer_email: '', 
-      customer_phone: customerPhone |buyer@reviewmaps.link| '',
+      customer_name: customerName || 'Pelanggan NFC',
+      customer_email: 'buyer@reviewmaps.link', 
+      customer_phone: customerPhone || '080000000000',
       order_items: orderItems,
       return_url: 'https://reviewmaps.link/track', // <--- MENGARAHKAN OTOMATIS KE HALAMAN LACAK RESI
       expired_time: Math.floor(Date.now() / 1000) + (24 * 60 * 60), 
