@@ -7,7 +7,7 @@ const supabase = createClient(
 );
 
 // NOMOR HP ADMIN PENERIMA NOTIFIKASI
-const ADMIN_PHONE = '6285156534909'; 
+const ADMIN_PHONE = '6285183144404'; 
 const LOW_STOCK_THRESHOLD = 5;
 
 export async function POST(request) {
