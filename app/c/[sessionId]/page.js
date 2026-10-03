@@ -1,0 +1,942 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+
+export default function DynamicCheckoutPage() {
+  const params = useParams();
+  const router = useRouter();
+  
+  const [step, setStep] = useState(1);
+  const [isMounted, setIsMounted] = useState(false);
+  const [isValidSession, setIsValidSession] = useState(false);
+
+  // === MODAL SUCCESS & REDIRECT STATE ===
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successOrderDetails, setSuccessOrderDetails] = useState({
+    orderId: '',
+    checkoutUrl: '', // Tambahan state untuk menyimpan URL Tripay
+    name: '',
+    total: 0,
+    qty: 1
+  });
+
+  // === VALIDASI ROUTE OBFUSCATION (URL UNIK) ===
+  useEffect(() => {
+    setIsMounted(true);
+
+    const currentUrlSession = params?.sessionId;
+    const savedSession = localStorage.getItem('active_checkout_session');
+
+    if (currentUrlSession && savedSession && currentUrlSession === savedSession) {
+      setIsValidSession(true);
+    } else {
+      router.replace('/');
+    }
+  }, [params, router]);
+
+  // === HARGA RESMI & PROMO ===
+  const ORIGINAL_PRICE_PER_ITEM = 100000; // Harga Normal per Pcs
+  const BASE_PROMO_PRICE = 50000;        // Harga Promo per Pcs
+
+  const [timeLeft, setTimeLeft] = useState('30:00');
+  const [isExpired, setIsExpired] = useState(false);
+  const [itemPrice, setItemPrice] = useState(BASE_PROMO_PRICE);
+
+  // === STATE KODE PROMO (KUPON) ===
+  const [couponInput, setCouponInput] = useState('');
+  const [appliedDiscount, setAppliedDiscount] = useState(0);
+  const [couponError, setCouponError] = useState('');
+  const [appliedCode, setAppliedCode] = useState('');
+
+  useEffect(() => {
+    if (!isValidSession) return;
+
+    let endTime = localStorage.getItem('promo_end_time_30m');
+
+    if (!endTime) {
+      endTime = Date.now() + 30 * 60 * 1000;
+      localStorage.setItem('promo_end_time_30m', endTime.toString());
+    } else {
+      endTime = parseInt(endTime, 10);
+    }
+
+    const timerInterval = setInterval(() => {
+      const now = Date.now();
+      const distance = endTime - now;
+
+      if (distance <= 0) {
+        clearInterval(timerInterval);
+        setTimeLeft('00:00');
+        setIsExpired(true);
+        setItemPrice(ORIGINAL_PRICE_PER_ITEM);
+      } else {
+        const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+        const formattedMin = minutes < 10 ? `0${minutes}` : minutes;
+        const formattedSec = seconds < 10 ? `0${seconds}` : seconds;
+
+        setTimeLeft(`${formattedMin}:${formattedSec}`);
+        setIsExpired(false);
+        setItemPrice(BASE_PROMO_PRICE);
+      }
+    }, 1000);
+
+    return () => clearInterval(timerInterval);
+  }, [isValidSession]);
+
+  // === STEP 1: DATA PEMBELI ===
+  const [buyerName, setBuyerName] = useState('');
+  const [waNumber, setWaNumber] = useState('');
+  const [qty, setQty] = useState(1);
+  const [googleMapsUrl, setGoogleMapsUrl] = useState('');
+
+  // === STEP 2: ALAMAT PENGIRIMAN EMSIFA V2 ===
+  const [provinces, setProvinces] = useState([]);
+  const [regencies, setRegencies] = useState([]);
+  const [districts, setDistricts] = useState([]);
+  const [villages, setVillages] = useState([]);
+
+  const [selectedProvinceId, setSelectedProvinceId] = useState('');
+  const [selectedRegencyId, setSelectedRegencyId] = useState('');
+  const [selectedDistrictId, setSelectedDistrictId] = useState('');
+  
+  const [selectedProvinceName, setSelectedProvinceName] = useState('');
+  const [selectedRegencyName, setSelectedRegencyName] = useState('');
+  const [selectedDistrictName, setSelectedDistrictName] = useState('');
+  const [selectedVillageName, setSelectedVillageName] = useState('');
+  
+  const [postalCode, setPostalCode] = useState('');
+  const [streetAddress, setStreetAddress] = useState('');
+
+  // === SHIPPING & PRICING ===
+  const [loadingOngkir, setLoadingOngkir] = useState(false);
+  const [shippingOptions, setShippingOptions] = useState([]);
+  const [selectedCourier, setSelectedCourier] = useState(null);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [isFreeShipping, setIsFreeShipping] = useState(false);
+  const [loadingPay, setLoadingPay] = useState(false);
+
+  const currentQty = Math.max(1, parseInt(qty, 10) || 1);
+  const rawSubtotal = itemPrice * currentQty;
+  const finalSubtotal = Math.max(0, rawSubtotal - appliedDiscount);
+  const shippingCost = selectedCourier ? selectedCourier.cost : 0;
+  const totalAmount = finalSubtotal + shippingCost;
+
+  // FUNGSI CEK & GUNAKAN KODE PROMO
+  const handleApplyCoupon = async () => {
+    setCouponError('');
+    if (!couponInput.trim()) return;
+
+    try {
+      const res = await fetch('/api/coupons', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: couponInput })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setCouponError(data.error || 'Kode promo tidak valid.');
+        setAppliedDiscount(0);
+        setAppliedCode('');
+      } else {
+        setAppliedDiscount(data.discountAmount);
+        setAppliedCode(data.code);
+        setCouponError('');
+      }
+    } catch (err) {
+      setCouponError('Gagal memverifikasi kode promo.');
+    }
+  };
+
+  // === LOAD PROVINSI EMSIFA V2 ===
+  useEffect(() => {
+    if (!isValidSession) return;
+    fetch('https://www.emsifa.com/api-wilayah-indonesia/v2/provinces.json')
+      .then((res) => res.json())
+      .then((json) => setProvinces(json.data || []))
+      .catch((err) => console.error('Gagal load provinsi:', err));
+  }, [isValidSession]);
+
+  const handleProvinceChange = (e) => {
+    const provId = e.target.value;
+    setSelectedProvinceId(provId);
+    
+    const provObj = provinces.find((p) => p.id === provId);
+    setSelectedProvinceName(provObj ? provObj.name : '');
+
+    setSelectedRegencyId('');
+    setSelectedRegencyName('');
+    setSelectedDistrictId('');
+    setSelectedDistrictName('');
+    setSelectedVillageName('');
+    setPostalCode('');
+    setRegencies([]);
+    setDistricts([]);
+    setVillages([]);
+
+    if (provId) {
+      fetch(`https://www.emsifa.com/api-wilayah-indonesia/v2/regencies/${provId}.json`)
+        .then((res) => res.json())
+        .then((json) => setRegencies(json.data || []))
+        .catch((err) => console.error('Gagal load kab/kota:', err));
+    }
+  };
+
+  const handleRegencyChange = (e) => {
+    const regId = e.target.value;
+    setSelectedRegencyId(regId);
+    
+    const regObj = regencies.find((r) => r.id === regId);
+    setSelectedRegencyName(regObj ? regObj.name : '');
+
+    setSelectedDistrictId('');
+    setSelectedDistrictName('');
+    setSelectedVillageName('');
+    setPostalCode('');
+    setDistricts([]);
+    setVillages([]);
+
+    if (regId) {
+      fetch(`https://www.emsifa.com/api-wilayah-indonesia/v2/districts/${regId}.json`)
+        .then((res) => res.json())
+        .then((json) => setDistricts(json.data || []))
+        .catch((err) => console.error('Gagal load kecamatan:', err));
+    }
+  };
+
+  const handleDistrictChange = (e) => {
+    const distId = e.target.value;
+    setSelectedDistrictId(distId);
+    
+    const distObj = districts.find((d) => d.id === distId);
+    setSelectedDistrictName(distObj ? distObj.name : '');
+
+    setSelectedVillageName('');
+    setPostalCode('');
+    setVillages([]);
+
+    if (distId) {
+      fetch(`https://www.emsifa.com/api-wilayah-indonesia/v2/villages/${distId}.json`)
+        .then((res) => res.json())
+        .then((json) => setVillages(json.data || []))
+        .catch((err) => console.error('Gagal load kelurahan:', err));
+    }
+  };
+
+  const handleVillageChange = (e) => {
+    const villageName = e.target.value;
+    setSelectedVillageName(villageName);
+
+    const villageObj = villages.find((v) => v.name === villageName);
+    if (villageObj && villageObj.postal_code) {
+      setPostalCode(villageObj.postal_code);
+    } else {
+      setPostalCode('');
+    }
+  };
+
+  const handleCekOngkir = async () => {
+    if (!selectedRegencyName || !postalCode) {
+      setErrorMessage('Pilih wilayah lengkap dan kode pos terlebih dahulu.');
+      return;
+    }
+
+    setLoadingOngkir(true);
+    setErrorMessage('');
+    setShippingOptions([]);
+    setSelectedCourier(null);
+
+    try {
+      const res = await fetch('/api/shipping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          destinationPostalCode: postalCode,
+          destinationCityName: selectedRegencyName,
+          destinationDistrictName: selectedDistrictName,
+          qty: currentQty,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        setErrorMessage(data.error || 'Gagal menghitung ongkos kirim.');
+      } else {
+        setIsFreeShipping(data.isFreeShipping);
+        setShippingOptions(data.results || []);
+        if (data.results && data.results.length > 0) {
+          setSelectedCourier(data.results[0]);
+        }
+      }
+    } catch (err) {
+      setErrorMessage('Terjadi kesalahan koneksi ke server.');
+    } finally {
+      setLoadingOngkir(false);
+    }
+  };
+
+  const handleNextStep1 = (e) => {
+    e.preventDefault();
+    if (waNumber.length < 8) {
+      alert('Nomor WhatsApp wajib diisi minimal 8 digit!');
+      return;
+    }
+    setStep(2);
+  };
+
+  // === HANDLER PEMBAYARAN TRIPAY ===
+  const handlePay = async () => {
+    if (!selectedCourier || !streetAddress) {
+      alert('Lengkapi alamat dan pilih kurir terlebih dahulu.');
+      return;
+    }
+
+    setLoadingPay(true);
+
+    try {
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerName: buyerName,
+          customerPhone: waNumber,
+          shippingAddress: streetAddress,
+          destinationCity: `${selectedDistrictName}, ${selectedRegencyName}, ${selectedProvinceName}`,
+          postalCode: postalCode,
+          storeName: buyerName,
+          targetUrl: googleMapsUrl,
+          qty: currentQty,
+          courierName: selectedCourier.courierName,
+          shippingCost: shippingCost,
+          isExpiredPromo: isExpired,
+          discountAmount: appliedDiscount
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success || !data.checkoutUrl) {
+        alert(data.error || 'Gagal membuat transaksi pembayaran.');
+        setLoadingPay(false);
+        return;
+      }
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('last_customer_phone', waNumber);
+        if (data.orderId) {
+          localStorage.setItem('last_order_id', data.orderId);
+        }
+        
+        // PESAN SUKSES & MUNCULKAN MODAL KONFIRMASI MODERN
+        setSuccessOrderDetails({
+          orderId: data.orderId,
+          checkoutUrl: data.checkoutUrl, // Simpan Link Tripay
+          name: buyerName,
+          total: totalAmount,
+          qty: currentQty
+        });
+        setLoadingPay(false);
+        setShowSuccessModal(true);
+      }
+
+    } catch (err) {
+      alert('Terjadi kesalahan koneksi: ' + err.message);
+      setLoadingPay(false);
+    }
+  };
+
+  if (!isMounted || !isValidSession) return null;
+
+  const styles = {
+    pageContainer: {
+      minHeight: '100vh',
+      backgroundColor: '#f8fafc',
+      padding: '20px 12px',
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'flex-start',
+      boxSizing: 'border-box',
+    },
+    card: {
+      width: '100%',
+      maxWidth: '430px',
+      backgroundColor: '#ffffff',
+      borderRadius: '24px',
+      padding: '20px',
+      boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01)',
+      border: '1px solid #e2e8f0',
+      boxSizing: 'border-box',
+    },
+    topHeader: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: '12px',
+    },
+    backLink: {
+      color: '#64748b',
+      textDecoration: 'none',
+      fontSize: '13px',
+      fontWeight: '600',
+    },
+    trackLink: {
+      color: '#2563eb',
+      textDecoration: 'none',
+      fontSize: '12px',
+      fontWeight: '700',
+      backgroundColor: '#eff6ff',
+      padding: '4px 8px',
+      borderRadius: '8px',
+      border: '1px solid #bfdbfe'
+    },
+    badgePromo: {
+      backgroundColor: isExpired ? '#f1f5f9' : '#fef2f2',
+      color: isExpired ? '#64748b' : '#ef4444',
+      fontSize: '11px',
+      fontWeight: 'bold',
+      padding: '4px 10px',
+      borderRadius: '20px',
+      border: `1px solid ${isExpired ? '#cbd5e1' : '#fee2e2'}`,
+    },
+    timerBanner: {
+      backgroundColor: isExpired ? '#fef2f2' : '#fff5f5',
+      border: `1px solid ${isExpired ? '#fca5a5' : '#fed7d7'}`,
+      color: isExpired ? '#dc2626' : '#e53e3e',
+      borderRadius: '14px',
+      padding: '10px 14px',
+      fontSize: '13px',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: '20px',
+    },
+    stepperContainer: {
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: '12px',
+      marginBottom: '24px',
+    },
+    stepBox: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+      fontSize: '13px',
+      fontWeight: 'bold',
+    },
+    circleNumber: (active, isGreen) => ({
+      width: '26px',
+      height: '26px',
+      borderRadius: '50%',
+      backgroundColor: active ? (isGreen ? '#22c55e' : '#2563eb') : '#e2e8f0',
+      color: active ? '#ffffff' : '#94a3b8',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontSize: '12px',
+      fontWeight: 'bold',
+    }),
+    stepDivider: {
+      width: '32px',
+      height: '2px',
+      backgroundColor: '#cbd5e1',
+    },
+    formTitle: {
+      fontSize: '18px',
+      fontWeight: '800',
+      color: '#0f172a',
+      marginBottom: '16px',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    label: {
+      display: 'block',
+      fontSize: '13px',
+      fontWeight: '700',
+      color: '#334155',
+      marginBottom: '6px',
+    },
+    input: {
+      width: '100%',
+      padding: '12px 14px',
+      borderRadius: '12px',
+      border: '1.5px solid #cbd5e1',
+      fontSize: '14px',
+      color: '#0f172a',
+      outline: 'none',
+      boxSizing: 'border-box',
+      marginBottom: '14px',
+      backgroundColor: '#ffffff',
+    },
+    select: {
+      width: '100%',
+      padding: '12px 14px',
+      borderRadius: '12px',
+      border: '1.5px solid #cbd5e1',
+      fontSize: '14px',
+      color: '#0f172a',
+      outline: 'none',
+      boxSizing: 'border-box',
+      marginBottom: '14px',
+      backgroundColor: '#ffffff',
+    },
+    btnBlue: {
+      width: '100%',
+      backgroundColor: '#2563eb',
+      color: '#ffffff',
+      padding: '14px',
+      borderRadius: '14px',
+      border: 'none',
+      fontSize: '15px',
+      fontWeight: 'bold',
+      cursor: 'pointer',
+      boxShadow: '0 4px 12px rgba(37, 99, 235, 0.2)',
+    },
+    btnGreen: (disabled) => ({
+      width: '65%',
+      backgroundColor: disabled ? '#94a3b8' : '#16a34a',
+      color: '#ffffff',
+      padding: '14px',
+      borderRadius: '14px',
+      border: 'none',
+      fontSize: '15px',
+      fontWeight: 'bold',
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      boxShadow: disabled ? 'none' : '0 4px 12px rgba(22, 163, 74, 0.2)',
+    }),
+    summaryCard: {
+      backgroundColor: '#f8fafc',
+      borderRadius: '16px',
+      padding: '16px',
+      border: '1px solid #e2e8f0',
+      marginTop: '20px',
+    },
+    summaryRow: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      fontSize: '13px',
+      color: '#64748b',
+      marginBottom: '8px',
+    },
+    totalRow: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      fontSize: '16px',
+      fontWeight: 'bold',
+      color: '#0f172a',
+      borderTop: '1px dashed #cbd5e1',
+      paddingTop: '10px',
+      marginTop: '10px',
+    },
+  };
+
+  return (
+    <div style={styles.pageContainer}>
+      <div style={styles.card}>
+        
+        <div style={styles.topHeader}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <a href="/" style={styles.backLink}>← Utama</a>
+            <a href="/track" style={styles.trackLink}>📦 Lacak</a>
+          </div>
+          <div style={styles.badgePromo}>
+            {isExpired ? '⚠️ Waktu Promo Habis' : '🔥 PROMO SPESIAL'}
+          </div>
+        </div>
+
+        <div style={styles.timerBanner}>
+          <span style={{ fontWeight: '600' }}>
+            {isExpired ? '⚠️ Waktu Promo Habis (Harga Normal):' : '⏰ Promo Berakhir Dalam:'}
+          </span>
+          <span style={{ fontWeight: 'bold', fontFamily: 'monospace', fontSize: '15px' }}>
+            {timeLeft}
+          </span>
+        </div>
+
+        <div style={styles.stepperContainer}>
+          <div style={styles.stepBox}>
+            <div style={styles.circleNumber(true, true)}>1</div>
+            <span style={{ color: step === 1 ? '#0f172a' : '#64748b' }}>Data Pesanan</span>
+          </div>
+          <div style={styles.stepDivider}></div>
+          <div style={styles.stepBox}>
+            <div style={styles.circleNumber(step === 2, false)}>2</div>
+            <span style={{ color: step === 2 ? '#2563eb' : '#94a3b8' }}>Alamat & Ongkir</span>
+          </div>
+        </div>
+
+        {/* STEP 1 */}
+        {step === 1 && (
+          <form onSubmit={handleNextStep1}>
+            <div style={styles.formTitle}>Langkah 1: Data Pemesan</div>
+            
+            <label style={styles.label}>Nama Lengkap *</label>
+            <input
+              type="text"
+              required
+              placeholder="Masukkan nama Anda"
+              value={buyerName}
+              onChange={(e) => setBuyerName(e.target.value)}
+              style={styles.input}
+            />
+
+            <label style={styles.label}>Nomor WhatsApp (Min. 8 Digit) *</label>
+            <input
+              type="tel"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              minLength={8}
+              required
+              placeholder="Contoh: 08123456789"
+              value={waNumber}
+              onChange={(e) => setWaNumber(e.target.value.replace(/\D/g, ''))}
+              style={styles.input}
+            />
+
+            <label style={styles.label}>Jumlah Pesanan (Pcs) *</label>
+            <input
+              type="number"
+              min="1"
+              required
+              value={qty}
+              onChange={(e) => setQty(e.target.value)}
+              onBlur={() => {
+                if (qty === '' || parseInt(qty, 10) < 1) setQty(1);
+              }}
+              style={styles.input}
+            />
+
+            <label style={styles.label}>Link Google Maps Usaha (Opsional)</label>
+            <input
+              type="url"
+              placeholder="https://maps.google.com/..."
+              value={googleMapsUrl}
+              onChange={(e) => setGoogleMapsUrl(e.target.value)}
+              style={styles.input}
+            />
+
+            <button type="submit" style={styles.btnBlue}>
+              Lanjut ke Alamat ➔
+            </button>
+          </form>
+        )}
+
+        {/* STEP 2 */}
+        {step === 2 && (
+          <div>
+            <div style={styles.formTitle}>
+              <span>📍 Langkah 2: Alamat Pengiriman</span>
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+              >
+                ✏️ Edit Data Pemesan
+              </button>
+            </div>
+
+            <label style={styles.label}>Provinsi Tujuan *</label>
+            <select value={selectedProvinceId} onChange={handleProvinceChange} style={styles.select}>
+              <option value="">-- Pilih Provinsi --</option>
+              {provinces.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+
+            <label style={styles.label}>Kota / Kabupaten Tujuan *</label>
+            <select value={selectedRegencyId} onChange={handleRegencyChange} disabled={!regencies.length} style={styles.select}>
+              <option value="">-- Pilih Kota / Kabupaten --</option>
+              {regencies.map((r) => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </select>
+
+            <label style={styles.label}>Kecamatan Tujuan *</label>
+            <select value={selectedDistrictId} onChange={handleDistrictChange} disabled={!districts.length} style={styles.select}>
+              <option value="">-- Pilih Kecamatan --</option>
+              {districts.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+
+            <label style={styles.label}>Kelurahan / Desa *</label>
+            <select value={selectedVillageName} onChange={handleVillageChange} disabled={!villages.length} style={styles.select}>
+              <option value="">-- Pilih Kelurahan --</option>
+              {villages.map((v) => (
+                <option key={v.id} value={v.name}>
+                  {v.name} {v.postal_code ? `(Kode Pos: ${v.postal_code})` : ''}
+                </option>
+              ))}
+            </select>
+
+            <label style={styles.label}>Kode Pos *</label>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+              <input
+                type="text"
+                readOnly
+                placeholder="Otomatis terisi dari kelurahan"
+                value={postalCode}
+                style={{ ...styles.input, marginBottom: 0, flex: 1, backgroundColor: '#f1f5f9', fontWeight: 'bold' }}
+              />
+
+              <button
+                type="button"
+                onClick={handleCekOngkir}
+                disabled={loadingOngkir || !postalCode || !selectedRegencyName}
+                style={{
+                  backgroundColor: '#2563eb',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '12px',
+                  padding: '0 16px',
+                  fontWeight: 'bold',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  opacity: (loadingOngkir || !postalCode || !selectedRegencyName) ? 0.6 : 1,
+                }}
+              >
+                {loadingOngkir ? 'Memuat...' : '🔍 Cek Ongkir'}
+              </button>
+            </div>
+
+            <label style={styles.label}>Alamat Jalan / Patokan *</label>
+            <textarea
+              rows={2}
+              required
+              placeholder="Jln. Ahmad Yani No. 12, RT 05..."
+              value={streetAddress}
+              onChange={(e) => setStreetAddress(e.target.value)}
+              style={{ ...styles.input, height: 'auto', fontFamily: 'inherit' }}
+            />
+
+            {errorMessage && (
+              <div style={{ backgroundColor: '#fef2f2', color: '#dc2626', padding: '10px 14px', borderRadius: '12px', fontSize: '13px', border: '1px solid #fee2e2', marginBottom: '14px' }}>
+                ❌ Error: {errorMessage}
+              </div>
+            )}
+
+            {shippingOptions.length > 0 && (
+              <div style={{ marginBottom: '14px' }}>
+                <label style={styles.label}>Pilih Kurir Ekspedisi *</label>
+                <select
+                  value={selectedCourier ? selectedCourier.courierCode + selectedCourier.service : ''}
+                  onChange={(e) => {
+                    const found = shippingOptions.find((opt) => opt.courierCode + opt.service === e.target.value);
+                    if (found) setSelectedCourier(found);
+                  }}
+                  style={{ ...styles.select, backgroundColor: '#eff6ff', borderColor: '#bfdbfe', color: '#1e40af', fontWeight: 'bold' }}
+                >
+                  {shippingOptions.map((opt) => (
+                    <option key={opt.courierCode + opt.service} value={opt.courierCode + opt.service}>
+                      {opt.courierName} - Rp {opt.cost.toLocaleString('id-ID')} ({opt.etd})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* FORM INPUT KODE PROMO */}
+            <div style={{ padding: '14px', backgroundColor: '#f8fafc', borderRadius: '14px', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#334155', marginBottom: '6px' }}>
+                🎟️ Punya Kode Promo?
+              </label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="Masukkan kode promo"
+                  value={couponInput}
+                  onChange={(e) => setCouponInput(e.target.value)}
+                  style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', textTransform: 'uppercase' }}
+                />
+                <button
+                  type="button"
+                  onClick={handleApplyCoupon}
+                  style={{ backgroundColor: '#0f172a', color: '#ffffff', border: 'none', borderRadius: '8px', padding: '0 16px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}
+                >
+                  Gunakan
+                </button>
+              </div>
+              {couponError && <p style={{ fontSize: '11px', color: '#dc2626', marginTop: '6px', margin: 0, fontWeight: '600' }}>❌ {couponError}</p>}
+              {appliedDiscount > 0 && <p style={{ fontSize: '11px', color: '#16a34a', marginTop: '6px', margin: 0, fontWeight: 'bold' }}>🎉 Potongan Rp {appliedDiscount.toLocaleString('id-ID')} ({appliedCode}) berhasil diterapkan!</p>}
+            </div>
+
+            {/* RINGKASAN HARGA BERSIH & MODERN */}
+            <div style={styles.summaryCard}>
+              <div style={styles.summaryRow}>
+                <span>Harga Produk ({currentQty} Pcs):</span>
+                <div>
+                  {!isExpired && (
+                    <span style={{ textDecoration: 'line-through', color: '#94a3b8', marginRight: '6px', fontSize: '12px' }}>
+                      Rp {(ORIGINAL_PRICE_PER_ITEM * currentQty).toLocaleString('id-ID')}
+                    </span>
+                  )}
+                  <strong style={{ color: isExpired ? '#0f172a' : '#16a34a' }}>
+                    Rp {rawSubtotal.toLocaleString('id-ID')}
+                  </strong>
+                </div>
+              </div>
+
+              {appliedDiscount > 0 && (
+                <div style={{ ...styles.summaryRow, color: '#16a34a', fontWeight: 'bold' }}>
+                  <span>Potongan Promo ({appliedCode}):</span>
+                  <span>- Rp {appliedDiscount.toLocaleString('id-ID')}</span>
+                </div>
+              )}
+
+              <div style={styles.summaryRow}>
+                <span>Ongkos Kirim:</span>
+                <span style={{ fontWeight: '500', color: '#334155' }}>
+                  {isFreeShipping ? 'FREE (Lokal Samarinda)' : `Rp ${shippingCost.toLocaleString('id-ID')}`}
+                </span>
+              </div>
+              
+              <div style={styles.totalRow}>
+                <span>Total Bayar:</span>
+                <span style={{ color: '#16a34a', fontSize: '17px' }}>
+                  Rp {totalAmount.toLocaleString('id-ID')}
+                </span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                style={{
+                  width: '35%',
+                  backgroundColor: '#ffffff',
+                  border: '1.5px solid #cbd5e1',
+                  color: '#475569',
+                  padding: '14px',
+                  borderRadius: '14px',
+                  fontWeight: 'bold',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                }}
+              >
+                ← Kembali
+              </button>
+              
+              <button
+                type="button"
+                onClick={handlePay}
+                disabled={!selectedCourier || !streetAddress || loadingPay}
+                style={styles.btnGreen(!selectedCourier || !streetAddress || loadingPay)}
+              >
+                {loadingPay ? 'Memproses...' : '💳 Lanjut Bayar'}
+              </button>
+            </div>
+
+          </div>
+        )}
+
+      </div>
+
+      {/* MODAL POP-UP MODERN KONFIRMASI PEMBAYARAN */}
+      {showSuccessModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.75)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 999,
+          padding: '16px'
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '24px',
+            padding: '28px 24px',
+            maxWidth: '380px',
+            width: '100%',
+            textAlign: 'center',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            border: '1px solid #e2e8f0'
+          }}>
+            <div style={{ fontSize: '48px', marginBottom: '12px' }}>🧾</div>
+            <h2 style={{ fontSize: '20px', fontWeight: '800', color: '#0f172a', margin: '0 0 6px 0' }}>
+              Pesanan Berhasil Dibuat!
+            </h2>
+            <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 20px 0', lineHeight: '1.4' }}>
+              Data pesanan Anda telah tersimpan. Silakan lanjutkan untuk melakukan pembayaran.
+            </p>
+
+            <div style={{
+              backgroundColor: '#f8fafc',
+              borderRadius: '16px',
+              padding: '16px',
+              border: '1.5px dashed #cbd5e1',
+              marginBottom: '20px',
+              textAlign: 'left',
+              fontSize: '13px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ color: '#64748b' }}>Order ID:</span>
+                <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>{successOrderDetails.orderId}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ color: '#64748b' }}>Pemesan:</span>
+                <strong style={{ color: '#0f172a' }}>{successOrderDetails.name}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ color: '#64748b' }}>Jumlah:</span>
+                <strong style={{ color: '#0f172a' }}>{successOrderDetails.qty} Pcs</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e2e8f0', paddingTop: '8px', marginTop: '4px' }}>
+                <span style={{ color: '#64748b' }}>Total Tagihan:</span>
+                <strong style={{ color: '#16a34a', fontSize: '14px' }}>
+                  Rp {(successOrderDetails.total || 0).toLocaleString('id-ID')}
+                </strong>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <button
+                onClick={() => window.location.href = successOrderDetails.checkoutUrl}
+                style={{
+                  width: '100%',
+                  backgroundColor: '#16a34a',
+                  color: '#ffffff',
+                  padding: '14px',
+                  borderRadius: '12px',
+                  border: 'none',
+                  fontWeight: 'bold',
+                  fontSize: '15px',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(22, 163, 74, 0.2)'
+                }}
+              >
+                💳 Bayar Sekarang
+              </button>
+
+              <button
+                onClick={() => window.location.href = '/track'}
+                style={{
+                  width: '100%',
+                  backgroundColor: '#ffffff',
+                  color: '#0f172a',
+                  padding: '12px',
+                  borderRadius: '12px',
+                  border: '1.5px solid #cbd5e1',
+                  fontWeight: 'bold',
+                  fontSize: '13px',
+                  cursor: 'pointer'
+                }}
+              >
+                📦 Nanti Saja / Cek Status Pesanan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
