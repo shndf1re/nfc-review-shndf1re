@@ -5,6 +5,13 @@ export const dynamic = 'force-dynamic';
 import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import Link from 'next/link';
+import {
+  Wallet, Package, ShoppingBag, TrendingUp, Banknote, RefreshCw, Lock, Plus, Ticket, Trash2, Truck, Pencil, Check, X,
+  CalendarDays, Search, Globe, Store, StickyNote, AlertTriangle, MessageCircle, Filter, Receipt,
+} from 'lucide-react';
+import {
+  PageContainer, PageHeader, Panel, KpiCard, Pill, Field, TextInput, SelectInput, Btn, Modal, PinField, useToast, EmptyState, Skeleton, Th, Td, formatRupiah, formatRupiahCompact,
+} from '@/components/admin/kit';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -72,6 +79,9 @@ export default function SalesPage() {
   const [newCouponCode, setNewCouponCode] = useState('');
   const [newDiscountAmount, setNewDiscountAmount] = useState('');
   const [couponStatusMsg, setCouponStatusMsg] = useState('');
+  const { showToast, ToastViewport } = useToast();
+  const [historyQuery, setHistoryQuery] = useState('');
+  const [historyStatus, setHistoryStatus] = useState('all');
 
   // === CEK SESSION & ROLE VIA HTTPONLY COOKIE (/api/auth/me) ===
   useEffect(() => {
@@ -131,9 +141,11 @@ export default function SalesPage() {
     }]);
 
     if (error) {
-      setCouponStatusMsg('❌ Gagal: ' + error.message);
+      setCouponStatusMsg('');
+      showToast('Gagal: ' + error.message, 'error');
     } else {
-      setCouponStatusMsg('✅ Kode promo berhasil ditambahkan!');
+      setCouponStatusMsg('');
+      showToast('Kode promo berhasil ditambahkan.');
       setNewCouponCode('');
       setNewDiscountAmount('');
       fetchCoupons();
@@ -142,7 +154,9 @@ export default function SalesPage() {
 
   const handleDeleteCoupon = async (id) => {
     if (userRole !== 'super_admin') return;
-    await supabase.from('coupons').delete().eq('id', id);
+    const { error } = await supabase.from('coupons').delete().eq('id', id);
+    if (error) showToast('Gagal hapus kupon: ' + error.message, 'error');
+    else showToast('Kode promo dihapus.', 'error');
     fetchCoupons();
   };
 
@@ -286,7 +300,8 @@ export default function SalesPage() {
     const qtyNumber = parseInt(quantity, 10) || 1;
 
     if (acrylicStock <= 0 || qtyNumber > acrylicStock) {
-      setSubmitStatus('❌ Stok Akrilik tidak mencukupi!');
+      setSubmitStatus('Stok Akrilik tidak mencukupi!');
+      showToast('Stok Akrilik tidak mencukupi!', 'error');
       return;
     }
 
@@ -311,7 +326,8 @@ export default function SalesPage() {
     }
 
     if (saleError) {
-      setSubmitStatus('❌ Gagal mencatat: ' + saleError.message);
+      setSubmitStatus('');
+      showToast('Gagal mencatat: ' + saleError.message, 'error');
       return;
     }
 
@@ -331,9 +347,11 @@ export default function SalesPage() {
       .eq('id', targetInventoryId);
 
     if (stockUpdateErr) {
-      setSubmitStatus('⚠️ Transaksi tercatat, tetapi gagal memotong stok: ' + stockUpdateErr.message);
+      setSubmitStatus('');
+      showToast('Transaksi tercatat, tetapi gagal memotong stok: ' + stockUpdateErr.message, 'error');
     } else {
-      setSubmitStatus('✅ Penjualan berhasil dicatat & stok terpotong!');
+      setSubmitStatus('');
+      showToast('Penjualan berhasil dicatat & stok terpotong.');
       setAcrylicStock(newStock);
     }
 
@@ -374,17 +392,18 @@ export default function SalesPage() {
       .eq('id', sale.primary_id);
 
     if (error) {
-      setResiModal(prev => ({ ...prev, isSaving: false, errorMsg: '❌ Gagal simpan resi: ' + error.message }));
+      setResiModal(prev => ({ ...prev, isSaving: false, errorMsg: 'Gagal simpan resi: ' + error.message }));
       return;
     }
 
     setResiModal({ isOpen: false, orderData: null, resiInput: '', errorMsg: '', isSaving: false });
+    showToast('Nomor resi tersimpan · status jadi Sedang Dikirim.');
     fetchData();
   };
 
   const openUpdateStockModal = () => {
     if (userRole !== 'super_admin') {
-      alert("Hanya Super Admin yang bisa mengupdate stok secara manual.");
+      showToast("Hanya Super Admin yang bisa mengupdate stok secara manual.", "error");
       return;
     }
     setModalState({ isOpen: true, actionType: 'updateStock', targetData: null, stockInput: acrylicStock.toString(), pinInput: '', errorMsg: '', isVerifying: false });
@@ -392,7 +411,7 @@ export default function SalesPage() {
 
   const openDeleteSaleModal = (sale) => {
     if (userRole !== 'super_admin') {
-      alert("Hanya Super Admin yang bisa menghapus data transaksi.");
+      showToast("Hanya Super Admin yang bisa menghapus data transaksi.", "error");
       return;
     }
     setModalState({ isOpen: true, actionType: 'delete', targetData: sale, stockInput: '', pinInput: '', errorMsg: '', isVerifying: false });
@@ -410,7 +429,7 @@ export default function SalesPage() {
     if (modalState.actionType === 'updateStock') {
       newStockVal = parseInt(modalState.stockInput, 10);
       if (isNaN(newStockVal) || newStockVal < 0) {
-        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Jumlah stok harus berupa angka positif!' }));
+        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: 'Jumlah stok harus berupa angka positif.' }));
         return;
       }
     }
@@ -419,8 +438,10 @@ export default function SalesPage() {
       input_pin: modalState.pinInput.trim()
     });
 
-    if (pinError || !isValidPin) {
-      setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ PIN Admin Salah / Error!' }));
+    // RPC mengembalikan array [{ is_valid, user_role }] — cek is_valid, bukan sekadar truthy
+    const pinOk = Array.isArray(isValidPin) ? isValidPin[0]?.is_valid === true : isValidPin === true;
+    if (pinError || !pinOk) {
+      setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: 'PIN Admin salah atau tidak valid.' }));
       return;
     }
 
@@ -437,7 +458,7 @@ export default function SalesPage() {
         .select();
 
       if (updateErr || !updatedRows || updatedRows.length === 0) {
-        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Gagal update stok di database!' }));
+        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: 'Gagal update stok di database.' }));
         return;
       }
 
@@ -454,7 +475,7 @@ export default function SalesPage() {
         .eq('id', sale.primary_id);
 
       if (delErr) {
-        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Error Supabase: ' + delErr.message }));
+        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: 'Error Supabase: ' + delErr.message }));
         return;
       }
 
@@ -472,12 +493,14 @@ export default function SalesPage() {
         .eq('id', sale.primary_id);
       
       if (statusErr) {
-        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: '❌ Gagal Status: ' + statusErr.message }));
+        setModalState(prev => ({ ...prev, isVerifying: false, errorMsg: 'Gagal update status: ' + statusErr.message }));
         return;
       }
       setEditingSaleId(null);
     }
 
+    const doneMsg = modalState.actionType === 'updateStock' ? 'Stok berhasil diperbarui.' : modalState.actionType === 'delete' ? 'Transaksi dihapus & stok dikembalikan.' : 'Status transaksi diperbarui.';
+    showToast(doneMsg, modalState.actionType === 'delete' ? 'error' : 'success');
     setModalState({ isOpen: false, actionType: null, targetData: null, stockInput: '', pinInput: '', errorMsg: '', isVerifying: false });
     fetchData();
   };
@@ -504,369 +527,318 @@ export default function SalesPage() {
       return acc + subtotalBarang;
     }, 0);
 
+  const PAID = ['Lunas', 'Sedang Dikirim', 'Selesai'];
+  const STATUS_OPTIONS = ['Lunas', 'Sedang Dikirim', 'Selesai', 'DP 50%', 'Belum Bayar'];
+  const STATUS_TONE = { Selesai: 'green', Lunas: 'green', 'Sedang Dikirim': 'sky', 'DP 50%': 'amber', 'Belum Bayar': 'red' };
+  const isSuper = userRole === 'super_admin';
+  const EMPTY_MODAL = { isOpen: false, actionType: null, targetData: null, stockInput: '', pinInput: '', errorMsg: '', isVerifying: false };
+  const fmtDate = (d) => new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+  const periodLabel = startDate && endDate
+    ? `${fmtDate(startDate)} – ${fmtDate(endDate)}`
+    : selectedMonth ? new Date(`${selectedMonth}-01T00:00:00`).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }) : 'Semua';
+
   if (authChecking || !isAuthenticated) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'sans-serif' }}>
-        <p style={{ color: '#64748b', fontSize: '14px', fontWeight: 'bold' }}>🔒 Memeriksa Hak Akses Admin...</p>
-      </div>
+      <PageContainer>
+        <Skeleton className="h-10 w-64" />
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-28" />)}</div>
+        <Skeleton className="h-80" />
+      </PageContainer>
     );
   }
 
+  const filteredHistory = salesHistory.filter((s) => {
+    const q = historyQuery.toLowerCase();
+    const matchQ = !q || (s.customer_name || '').toLowerCase().includes(q) || String(s.id || '').toLowerCase().includes(q) || (s.resi_number || '').toLowerCase().includes(q);
+    const matchS = historyStatus === 'all' ? true : historyStatus === 'paid' ? PAID.includes(s.payment_status) : !PAID.includes(s.payment_status);
+    return matchQ && matchS;
+  });
+  const paidCount = salesHistory.filter((s) => PAID.includes(s.payment_status)).length;
+
+  const StatusCell = ({ sale }) => (
+    editingSaleId === sale.primary_id ? (
+      <div className="flex items-center gap-1">
+        <SelectInput value={selectedNewStatus} onChange={(e) => setSelectedNewStatus(e.target.value)} className="h-8 w-[140px] text-xs sm:text-xs">
+          {STATUS_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+        </SelectInput>
+        <Btn size="icon" variant="success" title="Simpan" onClick={() => openUpdateStatusModal(sale)}><Check /></Btn>
+        <Btn size="icon" variant="ghost" title="Batal" onClick={() => setEditingSaleId(null)}><X /></Btn>
+      </div>
+    ) : (
+      <button onClick={() => { setEditingSaleId(sale.primary_id); setSelectedNewStatus(sale.payment_status); }} className="group inline-flex items-center gap-1" title="Ubah status">
+        <Pill tone={STATUS_TONE[sale.payment_status] || 'slate'} dot>{sale.payment_status}</Pill>
+        <Pencil className="h-3 w-3 text-muted-foreground opacity-60 group-hover:opacity-100" />
+      </button>
+    )
+  );
+
+  const SaleActions = ({ sale }) => (
+    <div className="flex items-center justify-end gap-0.5">
+      <Btn size="sm" variant="outline" onClick={() => openResiModal(sale)} data-testid={`resi-${sale.primary_id}`}><Truck /> {sale.resi_number ? 'Edit Resi' : 'Input Resi'}</Btn>
+      {isSuper && <Btn size="icon" variant="danger-soft" title="Hapus transaksi" onClick={() => openDeleteSaleModal(sale)}><Trash2 /></Btn>}
+    </div>
+  );
+
   return (
-    <div style={{ maxWidth: '600px', margin: '0 auto', padding: '24px 16px', fontFamily: '-apple-system, sans-serif' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <div>
-          <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '700' }}>💰 Laporan Penjualan</h2>
-          <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>
-            Login sebagai: <strong style={{ color: userRole === 'super_admin' ? '#2563eb' : '#16a34a' }}>{userRole === 'super_admin' ? 'Super Admin' : 'Admin Staff'}</strong>
-          </p>
-        </div>
-        <Link href="/admin" style={{ padding: '8px 14px', backgroundColor: '#2563eb', color: '#fff', textDecoration: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '600' }}>
-          ⬅️ Dashboard
-        </Link>
+    <PageContainer>
+      <PageHeader
+        icon={Wallet}
+        eyebrow={isSuper ? 'Super Admin' : 'Staff Admin'}
+        title="Laporan Penjualan"
+        description={`Order web & penjualan offline · Periode ${periodLabel}`}
+        actions={
+          <>
+            <Btn variant="outline" onClick={fetchData} data-testid="sales-refresh"><RefreshCw /> Refresh</Btn>
+            {isSuper && <Btn variant="gradient" onClick={openUpdateStockModal} data-testid="update-stock-btn"><Lock /> Update Stok</Btn>}
+          </>
+        }
+      />
+
+      {/* KPI */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        <KpiCard testId="kpi-stock" label="Stok Papan Akrilik" value={acrylicStock} suffix="pcs" icon={Package} tone={acrylicStock <= 5 ? 'rose' : 'amber'} hint={acrylicStock <= 5 ? 'Stok menipis — segera restock' : 'Stok aman'} hintTone={acrylicStock <= 5 ? 'bad' : 'good'} />
+        <KpiCard testId="kpi-sold" label="Papan Terjual" value={loading ? '—' : totalPapanTerjual} suffix="pcs" icon={ShoppingBag} tone="indigo" hint={`${salesHistory.length} transaksi · ${paidCount} lunas`} />
+        <KpiCard testId="kpi-profit" label="Keuntungan Murni" value={loading ? '—' : formatRupiahCompact(totalKeuntunganLunas)} icon={TrendingUp} tone="emerald" hint="Lunas, tidak termasuk ongkir" />
+        <KpiCard testId="kpi-bruto" label="Kas Masuk Bruto" value={loading ? '—' : formatRupiahCompact(totalBrutoLunas)} icon={Banknote} tone="violet" hint={`Ongkir titipan ${formatRupiah(totalOngkirCollected)}`} />
       </div>
 
-      <div style={{ backgroundColor: '#ffffff', padding: '18px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '600', display: 'block' }}>📦 Stok Papan Akrilik</span>
-          <strong style={{ fontSize: '26px', color: acrylicStock <= 5 ? '#dc2626' : '#0f172a' }}>
-            {acrylicStock} <span style={{ fontSize: '14px', fontWeight: '500', color: '#64748b' }}>pcs</span>
-          </strong>
-        </div>
-        {userRole === 'super_admin' && (
-          <button onClick={openUpdateStockModal} style={{ padding: '10px 16px', fontSize: '12px', backgroundColor: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '10px', cursor: 'pointer', fontWeight: '600' }}>
-            🔒 Update Stok
-          </button>
-        )}
-      </div>
-
-      {/* MANAJEMEN KODE PROMO - HANYA SUPER ADMIN */}
-      {userRole === 'super_admin' && (
-        <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
-          <h3 style={{ margin: '0 0 16px 0', fontSize: '15px', fontWeight: '700' }}>🎟️ Kelola Kode Promo / Diskon (Flat Rp)</h3>
-          
-          <form onSubmit={handleAddCoupon} style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-            <input 
-              type="text" 
-              required 
-              placeholder="Kode (misal: DISKON40K)" 
-              value={newCouponCode} 
-              onChange={(e) => setNewCouponCode(e.target.value)} 
-              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }} 
-            />
-            <input 
-              type="number" 
-              required 
-              placeholder="Potongan Rp" 
-              value={newDiscountAmount} 
-              onChange={(e) => setNewDiscountAmount(e.target.value)} 
-              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }} 
-            />
-            <button type="submit" style={{ padding: '10px 16px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}>
-              + Tambah
-            </button>
-          </form>
-          {couponStatusMsg && <p style={{ fontSize: '12px', textAlign: 'center', marginBottom: '12px', fontWeight: 'bold', color: couponStatusMsg.startsWith('❌') ? '#dc2626' : '#16a34a' }}>{couponStatusMsg}</p>}
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {couponsList.map((c) => (
-              <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #f1f5f9' }}>
-                <div>
-                  <strong style={{ color: '#2563eb', fontFamily: 'monospace', fontSize: '14px' }}>{c.code}</strong>
-                  <span style={{ marginLeft: '10px', fontSize: '12px', color: '#16a34a', fontWeight: 'bold' }}>- Rp {parseFloat(c.discount_amount).toLocaleString('id-ID')}</span>
-                </div>
-                <button onClick={() => handleDeleteCoupon(c.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>🗑️ Hapus</button>
-              </div>
-            ))}
-            {couponsList.length === 0 && <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0, textAlign: 'center' }}>Belum ada kode promo aktif.</p>}
-          </div>
+      {totalPiutang > 0 && (
+        <div className="flex items-center gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300" data-testid="piutang-banner">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>Belum dilunasi / piutang periode ini: <b>{formatRupiah(totalPiutang)}</b></span>
         </div>
       )}
 
-      {/* FORM INPUT MANUAL */}
-      <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
-        <h3 style={{ margin: '0 0 16px 0', fontSize: '15px', fontWeight: '700' }}>➕ Input Penjualan Manual (Offline)</h3>
-        <form onSubmit={handleAddSale} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <input type="text" required placeholder="Nama Pembeli / Toko" value={customerName} onChange={(e) => setCustomerName(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <input type="number" min="1" max={acrylicStock} required value={quantity} onChange={(e) => setQuantity(e.target.value)} style={{ flex: 1, padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
-            <input type="number" required placeholder="Total Harga Jual (Rp)" value={totalPrice} onChange={(e) => setTotalPrice(e.target.value)} style={{ flex: 2, padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
-          </div>
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <input type="text" placeholder="ID Akrilik / NFC (Opsional)" value={deviceId} onChange={(e) => setDeviceId(e.target.value)} style={{ flex: 1, padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
-            <select value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)} style={{ flex: 1, padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#fff', boxSizing: 'border-box' }}>
-              <option value="Lunas">✅ Lunas</option>
-              <option value="Sedang Dikirim">🚚 Sedang Dikirim</option>
-              <option value="Selesai">🎉 Selesai</option>
-              <option value="DP 50%">⏳ DP 50%</option>
-              <option value="Belum Bayar">❌ Belum Bayar</option>
-            </select>
-          </div>
-          <input type="text" placeholder="Catatan Transaksi" value={notes} onChange={(e) => setNotes(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
-          <button type="submit" disabled={acrylicStock <= 0} style={{ padding: '12px', backgroundColor: acrylicStock <= 0 ? '#94a3b8' : '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '700', fontSize: '14px', cursor: acrylicStock <= 0 ? 'not-allowed' : 'pointer' }}>
-            {acrylicStock <= 0 ? '❌ Stok Akrilik Habis' : '💾 Simpan Penjualan'}
-          </button>
-        </form>
-        {submitStatus && <p style={{ marginTop: '12px', fontSize: '12px', color: submitStatus.startsWith('❌') ? '#dc2626' : '#2563eb', textAlign: 'center', fontWeight: '600' }}>{submitStatus}</p>}
-      </div>
-
       {/* FILTER PERIODE */}
-      <div style={{ backgroundColor: '#ffffff', padding: '16px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
-        <h3 style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: '700' }}>🔍 Filter Periode Income</h3>
-        <div style={{ marginBottom: '12px' }}>
-          <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b', display: 'block', marginBottom: '4px' }}>Pilih Bulan & Tahun:</label>
-          <input type="month" value={selectedMonth} onChange={(e) => { setSelectedMonth(e.target.value); setStartDate(''); setEndDate(''); }} style={{ width: '100%', padding: '8px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }} />
-        </div>
-        <form onSubmit={handleFilterCustomDate} style={{ borderTop: '1px dashed #e2e8f0', paddingTop: '10px' }}>
-          <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b', display: 'block', marginBottom: '4px' }}>Atau Cari Tanggal Spesifik:</label>
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12px' }} />
-            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12px' }} />
-          </div>
-          <div style={{ display: 'flex', gap: '6px' }}>
-            <button type="submit" style={{ flex: 2, padding: '8px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>Cari Tanggal</button>
-            <button type="button" onClick={resetFilter} style={{ flex: 1, padding: '8px', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>Reset</button>
-          </div>
-        </form>
-      </div>
-
-      {/* KARTU STATISTIK */}
-      <div style={{ backgroundColor: '#ffffff', padding: '16px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
-        <div style={{ backgroundColor: '#f8fafc', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-          
-          <div style={{ gridColumn: 'span 2', paddingBottom: '8px', borderBottom: '1px dashed #cbd5e1' }}>
-            <span style={{ fontSize: '10px', color: '#64748b', fontWeight: '600', display: 'block' }}>🏷️ Total Papan Terjual</span>
-            <strong style={{ fontSize: '16px', color: '#0f172a' }}>{totalPapanTerjual} <span style={{ fontSize: '12px', fontWeight: '500', color: '#64748b' }}>pcs</span></strong>
-          </div>
-
-          <div>
-            <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: '700', display: 'block' }}>💰 Keuntungan Murni (Lunas)</span>
-            <strong style={{ fontSize: '15px', color: '#16a34a' }}>Rp {totalKeuntunganLunas.toLocaleString('id-ID')}</strong>
-            <span style={{ fontSize: '9px', color: '#64748b', display: 'block', marginTop: '2px' }}>*Tidak termasuk ongkir</span>
-          </div>
-
-          <div>
-            <span style={{ fontSize: '10px', color: '#64748b', fontWeight: '600', display: 'block' }}>🚚 Biaya Ongkir Ekspedisi</span>
-            <strong style={{ fontSize: '14px', color: '#475569' }}>Rp {totalOngkirCollected.toLocaleString('id-ID')}</strong>
-            <span style={{ fontSize: '9px', color: '#64748b', display: 'block', marginTop: '2px' }}>*Titipan ekspedisi</span>
-          </div>
-
-          <div style={{ gridColumn: 'span 2', borderTop: '1px dashed #cbd5e1', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', color: '#334155', fontWeight: '600' }}>💵 Total Kas Masuk Bruto:</span>
-            <strong style={{ fontSize: '13px', color: '#0f172a' }}>Rp {totalBrutoLunas.toLocaleString('id-ID')}</strong>
-          </div>
-
-          {totalPiutang > 0 && (
-            <div style={{ gridColumn: 'span 2', borderTop: '1px dashed #cbd5e1', paddingTop: '6px' }}>
-              <span style={{ fontSize: '10px', color: '#dc2626', fontWeight: '600' }}>⏳ Belum Dilunasi / Piutang: </span>
-              <strong style={{ fontSize: '12px', color: '#dc2626' }}>Rp {totalPiutang.toLocaleString('id-ID')}</strong>
+      <Panel bodyClassName="p-4 sm:p-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+          <Field label="Bulan & Tahun" className="lg:w-52">
+            <TextInput type="month" value={selectedMonth} onChange={(e) => { setSelectedMonth(e.target.value); setStartDate(''); setEndDate(''); }} data-testid="filter-month" />
+          </Field>
+          <div className="hidden lg:block pb-2.5 text-xs font-medium text-muted-foreground">atau</div>
+          <form onSubmit={handleFilterCustomDate} className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="grid flex-1 grid-cols-2 gap-3">
+              <Field label="Dari tanggal" className="min-w-0"><TextInput type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></Field>
+              <Field label="Sampai tanggal" className="min-w-0"><TextInput type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></Field>
             </div>
+            <div className="flex gap-2">
+              <Btn type="submit" className="flex-1 sm:flex-none"><CalendarDays /> Cari Tanggal</Btn>
+              <Btn type="button" variant="outline" onClick={resetFilter}>Reset</Btn>
+            </div>
+          </form>
+        </div>
+      </Panel>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:items-start">
+        {/* LEFT: form + kupon */}
+        <div className="space-y-4 min-w-0">
+          <Panel title="Input Penjualan Manual" description="Transaksi offline · stok otomatis terpotong" actions={<Store className="h-4 w-4 text-primary" />}>
+            <form onSubmit={handleAddSale} className="space-y-3" data-testid="sale-form">
+              <Field label="Nama Pembeli / Toko"><TextInput required placeholder="Contoh: Kopi Senja" value={customerName} onChange={(e) => setCustomerName(e.target.value)} data-testid="sale-customer" /></Field>
+              <div className="grid grid-cols-3 gap-3">
+                <Field label="Qty"><TextInput type="number" min="1" max={acrylicStock} required value={quantity} onChange={(e) => setQuantity(e.target.value)} data-testid="sale-qty" /></Field>
+                <Field label="Total Harga (Rp)" className="col-span-2"><TextInput type="number" required placeholder="50000" value={totalPrice} onChange={(e) => setTotalPrice(e.target.value)} data-testid="sale-price" /></Field>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="ID Kartu (opsional)"><TextInput placeholder="NFC-xxxx" value={deviceId} onChange={(e) => setDeviceId(e.target.value)} /></Field>
+                <Field label="Status">
+                  <SelectInput value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)} data-testid="sale-status">
+                    {STATUS_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                  </SelectInput>
+                </Field>
+              </div>
+              <Field label="Catatan"><TextInput placeholder="Catatan transaksi" value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
+              {submitStatus && <p className="rounded-lg bg-muted px-3 py-2 text-xs font-medium text-muted-foreground">{submitStatus}</p>}
+              <Btn type="submit" variant={acrylicStock <= 0 ? 'secondary' : 'success'} className="w-full" disabled={acrylicStock <= 0} data-testid="sale-submit">
+                {acrylicStock <= 0 ? <><Package /> Stok Akrilik Habis</> : <><Plus /> Simpan Penjualan</>}
+              </Btn>
+            </form>
+          </Panel>
+
+          {isSuper && (
+            <Panel title="Kode Promo" description="Diskon flat (Rp) untuk checkout web" actions={<Ticket className="h-4 w-4 text-violet-500" />}>
+              <form onSubmit={handleAddCoupon} className="grid grid-cols-2 gap-2" data-testid="coupon-form">
+                <TextInput required placeholder="DISKON40K" value={newCouponCode} onChange={(e) => setNewCouponCode(e.target.value)} className="font-mono uppercase" data-testid="coupon-code" />
+                <TextInput type="number" required placeholder="Potongan Rp" value={newDiscountAmount} onChange={(e) => setNewDiscountAmount(e.target.value)} data-testid="coupon-amount" />
+                <Btn type="submit" variant="outline" className="col-span-2" loading={couponStatusMsg === 'Menyimpan...'}><Plus /> Tambah Kode Promo</Btn>
+              </form>
+              <div className="mt-4 space-y-2">
+                {couponsList.map((c) => (
+                  <div key={c.id} className="flex items-center justify-between gap-2 rounded-xl border border-dashed border-violet-300 bg-violet-50/60 px-3 py-2.5 dark:border-violet-500/30 dark:bg-violet-500/5">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Ticket className="h-4 w-4 shrink-0 text-violet-500" />
+                      <span className="truncate font-mono text-sm font-bold text-violet-700 dark:text-violet-300">{c.code}</span>
+                      <Pill tone="green">- {formatRupiah(c.discount_amount)}</Pill>
+                    </div>
+                    <Btn size="icon" variant="danger-soft" title="Hapus" onClick={() => handleDeleteCoupon(c.id)}><Trash2 /></Btn>
+                  </div>
+                ))}
+                {couponsList.length === 0 && <p className="py-3 text-center text-xs text-muted-foreground">Belum ada kode promo aktif.</p>}
+              </div>
+            </Panel>
           )}
         </div>
 
-        {/* DAFTAR TRANSAKSI */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-          <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '700' }}>Riwayat Transaksi ({salesHistory.length})</h3>
-          <button onClick={fetchData} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>🔄 Refresh</button>
-        </div>
-
-        {loading ? (
-          <p style={{ textAlign: 'center', color: '#64748b', fontSize: '13px' }}>Memuat data...</p>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {salesHistory.map((sale) => {
-              const subtotalBarang = sale.total_price - sale.shipping_cost;
-
-              return (
-                <div key={`${sale.source}-${sale.primary_id}`} style={{ padding: '12px', borderRadius: '10px', border: '1px solid #f1f5f9', backgroundColor: '#f8fafc' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <div>
-                      <strong style={{ fontSize: '14px' }}>{sale.customer_name}</strong>
-                      {sale.source === 'online' && (
-                        <span style={{ marginLeft: '6px', fontSize: '10px', backgroundColor: '#eff6ff', color: '#2563eb', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
-                          WEB ONLINE
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <span style={{ fontSize: '13px', fontWeight: '700', color: '#16a34a', display: 'block' }}>
-                        Rp {subtotalBarang.toLocaleString('id-ID')}
-                      </span>
-                      {sale.shipping_cost > 0 && (
-                        <span style={{ fontSize: '10px', color: '#64748b' }}>
-                          + Ongkir: Rp {sale.shipping_cost.toLocaleString('id-ID')}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: '#64748b' }}>
-                    <span>
-                      📅 {new Date(sale.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} | Qty: {sale.quantity} Pcs
-                    </span>
-                    
-                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                      <button
-                        onClick={() => openResiModal(sale)}
-                        style={{
-                          backgroundColor: '#2563eb',
-                          color: '#fff',
-                          border: 'none',
-                          padding: '2px 8px',
-                          borderRadius: '6px',
-                          fontSize: '10px',
-                          fontWeight: 'bold',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        🚚 {sale.resi_number ? 'Edit Resi' : 'Input Resi'}
-                      </button>
-
-                      {editingSaleId === sale.primary_id ? (
-                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                          <select value={selectedNewStatus} onChange={(e) => setSelectedNewStatus(e.target.value)} style={{ fontSize: '11px', padding: '2px 4px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                            <option value="Lunas">✅ Lunas</option>
-                            <option value="Sedang Dikirim">🚚 Sedang Dikirim</option>
-                            <option value="Selesai">🎉 Selesai</option>
-                            <option value="DP 50%">⏳ DP 50%</option>
-                            <option value="Belum Bayar">❌ Belum Bayar</option>
-                          </select>
-                          <button onClick={() => openUpdateStatusModal(sale)} style={{ padding: '2px 6px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '10px', fontWeight: '600', cursor: 'pointer' }}>Simpan</button>
-                          <button onClick={() => setEditingSaleId(null)} style={{ padding: '2px 6px', backgroundColor: '#cbd5e1', color: '#334155', border: 'none', borderRadius: '4px', fontSize: '10px', cursor: 'pointer' }}>X</button>
-                        </div>
-                      ) : (
-                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                          <span style={{
-                            padding: '2px 6px',
-                            borderRadius: '4px',
-                            backgroundColor: sale.payment_status === 'Selesai' ? '#dcfce7' : sale.payment_status === 'Sedang Dikirim' ? '#e0f2fe' : sale.payment_status === 'Lunas' ? '#dcfce7' : sale.payment_status === 'DP 50%' ? '#fef3c7' : '#fee2e2',
-                            color: sale.payment_status === 'Selesai' ? '#15803d' : sale.payment_status === 'Sedang Dikirim' ? '#0284c7' : sale.payment_status === 'Lunas' ? '#15803d' : sale.payment_status === 'DP 50%' ? '#b45309' : '#dc2626',
-                            fontWeight: '700'
-                          }}>
-                            {sale.payment_status}
-                          </span>
-                          <button onClick={() => { setEditingSaleId(sale.primary_id); setSelectedNewStatus(sale.payment_status); }} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '11px', fontWeight: '600', cursor: 'pointer', padding: 0 }}>
-                            ✏️
-                          </button>
-                        </div>
-                      )}
-                      
-                      {userRole === 'super_admin' && (
-                        <button onClick={() => openDeleteSaleModal(sale)} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '11px', fontWeight: '600', cursor: 'pointer', padding: 0 }}>
-                          🗑️
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {sale.resi_number && (
-                    <div style={{ marginTop: '6px', backgroundColor: '#eff6ff', padding: '4px 8px', borderRadius: '6px', fontSize: '11px', color: '#1d4ed8', fontWeight: '600' }}>
-                      📦 No. Resi: <span style={{ fontFamily: 'monospace' }}>{sale.resi_number}</span>
-                    </div>
-                  )}
-
-                  {sale.notes && <p style={{ margin: '6px 0 0 0', fontSize: '11px', color: '#475569', fontStyle: 'italic' }}>📝 {sale.notes}</p>}
-                </div>
-              );
-            })}
-
-            {salesHistory.length === 0 && <p style={{ textAlign: 'center', fontSize: '13px', color: '#94a3b8' }}>Tidak ada transaksi pada periode ini.</p>}
+        {/* RIGHT: riwayat */}
+        <Panel noPadding className="lg:col-span-2" title="Riwayat Transaksi" description={`${filteredHistory.length} dari ${salesHistory.length} transaksi · ${periodLabel}`} actions={<Receipt className="h-4 w-4 text-primary" />}>
+          <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:px-6">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <TextInput placeholder="Cari pembeli, order ID, atau resi..." value={historyQuery} onChange={(e) => setHistoryQuery(e.target.value)} className="pl-9" data-testid="history-search" />
+            </div>
+            <div className="flex rounded-lg border border-border bg-muted/50 p-0.5" data-testid="history-filter">
+              {[{ v: 'all', l: 'Semua' }, { v: 'paid', l: 'Lunas' }, { v: 'unpaid', l: 'Belum' }].map((o) => (
+                <button key={o.v} onClick={() => setHistoryStatus(o.v)} className={`flex-1 rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${historyStatus === o.v ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>{o.l}</button>
+              ))}
+            </div>
           </div>
-        )}
+
+          {loading ? (
+            <div className="space-y-3 p-6">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-14" />)}</div>
+          ) : filteredHistory.length === 0 ? (
+            <EmptyState icon={Receipt} title="Tidak ada transaksi" description="Tidak ada transaksi pada periode / filter ini." />
+          ) : (
+            <>
+              {/* Desktop */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-muted/40">
+                    <tr><Th>Pembeli</Th><Th>Tanggal</Th><Th className="text-right">Nominal</Th><Th>Status</Th><Th className="text-right">Aksi</Th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {filteredHistory.map((sale) => {
+                      const subtotal = sale.total_price - sale.shipping_cost;
+                      return (
+                        <tr key={`${sale.source}-${sale.primary_id}`} className="hover:bg-muted/40 transition-colors" data-testid={`sale-row-${sale.primary_id}`}>
+                          <Td className="max-w-[240px]">
+                            <div className="flex items-center gap-2">
+                              <span className="truncate font-semibold">{sale.customer_name}</span>
+                              {sale.source === 'online' ? <Pill tone="indigo"><Globe className="h-3 w-3" /> Web</Pill> : <Pill tone="slate"><Store className="h-3 w-3" /> Offline</Pill>}
+                            </div>
+                            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
+                              <span>Qty {sale.quantity}</span>
+                              {sale.resi_number && <span className="flex items-center gap-1 font-mono text-sky-600 dark:text-sky-400"><Truck className="h-3 w-3" />{sale.resi_number}</span>}
+                              {sale.notes && <span className="truncate italic">· {sale.notes}</span>}
+                            </div>
+                          </Td>
+                          <Td className="whitespace-nowrap text-xs text-muted-foreground">{fmtDate(sale.created_at)}</Td>
+                          <Td className="text-right whitespace-nowrap">
+                            <div className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">{formatRupiah(subtotal)}</div>
+                            {sale.shipping_cost > 0 && <div className="text-[11px] text-muted-foreground">+ ongkir {formatRupiah(sale.shipping_cost)}</div>}
+                          </Td>
+                          <Td><StatusCell sale={sale} /></Td>
+                          <Td><SaleActions sale={sale} /></Td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile */}
+              <div className="md:hidden divide-y divide-border">
+                {filteredHistory.map((sale) => {
+                  const subtotal = sale.total_price - sale.shipping_cost;
+                  return (
+                    <div key={`${sale.source}-${sale.primary_id}`} className="p-4 space-y-2.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="truncate text-sm font-semibold">{sale.customer_name}</span>
+                            {sale.source === 'online' ? <Pill tone="indigo"><Globe className="h-3 w-3" /> Web</Pill> : <Pill tone="slate">Offline</Pill>}
+                          </div>
+                          <div className="mt-0.5 text-[11px] text-muted-foreground">{fmtDate(sale.created_at)} · Qty {sale.quantity}</div>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <div className="whitespace-nowrap text-sm font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{formatRupiah(subtotal)}</div>
+                          {sale.shipping_cost > 0 && <div className="text-[10px] text-muted-foreground">+ ongkir {formatRupiah(sale.shipping_cost)}</div>}
+                        </div>
+                      </div>
+                      {sale.resi_number && <div className="flex items-center gap-1.5 rounded-lg bg-sky-50 px-2.5 py-1.5 font-mono text-[11px] font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-300"><Truck className="h-3.5 w-3.5" /> {sale.resi_number}</div>}
+                      {sale.notes && <p className="flex items-center gap-1.5 text-[11px] italic text-muted-foreground"><StickyNote className="h-3 w-3" /> {sale.notes}</p>}
+                      <div className="flex items-center justify-between gap-2">
+                        <StatusCell sale={sale} />
+                        <SaleActions sale={sale} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </Panel>
       </div>
 
-      {/* MODAL INPUT RESI */}
-      {resiModal.isOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '16px' }}>
-          <div style={{ width: '100%', maxWidth: '360px', backgroundColor: '#ffffff', borderRadius: '16px', padding: '24px' }}>
-            <h3 style={{ margin: '0 0 8px 0', fontSize: '17px', fontWeight: '700', textAlign: 'center' }}>
-              🚚 Input Nomor Resi
-            </h3>
-            <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#64748b', textAlign: 'center' }}>
-              Order untuk: <strong>{resiModal.orderData?.customer_name}</strong>
-            </p>
-
-            <form onSubmit={handleSaveResi}>
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b', display: 'block', marginBottom: '4px' }}>
-                  Nomor Resi Ekspedisi (J&T / SiCepat / POS):
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Contoh: JNT123456789"
-                  value={resiModal.resiInput}
-                  onChange={(e) => setResiModal(prev => ({ ...prev, resiInput: e.target.value }))}
-                  style={{ width: '100%', padding: '10px', fontSize: '14px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box', outline: 'none' }}
-                />
-              </div>
-
-              {resiModal.errorMsg && <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#ef4444', fontWeight: '600', textAlign: 'center' }}>{resiModal.errorMsg}</p>}
-
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button type="button" onClick={() => setResiModal({ isOpen: false, orderData: null, resiInput: '', errorMsg: '', isSaving: false })} style={{ flex: 1, padding: '10px', backgroundColor: '#f1f5f9', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>Batal</button>
-                <button type="submit" disabled={resiModal.isSaving} style={{ flex: 1, padding: '10px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>
-                  {resiModal.isSaving ? 'Simpan...' : 'Simpan Resi'}
-                </button>
-              </div>
-            </form>
+      {/* MODAL RESI */}
+      <Modal
+        open={resiModal.isOpen}
+        onClose={() => setResiModal({ isOpen: false, orderData: null, resiInput: '', errorMsg: '', isSaving: false })}
+        icon={Truck}
+        tone="sky"
+        title="Input Nomor Resi"
+        description={`Order untuk ${resiModal.orderData?.customer_name || ''} · status otomatis jadi Sedang Dikirim`}
+        testId="resi-modal"
+      >
+        <form onSubmit={handleSaveResi} className="space-y-4">
+          <Field label="Nomor Resi Ekspedisi" hint="J&T / SiCepat / POS / JNE">
+            <TextInput required autoFocus placeholder="Contoh: JNT123456789" value={resiModal.resiInput} onChange={(e) => setResiModal((prev) => ({ ...prev, resiInput: e.target.value }))} className="h-11 font-mono" data-testid="resi-input" />
+          </Field>
+          {resiModal.errorMsg && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm font-medium text-rose-600 dark:bg-rose-500/10 dark:text-rose-400">{resiModal.errorMsg}</p>}
+          <div className="flex gap-2">
+            <Btn type="button" variant="outline" className="flex-1" onClick={() => setResiModal({ isOpen: false, orderData: null, resiInput: '', errorMsg: '', isSaving: false })}>Batal</Btn>
+            <Btn type="submit" className="flex-1" loading={resiModal.isSaving} data-testid="resi-submit">Simpan Resi</Btn>
           </div>
-        </div>
-      )}
+        </form>
+      </Modal>
 
-      {/* MODAL PIN & HAPUS / UPDATE */}
-      {modalState.isOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '16px' }}>
-          <div style={{ width: '100%', maxWidth: '360px', backgroundColor: '#ffffff', borderRadius: '16px', padding: '24px', textAlign: 'center' }}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '17px', fontWeight: '700' }}>
-              {modalState.actionType === 'updateStock' ? '📦 Update Jumlah Stok' : '🔒 Konfirmasi PIN Admin'}
-            </h3>
-            <form onSubmit={handleModalSubmit}>
-              {modalState.actionType === 'updateStock' && (
-                <div style={{ marginBottom: '12px', textAlign: 'left' }}>
-                  <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b', display: 'block', marginBottom: '4px' }}>
-                    Sisa Stok Baru (Hanya Angka):
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    required
-                    placeholder="Contoh: 10"
-                    value={modalState.stockInput}
-                    onChange={(e) => setModalState(prev => ({ ...prev, stockInput: e.target.value }))}
-                    style={{ width: '100%', padding: '10px', fontSize: '14px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box', outline: 'none' }}
-                  />
-                </div>
-              )}
-              
-              <div style={{ marginBottom: '16px', textAlign: 'left' }}>
-                <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b', display: 'block', marginBottom: '4px' }}>
-                  PIN Admin (6-Digit):
-                </label>
-                <input
-                  type="password"
-                  required
-                  maxLength={6}
-                  placeholder="••••••"
-                  value={modalState.pinInput}
-                  onChange={(e) => setModalState(prev => ({ ...prev, pinInput: e.target.value }))}
-                  style={{ width: '100%', padding: '10px', fontSize: '16px', textAlign: 'center', letterSpacing: '4px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box', outline: 'none' }}
-                />
-              </div>
-
-              {modalState.errorMsg && <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#ef4444', fontWeight: '600' }}>{modalState.errorMsg}</p>}
-              
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button type="button" onClick={() => setModalState({ isOpen: false, actionType: null, targetData: null, stockInput: '', pinInput: '', errorMsg: '', isVerifying: false })} style={{ flex: 1, padding: '10px', backgroundColor: '#f1f5f9', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>Batal</button>
-                <button type="submit" disabled={modalState.isVerifying} style={{ flex: 1, padding: '10px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>
-                  {modalState.isVerifying ? 'Verifikasi...' : 'Konfirmasi'}
-                </button>
-              </div>
-            </form>
+      {/* MODAL PIN */}
+      <Modal
+        open={modalState.isOpen}
+        onClose={() => setModalState(EMPTY_MODAL)}
+        icon={modalState.actionType === 'updateStock' ? Package : modalState.actionType === 'delete' ? Trash2 : Lock}
+        tone={modalState.actionType === 'delete' ? 'rose' : modalState.actionType === 'updateStock' ? 'amber' : 'indigo'}
+        title={modalState.actionType === 'updateStock' ? 'Update Jumlah Stok' : modalState.actionType === 'delete' ? 'Hapus Transaksi' : 'Ubah Status Transaksi'}
+        description={
+          modalState.actionType === 'delete' ? `Transaksi ${modalState.targetData?.customer_name || ''} akan dihapus & stok dikembalikan.`
+            : modalState.actionType === 'updateStatus' ? `Ubah status menjadi "${selectedNewStatus}". Konfirmasi dengan PIN Admin.`
+              : 'Masukkan sisa stok baru, lalu konfirmasi dengan PIN Admin.'
+        }
+        testId="sales-pin-modal"
+      >
+        <form onSubmit={handleModalSubmit} autoComplete="off" className="space-y-4">
+          {modalState.actionType === 'updateStock' && (
+            <Field label="Sisa stok baru (pcs)">
+              <TextInput type="number" min="0" step="1" required placeholder="Contoh: 10" value={modalState.stockInput} onChange={(e) => setModalState((prev) => ({ ...prev, stockInput: e.target.value }))} className="h-11 text-center text-base font-semibold" data-testid="stock-input" />
+            </Field>
+          )}
+          <Field label="PIN Admin">
+            <PinField testId="sales-pin-input" danger={modalState.actionType === 'delete'} value={modalState.pinInput} onChange={(e) => setModalState((prev) => ({ ...prev, pinInput: e.target.value }))} />
+          </Field>
+          {modalState.errorMsg && <p data-testid="sales-pin-error" className="rounded-lg bg-rose-50 px-3 py-2 text-sm font-medium text-rose-600 dark:bg-rose-500/10 dark:text-rose-400">{modalState.errorMsg}</p>}
+          <div className="flex gap-2 pt-1">
+            <Btn type="button" variant="outline" className="flex-1" onClick={() => setModalState(EMPTY_MODAL)}>Batal</Btn>
+            <Btn type="submit" variant={modalState.actionType === 'delete' ? 'danger' : 'primary'} className="flex-1" loading={modalState.isVerifying} data-testid="sales-pin-submit">Konfirmasi</Btn>
           </div>
+        </form>
+      </Modal>
+
+      {/* MODAL STOK MENIPIS */}
+      <Modal
+        open={waAlertModal.isOpen}
+        onClose={() => setWaAlertModal({ isOpen: false, stockLeft: 0, waUrl: '' })}
+        icon={AlertTriangle}
+        tone="rose"
+        title="Stok Akrilik Menipis"
+        description={`Stok Papan Akrilik tinggal ${waAlertModal.stockLeft} pcs (batas minimum 5 pcs). Segera lakukan restock.`}
+        testId="lowstock-modal"
+      >
+        <div className="flex gap-2">
+          <Btn variant="outline" className="flex-1" onClick={() => setWaAlertModal({ isOpen: false, stockLeft: 0, waUrl: '' })}>Nanti</Btn>
+          <Btn as="a" href={waAlertModal.waUrl} target="_blank" rel="noreferrer" variant="success" className="flex-1" onClick={() => setWaAlertModal({ isOpen: false, stockLeft: 0, waUrl: '' })}><MessageCircle /> Kirim WA</Btn>
         </div>
-      )}
-    </div>
+      </Modal>
+
+      <ToastViewport />
+    </PageContainer>
   );
 }

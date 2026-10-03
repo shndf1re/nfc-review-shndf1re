@@ -7,6 +7,15 @@ import { createClient } from '@supabase/supabase-js';
 import Link from 'next/link';
 import JSZip from 'jszip';
 import AutoLogout from './AutoLogout';
+import {
+  LayoutDashboard, CreditCard, Package, Wallet, Plus, Zap, Download, Search, RefreshCw, Eye, MessageCircle,
+  Pencil, RotateCcw, Trash2, Copy, Printer, Store, Link2, X, ChevronLeft, ChevronRight, ArrowUp, Lock,
+  ShieldCheck, Nfc, QrCode, Ruler, CheckSquare, ArrowLeft, KeyRound, BarChart3, Loader2,
+} from 'lucide-react';
+import {
+  PageContainer, PageHeader, Panel, KpiCard, StatusBadge, Pill, Field, TextInput, SelectInput, Checkbox,
+  Btn, Modal, PinField, useToast, EmptyState, Skeleton, Th, Td, formatRupiah, formatRupiahCompact,
+} from '@/components/admin/kit';
 
 let SITE_CONFIG = {
   brandName: 'NFC Review',
@@ -136,7 +145,9 @@ export default function AdminPage() {
   const [showBulkEditForm, setShowBulkEditForm] = useState(false);
   const [isDownloadingBulk, setIsDownloadingBulk] = useState(false);
 
-  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+  const { showToast, ToastViewport } = useToast();
+  const [dataLoading, setDataLoading] = useState(true);
+  const [page, setPage] = useState(1);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
   const [stickerCmConfig, setStickerCmConfig] = useState({
@@ -149,10 +160,6 @@ export default function AdminPage() {
     isOpen: false, actionType: null, targetDevice: null, bulkQty: 10, pinInput: '', errorMsg: '', isSubmitting: false
   });
 
-  const showToast = (message, type = 'success') => {
-    setToast({ show: true, message, type });
-    setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 3000);
-  };
 
   useEffect(() => {
     // Verifikasi sesi via httpOnly cookie (/api/auth/me) - tidak bisa dibypass dari DevTools
@@ -198,6 +205,7 @@ export default function AdminPage() {
 
     const { data: salesData } = await supabase.from('sales').select('total_price');
     if (salesData) setTotalOmzet(salesData.reduce((acc, curr) => acc + (parseFloat(curr.total_price) || 0), 0));
+    setDataLoading(false);
   };
 
   const handleLogin = async (e) => {
@@ -220,11 +228,12 @@ export default function AdminPage() {
         setUsernameInput('');
         setPasswordInput('');
         fetchDashboardData();
+        if (typeof window !== 'undefined') window.dispatchEvent(new Event('admin:login'));
       } else {
-        setLoginError(data.error || '❌ Username atau Password Salah!');
+        setLoginError(data.error || 'Username atau password salah.');
       }
     } catch (err) {
-      setLoginError('❌ Terjadi kesalahan koneksi.');
+      setLoginError('Terjadi kesalahan koneksi.');
     } finally {
       setLoginLoading(false);
     }
@@ -412,390 +421,368 @@ export default function AdminPage() {
   });
 
   const activeCardsCount = devices.filter(d => d.is_active).length;
+  const PAGE_SIZE = 12;
+  const totalPages = Math.max(1, Math.ceil(sortedDevices.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pagedDevices = sortedDevices.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const inactiveCardsCount = devices.length - activeCardsCount;
+  const activePct = devices.length ? Math.round((activeCardsCount / devices.length) * 100) : 0;
+  const isSuper = userRole === 'super_admin';
+  const closePinModal = () => setPinModal({ isOpen: false, actionType: null, targetDevice: null, bulkQty: 10, pinInput: '', errorMsg: '', isSubmitting: false });
+  const openPin = (actionType, targetDevice = null) => setPinModal({ isOpen: true, actionType, targetDevice, bulkQty: 10, pinInput: '', errorMsg: '', isSubmitting: false });
+  const isDanger = pinModal.actionType === 'deleteCard' || pinModal.actionType === 'resetCard';
+  const editingDevice = devices.find((d) => d.id === editingDeviceId);
+
+  const pinMeta = {
+    bulkGenerate: { title: 'Bulk Generate ID', desc: 'Tentukan jumlah kartu baru, lalu otorisasi dengan PIN admin.', icon: Zap, tone: 'violet' },
+    bulkEditSave: { title: 'Konfirmasi Edit Massal', desc: `Otorisasi perubahan untuk ${selectedDeviceIds.length} kartu terpilih.`, icon: Pencil, tone: 'indigo' },
+    resetCard: { title: 'Reset Papan', desc: `Papan ${pinModal.targetDevice?.id || ''} akan kembali ke kondisi kosong.`, icon: RotateCcw, tone: 'amber' },
+    deleteCard: { title: 'Hapus Papan', desc: `Kartu ${pinModal.targetDevice?.id || ''} akan dihapus permanen.`, icon: Trash2, tone: 'rose' },
+    saveEdit: { title: 'Konfirmasi Perubahan', desc: 'Masukkan PIN (Admin/Papan) untuk verifikasi.', icon: ShieldCheck, tone: 'indigo' },
+  }[pinModal.actionType] || { title: 'Konfirmasi Tindakan', desc: 'Masukkan PIN untuk verifikasi.', icon: Lock, tone: 'indigo' };
+
+  const startEdit = (device) => { setEditingDeviceId(device.id); setEditTargetUrl(device.target_url || ''); setEditLabelName(device.label_name || ''); };
+
+  const RowActions = ({ device }) => (
+    <div className="flex items-center justify-end gap-0.5">
+      <Btn variant="ghost" size="icon" title="Lihat stiker QR" onClick={() => handleTogglePreview(device)} data-testid={`preview-${device.id}`}><QrCode /></Btn>
+      <Btn variant="ghost" size="icon" title="Kirim WA ke pembeli" onClick={() => handleSendWaCustomer(device)}><MessageCircle /></Btn>
+      <Btn variant="ghost" size="icon" title="Edit" onClick={() => startEdit(device)} data-testid={`edit-${device.id}`}><Pencil /></Btn>
+      {device.is_active && <Btn variant="ghost" size="icon" title="Reset" className="hover:text-amber-600" onClick={() => openPin('resetCard', device)}><RotateCcw /></Btn>}
+      {isSuper && <Btn variant="danger-soft" size="icon" title="Hapus" onClick={() => openPin('deleteCard', device)}><Trash2 /></Btn>}
+    </div>
+  );
 
   return (
     <AutoLogout isAuthenticated={isAuthenticated} onLogout={handleLogout}>
       {!isAuthenticated ? (
-        <div className="min-h-screen flex items-center justify-center bg-background p-4">
-          {/* Gradient blobs */}
-          <div className="gradient-blob bg-primary/30 w-[400px] h-[400px] top-[-100px] right-[-100px]" />
-          <div className="gradient-blob bg-chart-4/20 w-[400px] h-[400px] bottom-[-100px] left-[-100px]" />
-
-          <div className="relative z-10 w-full max-w-md">
-            <Link href="/" className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground mb-6 transition-colors">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-              Kembali ke Beranda
-            </Link>
-
-            <div className="rounded-2xl bg-card border border-border shadow-2xl p-8">
-              <div className="text-center mb-8">
-                <div className="mx-auto h-14 w-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mb-4">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-                </div>
-                <h2 className="text-2xl font-bold tracking-tight">Admin Portal</h2>
-                <p className="text-sm text-muted-foreground mt-1">Masuk untuk mengelola sistem NFC Review</p>
+        /* ===================== LOGIN ===================== */
+        <div className="min-h-screen grid lg:grid-cols-2">
+          <div className="relative hidden lg:flex flex-col justify-between overflow-hidden bg-gradient-to-br from-indigo-600 via-indigo-600 to-violet-600 p-12 text-white">
+            <div className="absolute -right-24 -top-24 h-96 w-96 rounded-full bg-white/10 blur-3xl" />
+            <div className="absolute -bottom-32 -left-20 h-96 w-96 rounded-full bg-violet-400/30 blur-3xl" />
+            <div className="relative flex items-center gap-2.5">
+              <div className="h-10 w-10 rounded-xl bg-white/15 backdrop-blur flex items-center justify-center ring-1 ring-white/20"><Nfc className="h-5 w-5" /></div>
+              <span className="font-bold tracking-tight">NFC Review Console</span>
+            </div>
+            <div className="relative space-y-6">
+              <h2 className="text-4xl font-bold leading-tight tracking-tight">Kelola ratusan papan<br />Google Review dalam<br />satu dashboard.</h2>
+              <div className="grid grid-cols-3 gap-3 max-w-md">
+                {[{ i: CreditCard, t: 'Kartu NFC' }, { i: BarChart3, t: 'Statistik' }, { i: Wallet, t: 'Penjualan' }].map(({ i: I, t }) => (
+                  <div key={t} className="rounded-2xl bg-white/10 p-4 ring-1 ring-white/15 backdrop-blur">
+                    <I className="h-5 w-5 mb-3 opacity-90" />
+                    <div className="text-sm font-semibold">{t}</div>
+                  </div>
+                ))}
               </div>
+            </div>
+            <p className="relative text-xs text-white/70">© 2026 NFC Review by shndf1re</p>
+          </div>
 
-              <form onSubmit={handleLogin} autoComplete="off" className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium" htmlFor="username">Username</label>
-                  <input id="username" type="text" required placeholder="Masukkan username" value={usernameInput} onChange={(e) => setUsernameInput(e.target.value)} className="flex h-11 w-full rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50" />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium" htmlFor="password">Password / PIN</label>
-                  <input id="password" type="password" required placeholder="••••••••" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} className="flex h-11 w-full rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50" />
-                </div>
-                <button type="submit" disabled={loginLoading} className="w-full h-11 rounded-lg bg-primary text-primary-foreground font-semibold text-sm shadow-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                  {loginLoading ? 'Memverifikasi...' : 'Masuk Dashboard'}
-                </button>
+          <div className="flex items-center justify-center p-5 sm:p-10">
+            <div className="w-full max-w-sm">
+              <Link href="/" className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground mb-8">
+                <ArrowLeft className="h-4 w-4" /> Kembali ke Beranda
+              </Link>
+              <div className="lg:hidden mb-6 h-12 w-12 rounded-2xl bg-gradient-to-br from-primary to-violet-500 text-white flex items-center justify-center shadow-lg shadow-primary/30"><Nfc className="h-6 w-6" /></div>
+              <h1 className="text-2xl font-bold tracking-tight">Masuk ke Admin</h1>
+              <p className="mt-1.5 text-sm text-muted-foreground">Gunakan akun tim Anda untuk mengelola sistem NFC Review.</p>
+
+              <form onSubmit={handleLogin} autoComplete="off" className="mt-8 space-y-4">
+                <Field label="Username">
+                  <TextInput data-testid="login-username" required placeholder="Masukkan username" value={usernameInput} onChange={(e) => setUsernameInput(e.target.value)} className="h-11" />
+                </Field>
+                <Field label="Password / PIN">
+                  <TextInput data-testid="login-password" type="password" required placeholder="••••••••" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} className="h-11" />
+                </Field>
                 {loginError && (
-                  <div className="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2.5 text-sm text-destructive text-center font-medium">
-                    {loginError}
+                  <div data-testid="login-error" className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
+                    <Lock className="mt-0.5 h-4 w-4 shrink-0" /> {loginError}
                   </div>
                 )}
+                <Btn data-testid="login-submit" type="submit" variant="gradient" size="lg" loading={loginLoading} className="w-full">
+                  {loginLoading ? 'Memverifikasi...' : 'Masuk Dashboard'}
+                </Btn>
               </form>
+              <p className="mt-8 text-center text-xs text-muted-foreground">Sesi login aman via cookie httpOnly · berlaku 12 jam</p>
             </div>
-            <p className="text-xs text-center text-muted-foreground mt-6">
-              © 2026 NFC Review by shndf1re. All rights reserved.
-            </p>
           </div>
         </div>
       ) : (
-        <div style={{ maxWidth: '800px', margin: '0 auto', padding: '24px 16px', boxSizing: 'border-box' }}>
-          
-          {/* HEADER DASHBOARD DENGAN INFO ROLE */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-            <div>
-              <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#0f172a' }}>Manajemen Papan NFC</h2>
-              <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
-                Login sebagai: <strong style={{ color: userRole === 'super_admin' ? '#2563eb' : '#16a34a' }}>{userRole === 'super_admin' ? 'Super Admin' : 'Admin Staff'}</strong>
-              </p>
-            </div>
-            <Link href="/admin/sales" style={{ padding: '8px 14px', backgroundColor: '#f8fafc', color: '#0f172a', border: '1px solid #cbd5e1', textDecoration: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '700' }}>
-              📊 Laporan Penjualan
-            </Link>
-          </div>
-
-          {/* KPI CARDS */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px', marginBottom: '32px' }}>
-            <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '20px', border: '1px solid #f1f5f9', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.03)' }}>
-              <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '700', display: 'block', marginBottom: '8px' }}>🏷️ KARTU AKTIF</span>
-              <strong style={{ fontSize: '24px', color: '#0f172a', fontWeight: '800' }}>{activeCardsCount} <span style={{ fontSize: '14px', color: '#94a3b8', fontWeight: '500' }}>/ {devices.length}</span></strong>
-            </div>
-
-            <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '20px', border: '1px solid #f1f5f9', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.03)' }}>
-              <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '700', display: 'block', marginBottom: '8px' }}>📦 STOK AKRILIK</span>
-              <strong style={{ fontSize: '24px', color: acrylicStock <= 5 ? '#ef4444' : '#0f172a', fontWeight: '800' }}>{acrylicStock} <span style={{ fontSize: '14px', color: '#94a3b8', fontWeight: '500' }}>pcs</span></strong>
-            </div>
-
-            <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '20px', border: '1px solid #f1f5f9', gridColumn: 'span 2', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.03)' }}>
-              <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '700', display: 'block', marginBottom: '8px' }}>💵 TOTAL OMZET</span>
-              <strong style={{ fontSize: '28px', color: '#15803d', fontWeight: '800', letterSpacing: '-0.5px' }}>Rp {totalOmzet.toLocaleString('id-ID')}</strong>
-            </div>
-          </div>
-
-          {/* QUICK ACTIONS */}
-          <div style={{ display: 'flex', gap: '12px', marginBottom: '32px', flexWrap: 'wrap' }}>
-            {/* TOMBOL GENERATE HANYA MUNCUL JIKA SUPER ADMIN */}
-            {userRole === 'super_admin' && (
+        /* ===================== DASHBOARD ===================== */
+        <PageContainer>
+          <PageHeader
+            icon={LayoutDashboard}
+            eyebrow={isSuper ? 'Super Admin' : 'Staff Admin'}
+            title="Manajemen Papan NFC"
+            description="Kelola unique code, aktivasi, dan stiker QR untuk setiap papan akrilik."
+            actions={
               <>
-                <button onClick={handleGenerateNew} disabled={loading} style={{ flex: 1, padding: '14px', backgroundColor: loading ? '#94a3b8' : '#0f172a', color: '#ffffff', border: 'none', borderRadius: '12px', fontWeight: '700', fontSize: '13px', cursor: loading ? 'not-allowed' : 'pointer', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
-                  + Generate 1 ID
-                </button>
-                <button onClick={openBulkGenerateModal} style={{ flex: 1, padding: '14px', backgroundColor: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '12px', fontWeight: '700', fontSize: '13px', cursor: 'pointer', boxShadow: '0 4px 6px -1px rgba(37,99,235,0.2)' }}>
-                  ⚡ Bulk Generate
-                </button>
+                <Btn as="a" variant="outline" href="/stiker-template.png" download="stiker-template.png"><Download /> Master Stiker</Btn>
+                {isSuper && (
+                  <>
+                    <Btn variant="outline" onClick={openBulkGenerateModal} data-testid="bulk-generate-btn"><Zap /> Bulk Generate</Btn>
+                    <Btn variant="gradient" onClick={handleGenerateNew} loading={loading} data-testid="generate-one-btn"><Plus /> Generate ID</Btn>
+                  </>
+                )}
               </>
-            )}
-            
-            <a href="/stiker-template.png" download="stiker-template.png" style={{ flex: 1, padding: '14px', backgroundColor: '#ffffff', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: '12px', fontWeight: '700', fontSize: '13px', textDecoration: 'none', textAlign: 'center', boxSizing: 'border-box' }}>
-              🖼️ Download Master
-            </a>
+            }
+          />
+
+          {/* KPI */}
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+            <KpiCard testId="kpi-active" label="Kartu Aktif" value={dataLoading ? '—' : activeCardsCount} suffix={`/ ${devices.length}`} icon={CreditCard} tone="indigo" hint={`${activePct}% sudah terpasang`} />
+            <KpiCard testId="kpi-inactive" label="Belum Dipakai" value={dataLoading ? '—' : inactiveCardsCount} suffix="kartu" icon={Nfc} tone="violet" hint="Siap dikirim ke pembeli" />
+            <KpiCard testId="kpi-stock" label="Stok Akrilik" value={dataLoading ? '—' : acrylicStock} suffix="pcs" icon={Package} tone={acrylicStock <= 5 ? 'rose' : 'amber'} hint={acrylicStock <= 5 ? 'Stok menipis — segera restock' : 'Stok aman'} hintTone={acrylicStock <= 5 ? 'bad' : 'good'} />
+            <KpiCard testId="kpi-omzet" label="Total Omzet" value={dataLoading ? '—' : formatRupiahCompact(totalOmzet)} icon={Wallet} tone="emerald" hint={<Link href="/admin/sales" className="font-medium text-primary hover:underline">Lihat laporan penjualan →</Link>} />
           </div>
 
-          {/* BULK SELECTION CONTROL PANEL */}
+          {/* BULK SELECTION BAR */}
           {selectedDeviceIds.length > 0 && (
-            <div style={{ backgroundColor: '#0f172a', padding: '20px', borderRadius: '20px', marginBottom: '32px', color: '#fff', boxShadow: '0 20px 25px -5px rgba(15,23,42,0.2)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <span style={{ fontSize: '14px', fontWeight: '700' }}>
-                  ☑️ {selectedDeviceIds.length} Kartu Terpilih
-                </span>
-                <button onClick={() => setSelectedDeviceIds([])} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
-                  Batal Pilih
-                </button>
-              </div>
-
-              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '16px' }}>
-                <button onClick={handleDownloadSelectedStickersZip} disabled={isDownloadingBulk} style={{ flex: 1, padding: '12px', backgroundColor: isDownloadingBulk ? '#475569' : '#16a34a', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '13px', fontWeight: '700', cursor: isDownloadingBulk ? 'not-allowed' : 'pointer' }}>
-                  {isDownloadingBulk ? '⏳ Memproses ZIP...' : '🖨️ Download Stiker (.ZIP)'}
-                </button>
-                <button onClick={() => setShowBulkEditForm(!showBulkEditForm)} style={{ flex: 1, padding: '12px', backgroundColor: '#334155', color: '#fff', border: '1px solid #475569', borderRadius: '12px', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
-                  ✏️ Edit Massal
-                </button>
-              </div>
-
-              {/* FORM SETUP CM IN DARK MODE */}
-              <div style={{ backgroundColor: '#1e293b', padding: '16px', borderRadius: '16px', border: '1px solid #334155' }}>
-                <h5 style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#cbd5e1' }}>📐 Pengaturan Posisi QR (cm):</h5>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+            <div data-testid="bulk-bar" className="rounded-2xl border border-primary/30 bg-gradient-to-r from-primary/[0.07] to-violet-500/[0.07] p-4 sm:p-5 space-y-4 animate-in fade-in-0 slide-in-from-top-2">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground"><CheckSquare className="h-4 w-4" /></div>
                   <div>
-                    <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Pos X (cm)</label>
-                    <input type="number" step="0.1" value={stickerCmConfig.xCm} onChange={(e) => setStickerCmConfig({ ...stickerCmConfig, xCm: parseFloat(e.target.value) || 0 })} style={{ width: '100%', padding: '8px', fontSize: '13px', borderRadius: '8px', border: '1px solid #475569', backgroundColor: '#0f172a', color: '#fff', boxSizing: 'border-box', outline: 'none' }} />
+                    <div className="text-sm font-semibold">{selectedDeviceIds.length} kartu terpilih</div>
+                    <div className="text-xs text-muted-foreground">Download stiker massal atau ubah data toko sekaligus</div>
                   </div>
-                  <div>
-                    <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Pos Y (cm)</label>
-                    <input type="number" step="0.1" value={stickerCmConfig.yCm} onChange={(e) => setStickerCmConfig({ ...stickerCmConfig, yCm: parseFloat(e.target.value) || 0 })} style={{ width: '100%', padding: '8px', fontSize: '13px', borderRadius: '8px', border: '1px solid #475569', backgroundColor: '#0f172a', color: '#fff', boxSizing: 'border-box', outline: 'none' }} />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Size (cm)</label>
-                    <input type="number" step="0.1" value={stickerCmConfig.qrSizeCm} onChange={(e) => setStickerCmConfig({ ...stickerCmConfig, qrSizeCm: parseFloat(e.target.value) || 0 })} style={{ width: '100%', padding: '8px', fontSize: '13px', borderRadius: '8px', border: '1px solid #475569', backgroundColor: '#0f172a', color: '#fff', boxSizing: 'border-box', outline: 'none' }} />
-                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Btn size="sm" variant="success" onClick={handleDownloadSelectedStickersZip} loading={isDownloadingBulk}><Printer /> {isDownloadingBulk ? 'Memproses ZIP...' : 'Download Stiker (.ZIP)'}</Btn>
+                  <Btn size="sm" variant={showBulkEditForm ? 'primary' : 'outline'} onClick={() => setShowBulkEditForm(!showBulkEditForm)}><Pencil /> Edit Massal</Btn>
+                  <Btn size="sm" variant="ghost" onClick={() => setSelectedDeviceIds([])}><X /> Batal</Btn>
                 </div>
               </div>
 
-              {showBulkEditForm && (
-                <div style={{ marginTop: '16px', backgroundColor: '#1e293b', padding: '16px', borderRadius: '16px', border: '1px solid #334155' }}>
-                  <h5 style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#cbd5e1' }}>✏️ Ubah Data Toko Massal:</h5>
-                  <input type="text" placeholder="Nama Toko (Kosongkan = Reset)" value={bulkEditLabel} onChange={(e) => setBulkEditLabel(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #475569', backgroundColor: '#0f172a', color: '#fff', marginBottom: '10px', boxSizing: 'border-box', outline: 'none' }} />
-                  <input type="text" placeholder="Link Review (Kosongkan = Reset)" value={bulkEditUrl} onChange={(e) => setBulkEditUrl(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #475569', backgroundColor: '#0f172a', color: '#fff', marginBottom: '12px', boxSizing: 'border-box', outline: 'none' }} />
-                  <button onClick={() => setPinModal({ isOpen: true, actionType: 'bulkEditSave', targetDevice: null, bulkQty: 10, pinInput: '', errorMsg: '', isSubmitting: false })} style={{ width: '100%', padding: '12px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
-                    Simpan Edit Massal
-                  </button>
+              <div className="grid gap-3 lg:grid-cols-2">
+                <div className="rounded-xl border border-border bg-card p-4">
+                  <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-foreground"><Ruler className="h-4 w-4 text-primary" /> Posisi QR pada stiker (cm)</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <Field label="Pos X"><TextInput type="number" step="0.1" value={stickerCmConfig.xCm} onChange={(e) => setStickerCmConfig({ ...stickerCmConfig, xCm: parseFloat(e.target.value) || 0 })} /></Field>
+                    <Field label="Pos Y"><TextInput type="number" step="0.1" value={stickerCmConfig.yCm} onChange={(e) => setStickerCmConfig({ ...stickerCmConfig, yCm: parseFloat(e.target.value) || 0 })} /></Field>
+                    <Field label="Ukuran"><TextInput type="number" step="0.1" value={stickerCmConfig.qrSizeCm} onChange={(e) => setStickerCmConfig({ ...stickerCmConfig, qrSizeCm: parseFloat(e.target.value) || 0 })} /></Field>
+                  </div>
                 </div>
-              )}
+                {showBulkEditForm && (
+                  <div className="rounded-xl border border-border bg-card p-4 space-y-2.5">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-foreground"><Store className="h-4 w-4 text-primary" /> Ubah data toko massal</div>
+                    <TextInput placeholder="Nama Toko (kosongkan = reset)" value={bulkEditLabel} onChange={(e) => setBulkEditLabel(e.target.value)} />
+                    <TextInput placeholder="Link Review (kosongkan = reset)" value={bulkEditUrl} onChange={(e) => setBulkEditUrl(e.target.value)} />
+                    <Btn size="sm" className="w-full" onClick={() => openPin('bulkEditSave')}><ShieldCheck /> Simpan Edit Massal</Btn>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
-          {/* FILTER & SEARCH PANEL */}
-          <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '20px', border: '1px solid #f1f5f9', marginBottom: '24px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.02)' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '16px' }}>
-              <input
-                type="text"
-                placeholder="🔍 Cari ID Kartu atau Nama Toko..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{ width: '100%', padding: '14px 16px', fontSize: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', outline: 'none', boxSizing: 'border-box', backgroundColor: '#f8fafc' }}
-              />
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', display: 'block', marginBottom: '6px' }}>STATUS KARTU</label>
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '12px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', color: '#0f172a', fontWeight: '600', outline: 'none' }}
-                  >
-                    <option value="all">Semua ({devices.length})</option>
-                    <option value="active">🟢 Aktif ({devices.filter(d => d.is_active).length})</option>
-                    <option value="inactive">🟡 Belum Dipakai ({devices.filter(d => !d.is_active).length})</option>
-                  </select>
+          {/* TABLE PANEL */}
+          <Panel
+            noPadding
+            title={`Daftar Kartu NFC`}
+            description={`${sortedDevices.length} dari ${devices.length} kartu ditampilkan`}
+            actions={<Btn size="sm" variant="outline" onClick={fetchDashboardData} data-testid="refresh-btn"><RefreshCw /> Segarkan</Btn>}
+          >
+            {/* Toolbar */}
+            <div className="flex flex-col gap-3 border-b border-border p-4 sm:px-6 lg:flex-row lg:items-center">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <TextInput data-testid="search-input" placeholder="Cari ID kartu atau nama toko..." value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }} className="pl-9" />
+              </div>
+              <div className="flex gap-2">
+                <div className="flex rounded-lg border border-border bg-muted/50 p-0.5" data-testid="status-filter">
+                  {[
+                    { v: 'all', l: 'Semua', c: devices.length },
+                    { v: 'active', l: 'Aktif', c: activeCardsCount },
+                    { v: 'inactive', l: 'Kosong', c: inactiveCardsCount },
+                  ].map((o) => (
+                    <button key={o.v} onClick={() => { setStatusFilter(o.v); setPage(1); }} className={`rounded-md px-2.5 py-1.5 text-xs font-semibold transition-all ${statusFilter === o.v ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+                      {o.l} <span className="ml-0.5 text-muted-foreground">{o.c}</span>
+                    </button>
+                  ))}
                 </div>
-                <div>
-                  <label style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', display: 'block', marginBottom: '6px' }}>URUTAN</label>
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value)}
-                    style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '12px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', color: '#0f172a', fontWeight: '600', outline: 'none' }}
-                  >
-                    <option value="newest">⬇️ Terbaru</option>
-                    <option value="oldest">⬆️ Terlama</option>
-                  </select>
-                </div>
+                <SelectInput value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="w-[120px]">
+                  <option value="newest">Terbaru</option>
+                  <option value="oldest">Terlama</option>
+                </SelectInput>
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#475569' }}>
-              <input type="checkbox" id="selectAll" checked={selectedDeviceIds.length === sortedDevices.length && sortedDevices.length > 0} onChange={handleSelectAll} style={{ cursor: 'pointer', width: '16px', height: '16px' }} />
-              <label htmlFor="selectAll" style={{ cursor: 'pointer', fontWeight: '600' }}>Pilih Semua Data Filter ({sortedDevices.length})</label>
+            {dataLoading ? (
+              <div className="space-y-3 p-6">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
+            ) : sortedDevices.length === 0 ? (
+              <EmptyState icon={CreditCard} title="Tidak ada kartu" description={devices.length ? 'Coba ubah kata kunci atau filter status.' : 'Generate ID pertama untuk mulai.'} />
+            ) : (
+              <>
+                {/* Desktop table */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-muted/40">
+                      <tr>
+                        <Th className="w-10"><Checkbox checked={selectedDeviceIds.length === sortedDevices.length && sortedDevices.length > 0} onChange={handleSelectAll} data-testid="select-all" /></Th>
+                        <Th>ID Kartu</Th>
+                        <Th>Status</Th>
+                        <Th>Toko</Th>
+                        <Th>PIN</Th>
+                        <Th className="text-right">Aksi</Th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {pagedDevices.map((device) => {
+                        const isSelected = selectedDeviceIds.includes(device.id);
+                        return (
+                          <tr key={device.id} id={`card-${device.id}`} data-testid={`row-${device.id}`} className={`transition-colors hover:bg-muted/40 ${isSelected ? 'bg-primary/[0.04]' : ''}`}>
+                            <Td><Checkbox checked={isSelected} onChange={() => handleToggleSelectCard(device.id)} /></Td>
+                            <Td>
+                              <div className="font-mono text-[13px] font-semibold tracking-wide">{device.id}</div>
+                              {device.created_at && <div className="text-[11px] text-muted-foreground">{new Date(device.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</div>}
+                            </Td>
+                            <Td><StatusBadge active={Boolean(device.is_active)} /></Td>
+                            <Td className="max-w-[260px]">
+                              {device.label_name ? (
+                                <>
+                                  <div className="truncate font-medium">{device.label_name}</div>
+                                  {device.target_url && <a href={device.target_url} target="_blank" rel="noreferrer" className="block truncate text-xs text-primary hover:underline">{device.target_url}</a>}
+                                </>
+                              ) : <span className="text-xs text-muted-foreground">—</span>}
+                            </Td>
+                            <Td><span className="rounded-md bg-muted px-2 py-1 font-mono text-xs font-semibold tracking-widest">{device.pin || '-'}</span></Td>
+                            <Td><RowActions device={device} /></Td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile cards */}
+                <div className="md:hidden">
+                  <label className="flex items-center gap-2.5 border-b border-border px-4 py-3 text-xs font-medium text-muted-foreground">
+                    <Checkbox checked={selectedDeviceIds.length === sortedDevices.length && sortedDevices.length > 0} onChange={handleSelectAll} />
+                    Pilih semua ({sortedDevices.length})
+                  </label>
+                  <div className="divide-y divide-border">
+                    {pagedDevices.map((device) => {
+                      const isSelected = selectedDeviceIds.includes(device.id);
+                      return (
+                        <div key={device.id} id={`card-${device.id}`} className={`p-4 ${isSelected ? 'bg-primary/[0.04]' : ''}`}>
+                          <div className="flex items-start gap-3">
+                            <Checkbox className="mt-1" checked={isSelected} onChange={() => handleToggleSelectCard(device.id)} />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-mono text-sm font-semibold">{device.id}</span>
+                                <StatusBadge active={Boolean(device.is_active)} />
+                              </div>
+                              <div className="mt-1.5 flex items-center gap-2 text-xs text-muted-foreground">
+                                <KeyRound className="h-3.5 w-3.5" /> PIN <span className="font-mono font-semibold tracking-widest text-foreground">{device.pin || '-'}</span>
+                              </div>
+                              {device.label_name && (
+                                <div className="mt-2.5 rounded-lg bg-muted/60 px-3 py-2">
+                                  <div className="flex items-center gap-1.5 text-xs font-semibold"><Store className="h-3.5 w-3.5 text-primary" /> {device.label_name}</div>
+                                  {device.target_url && <a href={device.target_url} target="_blank" rel="noreferrer" className="mt-0.5 block truncate text-[11px] text-primary">{device.target_url}</a>}
+                                </div>
+                              )}
+                              <div className="mt-3 -mr-2"><RowActions device={device} /></div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Pagination */}
+                <div className="flex items-center justify-between border-t border-border px-4 py-3 sm:px-6">
+                  <p className="text-xs text-muted-foreground">Hal. <span className="font-semibold text-foreground">{safePage}</span> dari {totalPages}</p>
+                  <div className="flex gap-1.5">
+                    <Btn size="sm" variant="outline" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}><ChevronLeft /> Prev</Btn>
+                    <Btn size="sm" variant="outline" disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)}>Next <ChevronRight /></Btn>
+                  </div>
+                </div>
+              </>
+            )}
+          </Panel>
+        </PageContainer>
+      )}
+
+      {/* ===== MODAL: Preview stiker ===== */}
+      <Modal
+        open={Boolean(previewDeviceModal) && !pinModal.isOpen}
+        onClose={() => setPreviewDeviceModal(null)}
+        icon={QrCode}
+        title={`Stiker QR · ${previewDeviceModal?.id || ''}`}
+        description="Preview QR yang akan dicetak pada stiker papan."
+        testId="preview-modal"
+      >
+        {previewDeviceModal && (
+          <div className="space-y-4">
+            <div className="flex justify-center rounded-2xl bg-gradient-to-br from-primary/10 to-violet-500/10 p-6">
+              <div className="relative rounded-2xl bg-white p-3 shadow-lg ring-1 ring-black/5">
+                <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`${getNfcBaseUrl()}/r/${previewDeviceModal.id}?src=qr`)}`} alt={`QR ${previewDeviceModal.id}`} className="h-44 w-44 rounded-lg" />
+                <div className="absolute left-1/2 top-1/2 flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white shadow ring-1 ring-black/5">
+                  <img src={SITE_CONFIG?.qrLogoUrl} alt="G" className="h-6 w-6" />
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-lg bg-muted/60 p-3"><div className="text-muted-foreground">PIN Akses</div><div className="mt-0.5 font-mono font-semibold tracking-widest">{previewDeviceModal.pin}</div></div>
+              <div className="rounded-lg bg-muted/60 p-3"><div className="text-muted-foreground">Status</div><div className="mt-1"><StatusBadge active={Boolean(previewDeviceModal.is_active)} /></div></div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Btn variant="primary" onClick={() => handleDownloadSingleSticker(previewDeviceModal.id)}><Printer /> Download Cetak HD</Btn>
+              <Btn variant="outline" onClick={() => handleCopyNfcUrl(previewDeviceModal.id)}><Copy /> Salin URL NFC</Btn>
             </div>
           </div>
+        )}
+      </Modal>
 
-          {/* CARD LIST */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', padding: '0 8px' }}>
-            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: '#0f172a' }}>Daftar Kartu NFC ({sortedDevices.length})</h3>
-            <button onClick={fetchDashboardData} style={{ background: '#f1f5f9', border: 'none', color: '#475569', fontSize: '12px', fontWeight: '700', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer' }}>🔄 Segarkan</button>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {sortedDevices.map((device) => {
-              const isCardActive = Boolean(device.is_active);
-              const isSelected = selectedDeviceIds.includes(device.id);
-              const isPreviewingThis = previewDeviceModal?.id === device.id;
-
-              const baseUrl = getNfcBaseUrl();
-              const targetUrl = `${baseUrl}/r/${device.id}?src=qr`;
-              const qrPreviewApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(targetUrl)}`;
-              const googleLogoUrl = SITE_CONFIG?.qrLogoUrl || 'https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg';
-
-              return (
-                <div 
-                  key={device.id} id={`card-${device.id}`}
-                  style={{ 
-                    padding: '20px', borderRadius: '20px', 
-                    border: isPreviewingThis ? '2px solid #2563eb' : isSelected ? '2px solid #0f172a' : '1px solid #e2e8f0', 
-                    backgroundColor: '#ffffff',
-                    boxShadow: isPreviewingThis || isSelected ? '0 10px 25px -5px rgba(37,99,235,0.1)' : '0 4px 6px -1px rgba(0,0,0,0.02)',
-                    transition: 'all 0.2s ease-in-out'
-                  }}
-                >
-                  {/* Header Card */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                      <input type="checkbox" checked={isSelected} onChange={() => handleToggleSelectCard(device.id)} style={{ cursor: 'pointer', width: '18px', height: '18px', marginTop: '2px' }} />
-                      <div>
-                        <strong style={{ fontSize: '16px', color: '#0f172a', display: 'block', letterSpacing: '0.5px' }}>{device.id}</strong>
-                        <span style={{ fontSize: '11px', display: 'inline-block', padding: '4px 10px', borderRadius: '12px', backgroundColor: isCardActive ? '#ecfdf5' : '#f8fafc', color: isCardActive ? '#059669' : '#64748b', fontWeight: '700', marginTop: '6px' }}>
-                          {isCardActive ? '🟢 Aktif' : '🟡 Belum Dipakai'}
-                        </span>
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <span style={{ fontSize: '11px', color: '#94a3b8', display: 'block' }}>PIN Akses</span>
-                      <strong style={{ fontSize: '14px', color: '#dc2626', letterSpacing: '1px' }}>{device.pin || '-'}</strong>
-                    </div>
-                  </div>
-
-                  {/* Data Toko */}
-                  {device.label_name && (
-                    <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '12px', marginBottom: '12px', border: '1px solid #f1f5f9' }}>
-                      <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a', marginBottom: '4px' }}>
-                        🏪 {device.label_name}
-                      </div>
-                      <div style={{ fontSize: '12px', color: '#64748b', wordBreak: 'break-all' }}>
-                        🔗 <a href={device.target_url} target="_blank" rel="noreferrer" style={{ color: '#2563eb', textDecoration: 'none' }}>{device.target_url}</a>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Action Buttons Row */}
-                  <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {editingDeviceId === device.id ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '16px', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #cbd5e1' }}>
-                        <input type="text" placeholder="Nama Toko" value={editLabelName} onChange={(e) => setEditLabelName(e.target.value)} style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', outline: 'none' }} />
-                        <input type="text" placeholder="Link Direct Review (Kosongkan jika reset)" value={editTargetUrl} onChange={(e) => setEditTargetUrl(e.target.value)} style={{ width: '100%', padding: '12px', fontSize: '13px', borderRadius: '10px', border: '1px solid #cbd5e1', outline: 'none' }} />
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button onClick={() => setPinModal({ isOpen: true, actionType: 'saveEdit', targetDevice: device, bulkQty: 10, pinInput: '', errorMsg: '', isSubmitting: false })} style={{ flex: 1, padding: '10px', backgroundColor: '#0f172a', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>Simpan (PIN)</button>
-                          <button onClick={() => setEditingDeviceId(null)} style={{ padding: '10px 16px', backgroundColor: '#e2e8f0', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: '600', color: '#475569', cursor: 'pointer' }}>Batal</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button onClick={() => handleTogglePreview(device)} style={{ flex: 1, padding: '10px', backgroundColor: isPreviewingThis ? '#2563eb' : '#eff6ff', color: isPreviewingThis ? '#ffffff' : '#2563eb', border: isPreviewingThis ? 'none' : '1px solid #bfdbfe', borderRadius: '10px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
-                            {isPreviewingThis ? '✖ Tutup Stiker' : '👁️ Lihat Stiker QR'}
-                          </button>
-                          <button onClick={() => handleSendWaCustomer(device)} style={{ flex: 1, padding: '10px', backgroundColor: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '10px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
-                            💬 WA ke Pembeli
-                          </button>
-                        </div>
-
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', padding: '0 4px' }}>
-                          <button onClick={() => { setEditingDeviceId(device.id); setEditTargetUrl(device.target_url || ''); setEditLabelName(device.label_name || ''); }} style={{ background: 'none', border: 'none', color: '#475569', fontSize: '12px', fontWeight: '600', cursor: 'pointer', padding: 0 }}>
-                            ✏️ Edit Manual
-                          </button>
-                          <div style={{ display: 'flex', gap: '16px' }}>
-                            {isCardActive && (
-                              <button onClick={() => setPinModal({ isOpen: true, actionType: 'resetCard', targetDevice: device, bulkQty: 10, pinInput: '', errorMsg: '', isSubmitting: false })} style={{ background: 'none', border: 'none', color: '#d97706', fontSize: '12px', fontWeight: '600', cursor: 'pointer', padding: 0 }}>
-                                🔄 Reset
-                              </button>
-                            )}
-                            
-                            {/* TOMBOL HAPUS HANYA UNTUK SUPER ADMIN */}
-                            {userRole === 'super_admin' && (
-                              <button onClick={() => setPinModal({ isOpen: true, actionType: 'deleteCard', targetDevice: device, bulkQty: 10, pinInput: '', errorMsg: '', isSubmitting: false })} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', fontWeight: '600', cursor: 'pointer', padding: 0 }}>
-                                🗑️ Hapus
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </div>
-
-                  {/* LIVE PREVIEW STIKER DROPDOWN */}
-                  {isPreviewingThis && (
-                    <div style={{ marginTop: '20px', backgroundColor: '#f8fafc', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
-                      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
-                        <div style={{ position: 'relative', display: 'inline-block', backgroundColor: '#ffffff', padding: '8px', borderRadius: '12px', border: '1px solid #cbd5e1', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.05)' }}>
-                          <img src={qrPreviewApiUrl} alt={`QR ${device.id}`} style={{ width: '140px', height: '140px', display: 'block', borderRadius: '8px' }} />
-                          <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '32px', height: '32px', backgroundColor: '#ffffff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
-                            <img src={googleLogoUrl} alt="G" style={{ width: '20px', height: '20px' }} />
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        <button onClick={() => handleDownloadSingleSticker(device.id)} style={{ width: '100%', padding: '12px', backgroundColor: '#0f172a', color: '#ffffff', border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '13px', cursor: 'pointer' }}>
-                          🖨️ Download Master Cetak HD
-                        </button>
-                        <button onClick={() => handleCopyNfcUrl(device.id)} style={{ width: '100%', padding: '10px', backgroundColor: '#ffffff', color: '#475569', border: '1px solid #cbd5e1', borderRadius: '10px', fontWeight: '600', fontSize: '13px', cursor: 'pointer' }}>
-                          📋 Salin URL NFC
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                </div>
-              );
-            })}
-          </div>
+      {/* ===== MODAL: Edit kartu ===== */}
+      <Modal
+        open={Boolean(editingDevice) && !pinModal.isOpen}
+        onClose={() => setEditingDeviceId(null)}
+        icon={Pencil}
+        title={`Edit Kartu · ${editingDevice?.id || ''}`}
+        description="Kosongkan link review untuk me-reset kartu menjadi Belum Dipakai."
+        testId="edit-modal"
+        footer={
+          <>
+            <Btn variant="outline" className="flex-1" onClick={() => setEditingDeviceId(null)}>Batal</Btn>
+            <Btn className="flex-1" onClick={() => openPin('saveEdit', editingDevice)}><ShieldCheck /> Simpan (PIN)</Btn>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <Field label="Nama Toko"><TextInput placeholder="Contoh: Kopi Senja" value={editLabelName} onChange={(e) => setEditLabelName(e.target.value)} /></Field>
+          <Field label="Link Google Review" hint="Bisa tempel Place ID (ChIJ...) atau link writereview."><TextInput placeholder="https://search.google.com/local/writereview?placeid=..." value={editTargetUrl} onChange={(e) => setEditTargetUrl(e.target.value)} /></Field>
         </div>
-      )}
+      </Modal>
 
-      {/* MODAL GLOBAL (GLASSMORPHISM) */}
-      {pinModal.isOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.45)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '16px' }}>
-          <div style={{ width: '100%', maxWidth: '360px', backgroundColor: '#ffffff', borderRadius: '24px', padding: '32px 24px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.15)', textAlign: 'center' }}>
-            <h3 style={{ margin: '0 0 8px 0', fontSize: '18px', fontWeight: '800', color: pinModal.actionType === 'deleteCard' || pinModal.actionType === 'resetCard' ? '#ef4444' : '#0f172a', letterSpacing: '-0.5px' }}>
-              {pinModal.actionType === 'bulkGenerate' ? '⚡ Bulk Generate ID' : 
-               pinModal.actionType === 'bulkEditSave' ? '✏️ Edit Massal Terpilih' : 
-               pinModal.actionType === 'resetCard' ? '🔄 Reset Papan' :
-               pinModal.actionType === 'deleteCard' ? '🗑️ Hapus Papan' : 'Konfirmasi Tindakan'}
-            </h3>
-
-            <p style={{ margin: '0 0 20px 0', fontSize: '13px', color: '#64748b', lineHeight: '1.5' }}>
-              {pinModal.actionType === 'bulkGenerate' ? 'Tentukan jumlah ID dan otorisasi dengan PIN.' : 
-               pinModal.actionType === 'bulkEditSave' ? `Otorisasi perubahan untuk ${selectedDeviceIds.length} kartu terpilih.` : 
-               pinModal.actionType === 'resetCard' ? `Papan ${pinModal.targetDevice?.id} akan kembali ke kondisi kosong.` :
-               `Masukkan PIN (Admin/Papan) untuk verifikasi.`}
-            </p>
-
-            <form onSubmit={handleModalAction} autoComplete="off">
-              {pinModal.actionType === 'bulkGenerate' && (
-                <div style={{ marginBottom: '16px' }}>
-                  <input type="number" min="1" max="100" required placeholder="Jumlah Qty" value={pinModal.bulkQty} onChange={(e) => setPinModal(prev => ({ ...prev, bulkQty: e.target.value }))} style={{ width: '100%', padding: '14px', fontSize: '15px', borderRadius: '12px', border: '1px solid #cbd5e1', textAlign: 'center', outline: 'none' }} />
-                </div>
-              )}
-
-              <div style={{ marginBottom: '20px' }}>
-                <input type="password" required autoFocus maxLength={6} placeholder="••••••" value={pinModal.pinInput} onChange={(e) => setPinModal(prev => ({ ...prev, pinInput: e.target.value }))} style={{ width: '100%', padding: '16px', fontSize: '20px', textAlign: 'center', letterSpacing: '8px', borderRadius: '12px', border: pinModal.actionType === 'deleteCard' || pinModal.actionType === 'resetCard' ? '1px solid #fca5a5' : '1px solid #cbd5e1', backgroundColor: pinModal.actionType === 'deleteCard' || pinModal.actionType === 'resetCard' ? '#fef2f2' : '#f8fafc', outline: 'none' }} />
-              </div>
-
-              {pinModal.errorMsg && <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: '#ef4444', fontWeight: '600' }}>{pinModal.errorMsg}</p>}
-
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button type="button" onClick={() => setPinModal({ isOpen: false, actionType: null, targetDevice: null, bulkQty: 10, pinInput: '', errorMsg: '', isSubmitting: false })} style={{ flex: 1, padding: '14px', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '12px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>Batal</button>
-                <button type="submit" disabled={pinModal.isSubmitting} style={{ flex: 1, padding: '14px', backgroundColor: pinModal.isSubmitting ? '#94a3b8' : pinModal.actionType === 'deleteCard' || pinModal.actionType === 'resetCard' ? '#ef4444' : '#0f172a', color: '#ffffff', border: 'none', borderRadius: '12px', fontSize: '14px', fontWeight: '700', cursor: pinModal.isSubmitting ? 'not-allowed' : 'pointer' }}>
-                  {pinModal.isSubmitting ? 'Proses...' : 'Konfirmasi'}
-                </button>
-              </div>
-            </form>
+      {/* ===== MODAL: PIN ===== */}
+      <Modal open={pinModal.isOpen} onClose={closePinModal} icon={pinMeta.icon} tone={pinMeta.tone} title={pinMeta.title} description={pinMeta.desc} testId="pin-modal">
+        <form onSubmit={handleModalAction} autoComplete="off" className="space-y-4">
+          {pinModal.actionType === 'bulkGenerate' && (
+            <Field label="Jumlah kartu (1–100)">
+              <TextInput data-testid="bulk-qty" type="number" min="1" max="100" required value={pinModal.bulkQty} onChange={(e) => setPinModal((prev) => ({ ...prev, bulkQty: e.target.value }))} className="h-11 text-center text-base font-semibold" />
+            </Field>
+          )}
+          <Field label="PIN Otorisasi">
+            <PinField testId="pin-input" danger={isDanger} value={pinModal.pinInput} onChange={(e) => setPinModal((prev) => ({ ...prev, pinInput: e.target.value }))} />
+          </Field>
+          {pinModal.errorMsg && <p data-testid="pin-error" className="rounded-lg bg-rose-50 px-3 py-2 text-sm font-medium text-rose-600 dark:bg-rose-500/10 dark:text-rose-400">{String(pinModal.errorMsg).replace(/^❌\s*/, '')}</p>}
+          <div className="flex gap-2 pt-1">
+            <Btn type="button" variant="outline" className="flex-1" onClick={closePinModal}>Batal</Btn>
+            <Btn type="submit" data-testid="pin-submit" variant={isDanger ? 'danger' : 'primary'} className="flex-1" loading={pinModal.isSubmitting}>Konfirmasi</Btn>
           </div>
-        </div>
-      )}
+        </form>
+      </Modal>
 
-      {toast.show && (
-        <div style={{ position: 'fixed', bottom: '24px', right: '24px', backgroundColor: toast.type === 'error' ? '#ef4444' : '#0f172a', color: '#ffffff', padding: '14px 24px', borderRadius: '12px', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.2)', fontSize: '13px', fontWeight: '600', zIndex: 10000 }}>
-          {toast.message}
-        </div>
-      )}
+      <ToastViewport />
 
-      {showScrollTop && (
-        <button onClick={scrollToTop} style={{ position: 'fixed', bottom: '28px', right: '28px', width: '50px', height: '50px', backgroundColor: '#0f172a', color: '#ffffff', border: 'none', borderRadius: '50%', boxShadow: '0 10px 25px rgba(15,23,42,0.3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', fontWeight: 'bold', zIndex: 999 }}>
-          ⬆️
+      {showScrollTop && isAuthenticated && (
+        <button onClick={scrollToTop} className="fixed bottom-6 right-6 z-40 flex h-11 w-11 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 hover:bg-primary/90" aria-label="Ke atas">
+          <ArrowUp className="h-5 w-5" />
         </button>
       )}
-
     </AutoLogout>
   );
 }

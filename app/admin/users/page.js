@@ -4,12 +4,20 @@ export const dynamic = 'force-dynamic';
 
 import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import Link from 'next/link';
+import { Users, UserPlus, Pencil, Trash2, ShieldCheck, Crown, User, Lock, Info, X, KeyRound } from 'lucide-react';
+import {
+  PageContainer, PageHeader, Panel, KpiCard, Pill, Field, TextInput, SelectInput, Checkbox, Btn, Modal, PinField, useToast, EmptyState, Skeleton, Th, Td,
+} from '@/components/admin/kit';
+import { cn } from '@/lib/utils';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 );
+
+const DEFAULT_PERMS = { sales: true, inventory: false, stats_reset: false };
+const PERM_LABELS = { sales: 'Penjualan', inventory: 'Stok Akrilik', stats_reset: 'Reset Statistik' };
+const EMPTY_PIN = { isOpen: false, actionType: null, targetUser: null, superPinInput: '', errorMsg: '', isVerifying: false };
 
 export default function ManageUsersPage() {
   const [authChecked, setAuthChecked] = useState(false);
@@ -17,359 +25,263 @@ export default function ManageUsersPage() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Form State
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
-  const [password, setPassword] = useState(''); // Password Login (Bebas)
-  const [pin, setPin] = useState('');           // PIN Transaksi (Maks 6 Angka)
+  const [password, setPassword] = useState('');
+  const [pin, setPin] = useState('');
   const [role, setRole] = useState('staff');
-  const [permissions, setPermissions] = useState({
-    sales: true,
-    inventory: false,
-    stats_reset: false
-  });
-
+  const [permissions, setPermissions] = useState(DEFAULT_PERMS);
   const [editingUserId, setEditingUserId] = useState(null);
-  const [statusMsg, setStatusMsg] = useState('');
+  const [formError, setFormError] = useState('');
+  const [pinModal, setPinModal] = useState(EMPTY_PIN);
+  const { showToast, ToastViewport } = useToast();
 
-  // Modal Verifikasi Super Admin
-  const [pinModal, setPinModal] = useState({
-    isOpen: false,
-    actionType: null,
-    targetUser: null,
-    superPinInput: '',
-    errorMsg: '',
-    isVerifying: false
-  });
+  const fetchUsers = async () => {
+    setLoading(true);
+    const { data, error } = await supabase.from('admin_users').select('*').order('created_at', { ascending: true });
+    if (!error && data) setUsers(data);
+    setLoading(false);
+  };
 
   useEffect(() => {
     // AUTH GUARD - cek sesi + role super_admin via httpOnly cookie
     fetch('/api/auth/me', { credentials: 'include' })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (data?.user && data.user.role === 'super_admin') {
-          setIsAuthed(true);
-          fetchUsers();
-        } else {
-          window.location.href = '/admin?reason=forbidden';
-        }
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.user && data.user.role === 'super_admin') { setIsAuthed(true); fetchUsers(); }
+        else window.location.href = '/admin?reason=forbidden';
       })
       .catch(() => { window.location.href = '/admin?reason=login_required'; })
       .finally(() => setAuthChecked(true));
   }, []);
 
-  const fetchUsers = async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from('admin_users')
-      .select('*')
-      .order('created_at', { ascending: true });
-
-    if (!error && data) {
-      setUsers(data);
-    }
-    setLoading(false);
-  };
-
   const resetForm = () => {
-    setName('');
-    setUsername('');
-    setPassword('');
-    setPin('');
-    setRole('staff');
-    setPermissions({ sales: true, inventory: false, stats_reset: false });
-    setEditingUserId(null);
-    setStatusMsg('');
+    setName(''); setUsername(''); setPassword(''); setPin(''); setRole('staff');
+    setPermissions(DEFAULT_PERMS); setEditingUserId(null); setFormError('');
   };
 
   const handleEditClick = (user) => {
     setEditingUserId(user.id);
     setName(user.name || '');
     setUsername(user.username || '');
-    setPassword(''); 
-    setPin(''); 
+    setPassword(''); setPin('');
     setRole(user.role || 'staff');
-    setPermissions(
-      user.permissions || { sales: true, inventory: false, stats_reset: false }
-    );
-    setStatusMsg('ℹ️ Kosongkan Password / PIN jika tidak ingin mengubahnya.');
+    setPermissions(user.permissions || DEFAULT_PERMS);
+    setFormError('');
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleOpenPinModal = (actionType, targetUser = null) => {
     if (actionType === 'save') {
-      if (!name || !username) {
-        setStatusMsg('❌ Harap isi Nama dan Username!');
-        return;
-      }
-      if (!editingUserId && (!password || !pin)) {
-        setStatusMsg('❌ Harap isi Password dan PIN untuk akun baru!');
-        return;
-      }
-      if (pin && pin.length > 6) {
-        setStatusMsg('❌ PIN maksimal 6 digit angka!');
-        return;
-      }
+      if (!name || !username) return setFormError('Harap isi Nama dan Username.');
+      if (!editingUserId && (!password || !pin)) return setFormError('Harap isi Password dan PIN untuk akun baru.');
+      if (pin && pin.length > 6) return setFormError('PIN maksimal 6 digit angka.');
     }
-    setPinModal({
-      isOpen: true,
-      actionType,
-      targetUser,
-      superPinInput: '',
-      errorMsg: '',
-      isVerifying: false
-    });
+    setFormError('');
+    setPinModal({ ...EMPTY_PIN, isOpen: true, actionType, targetUser });
   };
 
   const handleConfirmSuperAdminAction = async (e) => {
     e.preventDefault();
-    setPinModal(prev => ({ ...prev, isVerifying: true, errorMsg: '' }));
-
-    const inputPinClean = pinModal.superPinInput.trim();
-
-    // Verifikasi PIN Super Admin via RPC Supabase
-    const { data: verifyRes, error: rpcErr } = await supabase.rpc('verify_sales_pin', {
-      input_pin: inputPinClean
-    });
-
+    setPinModal((prev) => ({ ...prev, isVerifying: true, errorMsg: '' }));
+    const { data: verifyRes, error: rpcErr } = await supabase.rpc('verify_sales_pin', { input_pin: pinModal.superPinInput.trim() });
     const isSuperAdminValid = verifyRes && verifyRes[0]?.is_valid && verifyRes[0]?.user_role === 'super_admin';
-
     if (rpcErr || !isSuperAdminValid) {
-      setPinModal(prev => ({
-        ...prev,
-        isVerifying: false,
-        errorMsg: '❌ Akses Ditolak: Membutuhkan PIN/Password Super Admin yang Valid!'
-      }));
+      setPinModal((prev) => ({ ...prev, isVerifying: false, errorMsg: 'Akses ditolak: butuh PIN/Password Super Admin yang valid.' }));
       return;
     }
 
-    // Eksekusi Simpan / Edit / Hapus
     if (pinModal.actionType === 'save') {
-      const payload = {
-        name,
-        username,
-        role,
-        permissions
-      };
-
+      const payload = { name, username, role, permissions };
       if (password.trim()) payload.password = password.trim();
       if (pin.trim()) payload.pin = pin.trim();
-
       if (editingUserId) {
-        const { error: updateErr } = await supabase
-          .from('admin_users')
-          .update(payload)
-          .eq('id', editingUserId);
-
-        if (updateErr) {
-          setPinModal(prev => ({ ...prev, isVerifying: false, errorMsg: 'Gagal update: ' + updateErr.message }));
-          return;
-        }
-        setStatusMsg('✅ Akun berhasil diperbarui!');
+        const { error: updateErr } = await supabase.from('admin_users').update(payload).eq('id', editingUserId);
+        if (updateErr) return setPinModal((prev) => ({ ...prev, isVerifying: false, errorMsg: 'Gagal update: ' + updateErr.message }));
+        showToast('Akun berhasil diperbarui.');
       } else {
-        const { error: insertErr } = await supabase
-          .from('admin_users')
-          .insert([payload]);
-
-        if (insertErr) {
-          setPinModal(prev => ({ ...prev, isVerifying: false, errorMsg: 'Gagal simpan: ' + insertErr.message }));
-          return;
-        }
-        setStatusMsg('✅ Akun baru berhasil ditambahkan!');
+        const { error: insertErr } = await supabase.from('admin_users').insert([payload]);
+        if (insertErr) return setPinModal((prev) => ({ ...prev, isVerifying: false, errorMsg: 'Gagal simpan: ' + insertErr.message }));
+        showToast('Akun baru berhasil ditambahkan.');
       }
       resetForm();
     } else if (pinModal.actionType === 'delete') {
       const target = pinModal.targetUser;
-      const { error: delErr } = await supabase
-        .from('admin_users')
-        .delete()
-        .eq('id', target.id);
-
-      if (delErr) {
-        setPinModal(prev => ({ ...prev, isVerifying: false, errorMsg: 'Gagal hapus: ' + delErr.message }));
-        return;
-      }
-      setStatusMsg(`🗑️ Akun "${target.name}" berhasil dihapus!`);
+      const { error: delErr } = await supabase.from('admin_users').delete().eq('id', target.id);
+      if (delErr) return setPinModal((prev) => ({ ...prev, isVerifying: false, errorMsg: 'Gagal hapus: ' + delErr.message }));
+      showToast(`Akun "${target.name}" berhasil dihapus.`, 'error');
     }
-
-    setPinModal({ isOpen: false, actionType: null, targetUser: null, superPinInput: '', errorMsg: '', isVerifying: false });
+    setPinModal(EMPTY_PIN);
     fetchUsers();
   };
 
   if (!authChecked) {
-    return (
-      <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>Memverifikasi sesi...</div>
-    );
+    return <PageContainer><Skeleton className="h-10 w-64" /><div className="grid gap-4 lg:grid-cols-3"><Skeleton className="h-96" /><Skeleton className="h-96 lg:col-span-2" /></div></PageContainer>;
   }
   if (!isAuthed) return null;
 
-  return (
-    <div style={{ maxWidth: '600px', margin: '0 auto', padding: '24px 16px', fontFamily: '-apple-system, sans-serif' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <div>
-          <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '700', color: '#0f172a' }}>👥 Manajemen Akun Admin</h2>
-          <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Kelola Tim &amp; Hak Akses Fitur</p>
-        </div>
-        <Link href="/admin" style={{ padding: '8px 14px', backgroundColor: '#2563eb', color: '#fff', textDecoration: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '600' }}>
-          ⬅️ Dashboard
-        </Link>
-      </div>
+  const superCount = users.filter((u) => u.role === 'super_admin').length;
+  const staffCount = users.length - superCount;
 
-      {/* Formulir Tambah / Edit User */}
-      <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
-        <h3 style={{ margin: '0 0 16px 0', fontSize: '15px', fontWeight: '700' }}>
-          {editingUserId ? '✏️ Edit Akun Staff' : '➕ Tambah Akun Staff Baru'}
-        </h3>
+  const RoleBadge = ({ r }) => (r === 'super_admin'
+    ? <Pill tone="violet"><Crown className="h-3 w-3" /> Super Admin</Pill>
+    : <Pill tone="sky"><User className="h-3 w-3" /> Staff</Pill>);
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div>
-            <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b', display: 'block', marginBottom: '4px' }}>Nama Lengkap Staff:</label>
-            <input type="text" placeholder="Contoh: Budi Santoso" value={name} onChange={(e) => setName(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
-          </div>
+  const PermPills = ({ u }) => {
+    if (u.role === 'super_admin') return <span className="text-xs text-muted-foreground">Akses penuh</span>;
+    const p = u.permissions || {};
+    const on = Object.keys(PERM_LABELS).filter((k) => p[k]);
+    if (!on.length) return <span className="text-xs text-muted-foreground">—</span>;
+    return <div className="flex flex-wrap gap-1">{on.map((k) => <Pill key={k} tone="slate">{PERM_LABELS[k]}</Pill>)}</div>;
+  };
 
-          <div>
-            <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b', display: 'block', marginBottom: '4px' }}>Username Login:</label>
-            <input type="text" placeholder="budi_sales" value={username} onChange={(e) => setUsername(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
-          </div>
-
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b', display: 'block', marginBottom: '4px' }}>
-                {editingUserId ? 'Password Login Baru:' : 'Password Login (Bebas):'}
-              </label>
-              <input type="password" placeholder="Password Login" value={password} onChange={(e) => setPassword(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b', display: 'block', marginBottom: '4px' }}>
-                {editingUserId ? 'PIN Baru (Maks 6 Angka):' : 'PIN Otorisasi (Maks 6 Angka):'}
-              </label>
-              <input 
-                type="password" 
-                maxLength={6}
-                placeholder="••••••" 
-                value={pin} 
-                onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} // Hanya menerima angka
-                style={{ width: '100%', padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} 
-              />
-            </div>
-          </div>
-
-          <div>
-            <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b', display: 'block', marginBottom: '4px' }}>Tipe Role:</label>
-            <select value={role} onChange={(e) => setRole(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '13px', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#fff', boxSizing: 'border-box' }}>
-              <option value="staff">👤 Staff Sales (Terbatas)</option>
-              <option value="super_admin">👑 Super Admin (Akses Penuh)</option>
-            </select>
-          </div>
-
-          {role === 'staff' && (
-            <div style={{ backgroundColor: '#f8fafc', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0', marginTop: '4px' }}>
-              <span style={{ fontSize: '11px', fontWeight: '700', color: '#334155', display: 'block', marginBottom: '8px' }}>Izin Akses Fitur:</span>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#475569' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={permissions.sales} onChange={(e) => setPermissions(prev => ({ ...prev, sales: e.target.checked }))} />
-                  Input &amp; Lihat Penjualan
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={permissions.inventory} onChange={(e) => setPermissions(prev => ({ ...prev, inventory: e.target.checked }))} />
-                  Update Stok Akrilik
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={permissions.stats_reset} onChange={(e) => setPermissions(prev => ({ ...prev, stats_reset: e.target.checked }))} />
-                  Reset Statistik Kartu
-                </label>
-              </div>
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-            {editingUserId && (
-              <button type="button" onClick={resetForm} style={{ flex: 1, padding: '12px', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '8px', fontWeight: '600', fontSize: '13px', cursor: 'pointer' }}>
-                Batal
-              </button>
-            )}
-            <button type="button" onClick={() => handleOpenPinModal('save')} style={{ flex: 2, padding: '12px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '700', fontSize: '13px', cursor: 'pointer' }}>
-              🔒 {editingUserId ? 'Simpan Perubahan' : 'Tambah Akun Staff'}
-            </button>
-          </div>
-        </div>
-
-        {statusMsg && <p style={{ marginTop: '12px', fontSize: '12px', color: statusMsg.startsWith('❌') ? '#dc2626' : statusMsg.startsWith('ℹ️') ? '#2563eb' : '#16a34a', textAlign: 'center', fontWeight: '600' }}>{statusMsg}</p>}
-      </div>
-
-      {/* List Daftar User */}
-      <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
-        <h3 style={{ margin: '0 0 14px 0', fontSize: '15px', fontWeight: '700' }}>Daftar Akun Terdaftar ({users.length})</h3>
-
-        {loading ? (
-          <p style={{ textAlign: 'center', color: '#64748b', fontSize: '13px' }}>Memuat daftar akun...</p>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {users.map((u) => (
-              <div key={u.id} style={{ padding: '12px 14px', borderRadius: '12px', border: '1px solid #f1f5f9', backgroundColor: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <strong style={{ fontSize: '14px', color: '#0f172a' }}>{u.name}</strong>
-                    <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', backgroundColor: u.role === 'super_admin' ? '#fef3c7' : '#e0f2fe', color: u.role === 'super_admin' ? '#b45309' : '#0369a1', fontWeight: '700' }}>
-                      {u.role === 'super_admin' ? '👑 Super Admin' : '👤 Staff'}
-                    </span>
-                  </div>
-                  <span style={{ fontSize: '11px', color: '#64748b' }}>Username: <strong>@{u.username}</strong></span>
-                </div>
-
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={() => handleEditClick(u)} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
-                    ✏️ Edit
-                  </button>
-                  {u.role !== 'super_admin' && (
-                    <button onClick={() => handleOpenPinModal('delete', u)} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
-                      🗑️ Hapus
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Modal Verifikasi Super Admin */}
-      {pinModal.isOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '16px' }}>
-          <div style={{ width: '100%', maxWidth: '360px', backgroundColor: '#ffffff', borderRadius: '18px', padding: '24px', textAlign: 'center' }}>
-            <div style={{ width: '44px', height: '44px', backgroundColor: '#fef3c7', color: '#b45309', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', marginBottom: '10px' }}>
-              🔐
-            </div>
-            <h3 style={{ margin: '0 0 6px 0', fontSize: '17px', fontWeight: '700' }}>Otorisasi Super Admin</h3>
-            <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#64748b', lineHeight: '1.4' }}>
-              Masukkan <strong>PIN / Password Super Admin</strong> Anda untuk mengonfirmasi perubahan akun ini.
-            </p>
-
-            <form onSubmit={handleConfirmSuperAdminAction}>
-              <input
-                type="password"
-                required
-                autoFocus
-                placeholder="PIN Super Admin"
-                value={pinModal.superPinInput}
-                onChange={(e) => setPinModal(prev => ({ ...prev, superPinInput: e.target.value }))}
-                style={{ width: '100%', padding: '12px', fontSize: '16px', textAlign: 'center', letterSpacing: '4px', borderRadius: '10px', border: '1px solid #cbd5e1', marginBottom: '14px', boxSizing: 'border-box', outline: 'none' }}
-              />
-
-              {pinModal.errorMsg && <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#ef4444', fontWeight: '600' }}>{pinModal.errorMsg}</p>}
-
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button type="button" onClick={() => setPinModal({ isOpen: false, actionType: null, targetUser: null, superPinInput: '', errorMsg: '', isVerifying: false })} style={{ flex: 1, padding: '10px', backgroundColor: '#f1f5f9', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
-                  Batal
-                </button>
-                <button type="submit" disabled={pinModal.isVerifying} style={{ flex: 1, padding: '10px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '700' }}>
-                  {pinModal.isVerifying ? 'Verifikasi...' : 'Konfirmasi'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+  const Avatar = ({ u }) => (
+    <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white', u.role === 'super_admin' ? 'bg-gradient-to-br from-primary to-violet-500' : 'bg-gradient-to-br from-sky-500 to-cyan-500')}>
+      {(u.name || u.username || '?').charAt(0).toUpperCase()}
     </div>
+  );
+
+  return (
+    <PageContainer>
+      <PageHeader
+        icon={Users}
+        eyebrow="Super Admin"
+        title="Kelola Tim"
+        description="Atur akun admin, role, dan izin akses fitur untuk tim Anda."
+        actions={editingUserId ? <Btn variant="outline" onClick={resetForm}><UserPlus /> Tambah Akun Baru</Btn> : null}
+      />
+
+      <div className="grid grid-cols-3 gap-3 sm:gap-4">
+        <KpiCard testId="kpi-users" label="Total Akun" value={loading ? '—' : users.length} icon={Users} tone="indigo" />
+        <KpiCard testId="kpi-super" label="Super Admin" value={loading ? '—' : superCount} icon={Crown} tone="violet" />
+        <KpiCard testId="kpi-staff" label="Staff" value={loading ? '—' : staffCount} icon={User} tone="sky" />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3 lg:items-start">
+        {/* FORM */}
+        <Panel
+          className={cn('lg:sticky lg:top-20', editingUserId && 'ring-2 ring-primary/30')}
+          title={editingUserId ? 'Edit Akun' : 'Tambah Akun Staff'}
+          description={editingUserId ? 'Kosongkan Password / PIN jika tidak ingin mengubahnya.' : 'Akun baru butuh password login & PIN otorisasi.'}
+          actions={editingUserId ? <Btn variant="ghost" size="icon" onClick={resetForm} title="Batal edit"><X /></Btn> : <UserPlus className="h-4 w-4 text-primary" />}
+        >
+          <div className="space-y-3.5" data-testid="user-form">
+            <Field label="Nama Lengkap"><TextInput data-testid="user-name" placeholder="Contoh: Budi Santoso" value={name} onChange={(e) => setName(e.target.value)} /></Field>
+            <Field label="Username Login"><TextInput data-testid="user-username" placeholder="budi_sales" value={username} onChange={(e) => setUsername(e.target.value)} /></Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={editingUserId ? 'Password Baru' : 'Password Login'}><TextInput data-testid="user-password" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
+              <Field label={editingUserId ? 'PIN Baru' : 'PIN (maks 6 angka)'}><TextInput data-testid="user-pin" type="password" inputMode="numeric" maxLength={6} placeholder="••••••" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} /></Field>
+            </div>
+            <Field label="Role">
+              <SelectInput data-testid="user-role" value={role} onChange={(e) => setRole(e.target.value)}>
+                <option value="staff">Staff Sales (Terbatas)</option>
+                <option value="super_admin">Super Admin (Akses Penuh)</option>
+              </SelectInput>
+            </Field>
+
+            {role === 'staff' && (
+              <div className="rounded-xl border border-border bg-muted/40 p-3.5">
+                <div className="mb-2.5 flex items-center gap-1.5 text-xs font-semibold"><KeyRound className="h-3.5 w-3.5 text-primary" /> Izin Akses Fitur</div>
+                <div className="space-y-2">
+                  {[
+                    { k: 'sales', l: 'Input & lihat penjualan' },
+                    { k: 'inventory', l: 'Update stok akrilik' },
+                    { k: 'stats_reset', l: 'Reset statistik kartu' },
+                  ].map(({ k, l }) => (
+                    <label key={k} className="flex cursor-pointer items-center gap-2.5 rounded-lg bg-card px-3 py-2 text-sm ring-1 ring-border hover:ring-primary/40">
+                      <Checkbox checked={Boolean(permissions?.[k])} onChange={(e) => setPermissions((prev) => ({ ...prev, [k]: e.target.checked }))} />
+                      {l}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {formError && <p data-testid="user-form-error" className="flex items-center gap-2 rounded-lg bg-rose-50 px-3 py-2 text-sm font-medium text-rose-600 dark:bg-rose-500/10 dark:text-rose-400"><Info className="h-4 w-4" /> {formError}</p>}
+
+            <div className="flex gap-2 pt-1">
+              {editingUserId && <Btn variant="outline" className="flex-1" onClick={resetForm}>Batal</Btn>}
+              <Btn data-testid="user-save" variant="gradient" className="flex-[2]" onClick={() => handleOpenPinModal('save')}><Lock /> {editingUserId ? 'Simpan Perubahan' : 'Tambah Akun'}</Btn>
+            </div>
+          </div>
+        </Panel>
+
+        {/* LIST */}
+        <Panel noPadding className="lg:col-span-2" title="Daftar Akun Terdaftar" description={`${users.length} akun aktif`}>
+          {loading ? (
+            <div className="space-y-3 p-6">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-12" />)}</div>
+          ) : users.length === 0 ? (
+            <EmptyState icon={Users} title="Belum ada akun" />
+          ) : (
+            <>
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-muted/40"><tr><Th>Pengguna</Th><Th>Role</Th><Th>Izin</Th><Th className="text-right">Aksi</Th></tr></thead>
+                  <tbody className="divide-y divide-border">
+                    {users.map((u) => (
+                      <tr key={u.id} data-testid={`user-row-${u.username}`} className={cn('hover:bg-muted/40 transition-colors', editingUserId === u.id && 'bg-primary/[0.05]')}>
+                        <Td>
+                          <div className="flex items-center gap-3">
+                            <Avatar u={u} />
+                            <div className="min-w-0"><div className="truncate font-semibold">{u.name}</div><div className="text-xs text-muted-foreground">@{u.username}</div></div>
+                          </div>
+                        </Td>
+                        <Td><RoleBadge r={u.role} /></Td>
+                        <Td><PermPills u={u} /></Td>
+                        <Td>
+                          <div className="flex justify-end gap-0.5">
+                            <Btn variant="ghost" size="icon" title="Edit" onClick={() => handleEditClick(u)} data-testid={`user-edit-${u.username}`}><Pencil /></Btn>
+                            {u.role !== 'super_admin' && <Btn variant="danger-soft" size="icon" title="Hapus" onClick={() => handleOpenPinModal('delete', u)} data-testid={`user-delete-${u.username}`}><Trash2 /></Btn>}
+                          </div>
+                        </Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="md:hidden divide-y divide-border">
+                {users.map((u) => (
+                  <div key={u.id} className={cn('flex items-start gap-3 p-4', editingUserId === u.id && 'bg-primary/[0.05]')}>
+                    <Avatar u={u} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0"><div className="truncate text-sm font-semibold">{u.name}</div><div className="text-xs text-muted-foreground">@{u.username}</div></div>
+                        <RoleBadge r={u.role} />
+                      </div>
+                      <div className="mt-2"><PermPills u={u} /></div>
+                      <div className="mt-2 flex justify-end gap-1">
+                        <Btn size="sm" variant="outline" onClick={() => handleEditClick(u)}><Pencil /> Edit</Btn>
+                        {u.role !== 'super_admin' && <Btn size="sm" variant="danger-soft" onClick={() => handleOpenPinModal('delete', u)}><Trash2 /> Hapus</Btn>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </Panel>
+      </div>
+
+      <Modal
+        open={pinModal.isOpen}
+        onClose={() => setPinModal(EMPTY_PIN)}
+        icon={pinModal.actionType === 'delete' ? Trash2 : ShieldCheck}
+        tone={pinModal.actionType === 'delete' ? 'rose' : 'violet'}
+        title={pinModal.actionType === 'delete' ? `Hapus Akun · ${pinModal.targetUser?.name || ''}` : 'Otorisasi Super Admin'}
+        description="Masukkan PIN / Password Super Admin untuk mengonfirmasi perubahan akun ini."
+        testId="users-pin-modal"
+      >
+        <form onSubmit={handleConfirmSuperAdminAction} autoComplete="off" className="space-y-4">
+          <Field label="PIN Super Admin"><PinField testId="users-pin-input" maxLength={64} danger={pinModal.actionType === 'delete'} value={pinModal.superPinInput} onChange={(e) => setPinModal((prev) => ({ ...prev, superPinInput: e.target.value }))} /></Field>
+          {pinModal.errorMsg && <p data-testid="users-pin-error" className="rounded-lg bg-rose-50 px-3 py-2 text-sm font-medium text-rose-600 dark:bg-rose-500/10 dark:text-rose-400">{pinModal.errorMsg}</p>}
+          <div className="flex gap-2 pt-1">
+            <Btn type="button" variant="outline" className="flex-1" onClick={() => setPinModal(EMPTY_PIN)}>Batal</Btn>
+            <Btn type="submit" variant={pinModal.actionType === 'delete' ? 'danger' : 'primary'} className="flex-1" loading={pinModal.isVerifying} data-testid="users-pin-submit">Konfirmasi</Btn>
+          </div>
+        </form>
+      </Modal>
+
+      <ToastViewport />
+    </PageContainer>
   );
 }
