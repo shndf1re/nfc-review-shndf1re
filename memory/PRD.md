@@ -13,6 +13,8 @@
 - Bugfix: stats reset PIN sebelumnya selalu lolos (RPC verify_sales_pin mengembalikan array) — sekarang cek `[0].is_valid`.
 - Fase 4: `yarn build` sukses tanpa error; screenshot QA desktop + HP.
 
+- `/admin/sales` juga di-redesign (KPI, filter periode, form manual, kode promo, riwayat tabel/list, modal resi/PIN/stok menipis). Bugfix PIN sales (array truthy) + modal WA stok menipis kini benar-benar tampil.
+- `.env` ditambahkan ke .gitignore (repo public!).
+
 ## Belum
-- `/admin/sales` masih gaya lama (di luar 3 halaman scope).
-- Commit & push ke GitHub (pakai fitur "Save to GitHub") + deploy ulang (Vercel/hosting asli).
+- User: Save to GitHub lalu deploy ulang. Pastikan env Supabase + JWT_SECRET ada di hosting.
