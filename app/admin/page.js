@@ -414,37 +414,48 @@ export default function AdminPage() {
   return (
     <AutoLogout isAuthenticated={isAuthenticated} onLogout={handleLogout}>
       {!isAuthenticated ? (
-        <div style={{ minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', boxSizing: 'border-box' }}>
-          <div style={{ width: '100%', maxWidth: '400px', backgroundColor: '#ffffff', borderRadius: '24px', padding: '40px 32px', boxShadow: '0 20px 40px -15px rgba(0, 0, 0, 0.05)', border: '1px solid #f1f5f9' }}>
-            
-            <div style={{ marginBottom: '24px' }}>
-              <Link href="/" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '600', color: '#64748b', textDecoration: 'none', padding: '8px 12px', borderRadius: '10px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}>
-                ⬅️ Beranda Utama
-              </Link>
-            </div>
+        <div className="min-h-screen flex items-center justify-center bg-background p-4">
+          {/* Gradient blobs */}
+          <div className="gradient-blob bg-primary/30 w-[400px] h-[400px] top-[-100px] right-[-100px]" />
+          <div className="gradient-blob bg-chart-4/20 w-[400px] h-[400px] bottom-[-100px] left-[-100px]" />
 
-            <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-              <div style={{ width: '56px', height: '56px', backgroundColor: '#0f172a', color: '#ffffff', borderRadius: '16px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', marginBottom: '16px', boxShadow: '0 10px 15px -3px rgba(15,23,42,0.1)' }}>
-                🔒
-              </div>
-              <h2 style={{ margin: '0 0 8px 0', fontSize: '24px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.5px' }}>Admin Portal</h2>
-              <p style={{ margin: 0, fontSize: '14px', color: '#64748b' }}>Masuk untuk mengelola sistem NFC</p>
-            </div>
+          <div className="relative z-10 w-full max-w-md">
+            <Link href="/" className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground mb-6 transition-colors">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+              Kembali ke Beranda
+            </Link>
 
-            <form onSubmit={handleLogin} autoComplete="off" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#1e293b', marginBottom: '8px' }}>Username</label>
-                <input type="text" required placeholder="Masukkan username" value={usernameInput} onChange={(e) => setUsernameInput(e.target.value)} style={{ width: '100%', padding: '14px 16px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '14px', boxSizing: 'border-box', backgroundColor: '#f8fafc', outline: 'none' }} onFocus={(e) => e.target.style.borderColor = '#0f172a'} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} />
+            <div className="rounded-2xl bg-card border border-border shadow-2xl p-8">
+              <div className="text-center mb-8">
+                <div className="mx-auto h-14 w-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mb-4">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                </div>
+                <h2 className="text-2xl font-bold tracking-tight">Admin Portal</h2>
+                <p className="text-sm text-muted-foreground mt-1">Masuk untuk mengelola sistem NFC Review</p>
               </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#1e293b', marginBottom: '8px' }}>Password / PIN</label>
-                <input type="password" required placeholder="••••••••" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} style={{ width: '100%', padding: '14px 16px', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '14px', boxSizing: 'border-box', backgroundColor: '#f8fafc', outline: 'none' }} onFocus={(e) => e.target.style.borderColor = '#0f172a'} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} />
-              </div>
-              <button type="submit" disabled={loginLoading} style={{ width: '100%', padding: '16px', backgroundColor: loginLoading ? '#94a3b8' : '#0f172a', color: '#ffffff', border: 'none', borderRadius: '14px', fontWeight: '700', fontSize: '14px', cursor: loginLoading ? 'not-allowed' : 'pointer', marginTop: '8px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
-                {loginLoading ? 'Memverifikasi...' : 'Masuk Dashboard'}
-              </button>
-              {loginError && <p style={{ margin: 0, color: '#ef4444', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>{loginError}</p>}
-            </form>
+
+              <form onSubmit={handleLogin} autoComplete="off" className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium" htmlFor="username">Username</label>
+                  <input id="username" type="text" required placeholder="Masukkan username" value={usernameInput} onChange={(e) => setUsernameInput(e.target.value)} className="flex h-11 w-full rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium" htmlFor="password">Password / PIN</label>
+                  <input id="password" type="password" required placeholder="••••••••" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} className="flex h-11 w-full rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50" />
+                </div>
+                <button type="submit" disabled={loginLoading} className="w-full h-11 rounded-lg bg-primary text-primary-foreground font-semibold text-sm shadow-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                  {loginLoading ? 'Memverifikasi...' : 'Masuk Dashboard'}
+                </button>
+                {loginError && (
+                  <div className="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2.5 text-sm text-destructive text-center font-medium">
+                    {loginError}
+                  </div>
+                )}
+              </form>
+            </div>
+            <p className="text-xs text-center text-muted-foreground mt-6">
+              © 2026 NFC Review by shndf1re. All rights reserved.
+            </p>
           </div>
         </div>
       ) : (
