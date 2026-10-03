@@ -167,3 +167,14 @@ agent_communication:
     message: "Test ONLY with test card NFC-QATEST01 (currently inactive, pin 000000) — it is a PRODUCTION Supabase DB, do not touch other devices. Leave NFC-QATEST01 at the end in any state; main agent will delete it."
   - agent: "testing"
     message: "✅ ALL BACKEND TESTS PASSED. Tested all three Setup API endpoints with comprehensive scenarios including validation, error handling, and business logic. All endpoints working correctly: (1) GET /api/setup/[id] returns device info without PIN, 404 for non-existent. (2) POST /api/setup/[id]/activate validates PIN, storeName, reviewUrl, newPin with all edge cases; formats URLs correctly; handles both inactive and active device states. (3) POST /api/setup/[id]/reset works correctly with proper validation. Also verified GET /api/auth/me returns 401 without cookie. Device NFC-QATEST01 left in inactive state as required. No issues found."
+  - task: "Lacak resi: POST /api/resi"
+    implemented: true
+    working: true
+    file: "app/api/resi/route.js, lib/resi.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "BinderByte tracking normalized {ok, summary, detail, history, delivered}. Missing resi -> 400. Without BINDERBYTE_API_KEY -> 503 code NO_KEY (expected in preview). If delivered + orderDbId matching resi -> orders.payment_status 'Selesai'."
