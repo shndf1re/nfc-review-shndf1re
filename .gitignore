@@ -93,3 +93,4 @@ credentials.json
 
 # Lockfile lokal workspace (repo asli tanpa lockfile)
 yarn.lock
+memory/backup_inactive_pins_before_000000.json

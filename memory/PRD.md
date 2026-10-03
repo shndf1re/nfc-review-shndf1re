@@ -18,3 +18,10 @@
 
 ## Belum
 - User: Save to GitHub lalu deploy ulang. Pastikan env Supabase + JWT_SECRET ada di hosting.
+
+## Update: Setup & PIN default (Okt 2026)
+- /setup/[id] redesign: stepper 3 langkah (Data Toko -> PIN default 000000 -> buat PIN baru), view aktif (ubah data / reset), modal sukses menampilkan PIN baru.
+- API server-side: GET /api/setup/[id] (tanpa PIN), POST /activate, POST /reset (lib/setup-server.js). Host review URL di-allowlist.
+- Aturan: kartu belum aktif = PIN 000000 (juga terima PIN lama sbg fallback); aktif = PIN pelanggan; reset -> 000000. Generate/bulk/admin reset -> 000000. WA pelanggan pakai PIN default.
+- Migrasi data: 54 kartu inactive di-set pin 000000 (backup di memory/backup_inactive_pins_before_000000.json, gitignored).
+- Catatan keamanan: RLS tabel devices masih mengizinkan anon baca/ubah (admin page pakai anon key) -> saran perketat RLS + pindahkan query admin ke API.
