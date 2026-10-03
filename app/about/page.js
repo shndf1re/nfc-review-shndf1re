@@ -2,6 +2,15 @@ import Link from 'next/link';
 import { MapPin, Zap, Star, ShieldCheck, Store, Nfc, QrCode, Printer, ArrowRight, MessageCircle, Target, HeartHandshake } from 'lucide-react';
 import { SiteNav, SiteFooter } from '@/components/site/site-shell';
 import { SITE_CONFIG } from '@/lib/config';
+import CustomerGallery from '@/components/site/customer-gallery';
+
+// Ganti / tambah foto: taruh file di /public lalu tambahkan ke daftar ini
+const gallery = [
+  { src: '/galeri-1.jpg', title: 'Papan siap dikirim ke pelanggan', category: 'Produksi Print UV' },
+  { src: '/galeri-2.jpg', title: 'Tap NFC langsung ke Google Review', category: 'Kafe & Resto' },
+  { src: '/galeri-3.jpg', title: 'Terpasang di meja kasir toko', category: 'Toko Lokal' },
+  { src: '/galeri-4.jpg', title: 'Scan QR untuk HP tanpa NFC', category: 'UMKM Samarinda' },
+];
 
 export const metadata = {
   title: 'Tentang Kami - NFC Review',
@@ -106,6 +115,18 @@ export default function AboutPage() {
             ))}
           </div>
         </div>
+      </section>
+
+      {/* GALERI PELANGGAN */}
+      <section className="mx-auto max-w-6xl px-4 pt-16 sm:px-6" id="galeri">
+        <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-primary">Galeri Pelanggan</div>
+            <h2 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">Sudah terpasang di toko-toko lokal</h2>
+          </div>
+          <p className="text-sm text-muted-foreground">Ketuk foto untuk memperbesar</p>
+        </div>
+        <CustomerGallery items={gallery} />
       </section>
 
       {/* AUDIENCE */}

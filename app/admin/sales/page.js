@@ -7,11 +7,12 @@ import { createClient } from '@supabase/supabase-js';
 import Link from 'next/link';
 import {
   Wallet, Package, ShoppingBag, TrendingUp, Banknote, RefreshCw, Lock, Plus, Ticket, Trash2, Truck, Pencil, Check, X,
-  CalendarDays, Search, Globe, Store, StickyNote, AlertTriangle, MessageCircle, Filter, Receipt,
+  CalendarDays, Search, Globe, Store, StickyNote, AlertTriangle, MessageCircle, Filter, Receipt, MapPin, Loader2,
 } from 'lucide-react';
 import {
   PageContainer, PageHeader, Panel, KpiCard, Pill, Field, TextInput, SelectInput, Btn, Modal, PinField, useToast, EmptyState, Skeleton, Th, Td, formatRupiah, formatRupiahCompact,
 } from '@/components/admin/kit';
+import { ResiTimeline, useResiTracker } from '@/components/resi-tracker';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -80,6 +81,8 @@ export default function SalesPage() {
   const [newDiscountAmount, setNewDiscountAmount] = useState('');
   const [couponStatusMsg, setCouponStatusMsg] = useState('');
   const { showToast, ToastViewport } = useToast();
+  const resiTracker = useResiTracker();
+  const [trackSale, setTrackSale] = useState(null);
   const [historyQuery, setHistoryQuery] = useState('');
   const [historyStatus, setHistoryStatus] = useState('all');
 
@@ -252,6 +255,7 @@ export default function SalesPage() {
         payment_status: mappedStatus,
         notes: o.courier ? `Kurir: ${o.courier}` : 'Order Web',
         resi_number: o.resi_number || null,
+        courier: o.courier || '',
         created_at: o.created_at
       };
     });
@@ -574,6 +578,9 @@ export default function SalesPage() {
 
   const SaleActions = ({ sale }) => (
     <div className="flex items-center justify-end gap-0.5">
+      {sale.resi_number && sale.source === 'online' && (
+        <Btn size="sm" variant="secondary" data-testid={`track-${sale.primary_id}`} onClick={() => { setTrackSale(sale); resiTracker.track({ resi: sale.resi_number, courier: sale.courier, orderDbId: sale.primary_id }); }}><MapPin /> Lacak</Btn>
+      )}
       <Btn size="sm" variant="outline" onClick={() => openResiModal(sale)} data-testid={`resi-${sale.primary_id}`}><Truck /> {sale.resi_number ? 'Edit Resi' : 'Input Resi'}</Btn>
       {isSuper && <Btn size="icon" variant="danger-soft" title="Hapus transaksi" onClick={() => openDeleteSaleModal(sale)}><Trash2 /></Btn>}
     </div>
@@ -836,6 +843,28 @@ export default function SalesPage() {
           <Btn variant="outline" className="flex-1" onClick={() => setWaAlertModal({ isOpen: false, stockLeft: 0, waUrl: '' })}>Nanti</Btn>
           <Btn as="a" href={waAlertModal.waUrl} target="_blank" rel="noreferrer" variant="success" className="flex-1" onClick={() => setWaAlertModal({ isOpen: false, stockLeft: 0, waUrl: '' })}><MessageCircle /> Kirim WA</Btn>
         </div>
+      </Modal>
+
+      {/* MODAL LACAK RESI */}
+      <Modal
+        open={Boolean(trackSale)}
+        onClose={() => { setTrackSale(null); resiTracker.reset(); if (resiTracker.data?.orderUpdated) fetchData(); }}
+        icon={Truck}
+        tone="sky"
+        size="md"
+        title={`Lacak Paket · ${trackSale?.customer_name || ''}`}
+        description={`${trackSale?.courier || 'Kurir'} · Resi ${trackSale?.resi_number || ''}`}
+        testId="track-resi-modal"
+      >
+        {resiTracker.loading ? (
+          <div className="flex flex-col items-center gap-2 py-10 text-sm text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin" /> Melacak posisi paket...</div>
+        ) : (
+          <>
+            <ResiTimeline data={resiTracker.data} />
+            {resiTracker.data?.orderUpdated && <p className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">Paket sudah diterima — status order otomatis diubah menjadi Selesai.</p>}
+            <Btn variant="outline" className="mt-4 w-full" onClick={() => resiTracker.track({ resi: trackSale.resi_number, courier: trackSale.courier, orderDbId: trackSale.primary_id })}><RefreshCw /> Perbarui</Btn>
+          </>
+        )}
       </Modal>
 
       <ToastViewport />

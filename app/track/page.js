@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { ResiTrackerInline } from '@/components/resi-tracker';
 
 const STATUS_META = {
   paid: { label: 'Dibayar', icon: CheckCircle2, color: 'text-chart-2', bg: 'bg-chart-2/10 border-chart-2/30' },
@@ -18,6 +19,13 @@ const STATUS_META = {
   cancelled: { label: 'Dibatalkan', icon: XCircle, color: 'text-destructive', bg: 'bg-destructive/10 border-destructive/30' },
 };
 
+STATUS_META['lunas'] = STATUS_META.paid;
+STATUS_META['sedang dikirim'] = STATUS_META.shipped;
+STATUS_META['selesai'] = STATUS_META.delivered;
+STATUS_META['dp 50%'] = { label: 'DP 50%', icon: Clock, color: 'text-chart-3', bg: 'bg-chart-3/10 border-chart-3/30' };
+STATUS_META['belum bayar'] = STATUS_META.pending;
+STATUS_META['expired'] = { label: 'Kedaluwarsa', icon: XCircle, color: 'text-destructive', bg: 'bg-destructive/10 border-destructive/30' };
+STATUS_META['failed'] = STATUS_META.cancelled;
 const getStatus = (s) => STATUS_META[s?.toLowerCase()] || { label: s || 'Unknown', icon: Clock, color: 'text-muted-foreground', bg: 'bg-muted border-border' };
 
 export default function TrackOrderPage() {
@@ -141,18 +149,24 @@ export default function TrackOrderPage() {
                   <CardContent className="pt-0 space-y-2 text-sm">
                     <div className="flex justify-between"><span className="text-muted-foreground">Nama</span><span className="font-medium">{order.customer_name}</span></div>
                     <div className="flex justify-between"><span className="text-muted-foreground">Jumlah</span><span className="font-medium">{order.quantity} pcs</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">Total</span><span className="font-semibold text-primary">Rp {Number(order.total_amount || 0).toLocaleString('id-ID')}</span></div>
-                    {order.tracking_number && (
-                      <div className="flex justify-between items-center pt-2 border-t border-border">
-                        <span className="text-muted-foreground flex items-center gap-1"><Truck className="h-3.5 w-3.5" /> Resi</span>
-                        <code className="text-xs font-mono bg-muted px-2 py-0.5 rounded">{order.tracking_number}</code>
-                      </div>
-                    )}
-                    {order.customer_address && (
+                    <div className="flex justify-between"><span className="text-muted-foreground">Total</span><span className="font-semibold text-primary">Rp {Number(order.total_price || order.total_amount || 0).toLocaleString('id-ID')}</span></div>
+                    {order.courier && <div className="flex justify-between"><span className="text-muted-foreground">Kurir</span><span className="font-medium">{order.courier}</span></div>}
+                    {(order.shipping_address || order.customer_address) && (
                       <div className="pt-2 border-t border-border">
                         <div className="text-muted-foreground text-xs mb-1 flex items-center gap-1"><MapPin className="h-3 w-3" /> Alamat</div>
-                        <div className="text-xs">{order.customer_address}</div>
+                        <div className="text-xs">{order.shipping_address || order.customer_address}</div>
                       </div>
+                    )}
+                    {(order.resi_number || order.tracking_number) ? (
+                      <div className="pt-3 border-t border-border space-y-3">
+                        <div className="flex justify-between items-center">
+                          <span className="text-muted-foreground flex items-center gap-1"><Truck className="h-3.5 w-3.5" /> No. Resi</span>
+                          <code className="text-xs font-mono font-semibold bg-muted px-2 py-0.5 rounded">{order.resi_number || order.tracking_number}</code>
+                        </div>
+                        <ResiTrackerInline resi={order.resi_number || order.tracking_number} courier={order.courier} orderDbId={order.id} />
+                      </div>
+                    ) : ['lunas', 'paid'].includes(String(order.payment_status || '').toLowerCase()) && (
+                      <div className="pt-3 border-t border-border text-xs text-muted-foreground flex items-center gap-1.5"><Package className="h-3.5 w-3.5 text-primary" /> Pesanan sedang dikemas. Nomor resi muncul di sini setelah paket dikirim.</div>
                     )}
                   </CardContent>
                 </Card>

@@ -31,3 +31,9 @@
 - /about redesign (hero, stats, cerita, misi, CTA) + components/site/site-shell.jsx (SiteNav/SiteFooter).
 - /c/[sessionId] checkout redesign (timer promo, stepper, qty stepper, kurir radio-card, kupon, ringkasan sticky, modal pesanan) — logika Tripay/ongkir/emsifa tetap; alert() -> error inline.
 - app/not-found.js (404 bermerek). Teks TOS + landing "Cara Kerja" diperbarui ke alur PIN default 000000.
+
+## Update: Lacak Resi + Galeri (Okt 2026)
+- /api/resi (lib/resi.js, BinderByte) -> timeline posisi paket; delivered => order otomatis "Selesai". Komponen components/resi-tracker.jsx dipakai di /track (inline) & /admin/sales (tombol "Lacak" + modal).
+- Bugfix /track: kolom salah (tracking_number->resi_number, total_amount->total_price, customer_address->shipping_address) + label status Indonesia.
+- /about: Galeri Pelanggan (components/site/customer-gallery.jsx, lightbox + swipe). Tambah foto: taruh di /public & tambah ke array `gallery` di app/about/page.js.
+- BINDERBYTE_API_KEY tidak ada di workspace -> pastikan ada di env hosting.
