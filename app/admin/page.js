@@ -153,26 +153,22 @@ export default function AdminPage() {
   };
 
   useEffect(() => {
-    const savedSession = localStorage.getItem('nfc_admin_session');
-    const lastActivity = localStorage.getItem('nfc_admin_last_activity');
-    const TIMEOUT_DURATION = 10 * 60 * 1000; // 10 Menit
-
-    if (savedSession === 'true') {
-      const now = Date.now();
-      
-      if (!lastActivity || (now - parseInt(lastActivity, 10)) > TIMEOUT_DURATION) {
-        localStorage.removeItem('nfc_admin_session');
-        localStorage.removeItem('nfc_admin_last_activity');
-        localStorage.removeItem('nfc_admin_role');
-        localStorage.removeItem('nfc_admin_pin');
-        setIsAuthenticated(false);
-        setLoginError('Sesi Anda telah berakhir. Silakan login kembali.');
-      } else {
-        setIsAuthenticated(true);
-        setUserRole(localStorage.getItem('nfc_admin_role') || 'staff'); // Ambil role dari storage
-        fetchDashboardData();
-      }
-    }
+    // Verifikasi sesi via httpOnly cookie (/api/auth/me) - tidak bisa dibypass dari DevTools
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.user) {
+          setIsAuthenticated(true);
+          setUserRole(data.user.role || 'staff');
+          fetchDashboardData();
+        } else {
+          const params = new URLSearchParams(window.location.search);
+          if (params.get('reason') === 'login_required') setLoginError('Silakan login terlebih dahulu.');
+          else if (params.get('reason') === 'expired') setLoginError('Sesi Anda telah berakhir. Silakan login kembali.');
+          else if (params.get('reason') === 'forbidden') setLoginError('Akses ditolak. Butuh hak Super Admin.');
+        }
+      })
+      .catch(() => {});
 
     const channel = supabase
       .channel('schema-db-changes')
@@ -208,40 +204,22 @@ export default function AdminPage() {
     setLoginError('');
 
     try {
-      const cleanInput = passwordInput.trim();
-      const { data: users, error } = await supabase.from('admin_users').select('*').eq('username', usernameInput.trim());
-      let isSuccess = false;
-      let detectedRole = 'staff';
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ username: usernameInput.trim(), password: passwordInput.trim() }),
+      });
+      const data = await res.json();
 
-      if (!error && users && users.length > 0) {
-        const matchedUser = users.find(u => String(u.password).trim() === cleanInput || String(u.pin).trim() === cleanInput);
-        if (matchedUser) {
-          isSuccess = true;
-          detectedRole = matchedUser.role || 'super_admin';
-        }
-      }
-
-      if (!isSuccess) {
-        const { data: verifyRes } = await supabase.rpc('verify_sales_pin', { input_pin: cleanInput });
-        if (verifyRes && verifyRes[0]?.is_valid) {
-          isSuccess = true;
-          detectedRole = verifyRes[0].user_role || 'staff';
-        }
-      }
-
-      if (isSuccess) {
+      if (res.ok && data.success) {
         setIsAuthenticated(true);
-        localStorage.setItem('nfc_admin_session', 'true');
-        localStorage.setItem('nfc_admin_last_activity', Date.now().toString());
-        localStorage.setItem('nfc_admin_role', detectedRole);
-        localStorage.setItem('nfc_admin_pin', cleanInput);
-        setUserRole(detectedRole);
-
-        setUsernameInput(''); 
+        setUserRole(data.user?.role || 'staff');
+        setUsernameInput('');
         setPasswordInput('');
         fetchDashboardData();
       } else {
-        setLoginError('❌ Username atau Password/PIN Salah!');
+        setLoginError(data.error || '❌ Username atau Password Salah!');
       }
     } catch (err) {
       setLoginError('❌ Terjadi kesalahan koneksi.');
@@ -250,16 +228,13 @@ export default function AdminPage() {
     }
   };
 
-  const handleLogout = (msg) => {
-    localStorage.removeItem('nfc_admin_session');
-    localStorage.removeItem('nfc_admin_last_activity');
-    localStorage.removeItem('nfc_admin_role');
-    localStorage.removeItem('nfc_admin_pin');
-
-    setIsAuthenticated(false); 
-    setUsernameInput(''); 
+  const handleLogout = async (msg) => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+    } catch (e) {}
+    setIsAuthenticated(false);
+    setUsernameInput('');
     setPasswordInput('');
-
     if (typeof window !== 'undefined') {
       window.location.href = '/admin';
     }

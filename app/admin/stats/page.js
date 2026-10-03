@@ -13,6 +13,8 @@ const supabase = createClient(
 );
 
 export default function StatsPage() {
+  const [authChecked, setAuthChecked] = useState(false);
+  const [isAuthed, setIsAuthed] = useState(false);
   const [stats, setStats] = useState([]);
   const [topDevices, setTopDevices] = useState([]);
   const [totalScans, setTotalScans] = useState(0);
@@ -36,8 +38,21 @@ export default function StatsPage() {
     setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 3000);
   };
 
+  // AUTH GUARD - cek sesi via httpOnly cookie
+  useEffect(() => {
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.user) setIsAuthed(true);
+        else window.location.href = '/admin?reason=login_required';
+      })
+      .catch(() => { window.location.href = '/admin?reason=login_required'; })
+      .finally(() => setAuthChecked(true));
+  }, []);
+
   // REALTIME LISTENER SUPABASE
   useEffect(() => {
+    if (!isAuthed) return;
     fetchStats();
 
     const channel = supabase
@@ -57,7 +72,13 @@ export default function StatsPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [isAuthed]);
+
+  // Loading / unauthorized state
+  if (!authChecked) {
+    return <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>Memverifikasi sesi...</div>;
+  }
+  if (!isAuthed) return null;
 
   // FUNGSI FETCH STATS (DIREVISI TOTAL AGAR HINDARI DATA HILANG/STUCK)
   const fetchStats = async () => {

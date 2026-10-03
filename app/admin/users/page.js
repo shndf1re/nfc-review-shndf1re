@@ -10,6 +10,8 @@ const supabase = createClient(
 );
 
 export default function ManageUsersPage() {
+  const [authChecked, setAuthChecked] = useState(false);
+  const [isAuthed, setIsAuthed] = useState(false);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -39,7 +41,19 @@ export default function ManageUsersPage() {
   });
 
   useEffect(() => {
-    fetchUsers();
+    // AUTH GUARD - cek sesi + role super_admin via httpOnly cookie
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.user && data.user.role === 'super_admin') {
+          setIsAuthed(true);
+          fetchUsers();
+        } else {
+          window.location.href = '/admin?reason=forbidden';
+        }
+      })
+      .catch(() => { window.location.href = '/admin?reason=login_required'; })
+      .finally(() => setAuthChecked(true));
   }, []);
 
   const fetchUsers = async () => {
@@ -181,6 +195,10 @@ export default function ManageUsersPage() {
 
   return (
     <div style={{ maxWidth: '600px', margin: '0 auto', padding: '24px 16px', fontFamily: '-apple-system, sans-serif' }}>
+      {!authChecked ? (
+        <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>Memverifikasi sesi...</div>
+      ) : !isAuthed ? null : (<></>)}
+      {isAuthed && (<>
       
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
@@ -348,6 +366,7 @@ export default function ManageUsersPage() {
           </div>
         </div>
       )}
+      </>)}
 
     </div>
   );

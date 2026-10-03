@@ -71,31 +71,21 @@ export default function SalesPage() {
   const [newDiscountAmount, setNewDiscountAmount] = useState('');
   const [couponStatusMsg, setCouponStatusMsg] = useState('');
 
-  // === CEK SESSION & ROLE DARI LOCALSTORAGE ===
+  // === CEK SESSION & ROLE VIA HTTPONLY COOKIE (/api/auth/me) ===
   useEffect(() => {
-    const savedSession = localStorage.getItem('nfc_admin_session');
-    const savedRole = localStorage.getItem('nfc_admin_role') || 'staff';
-    const lastActivity = localStorage.getItem('nfc_admin_last_activity');
-    const TIMEOUT_DURATION = 10 * 60 * 1000; // 10 Menit
-
-    if (savedSession === 'true' && lastActivity) {
-      const now = Date.now();
-      if (now - parseInt(lastActivity, 10) < TIMEOUT_DURATION) {
-        setIsAuthenticated(true);
-        setUserRole(savedRole);
-        localStorage.setItem('nfc_admin_last_activity', now.toString());
-      } else {
-        localStorage.removeItem('nfc_admin_session');
-        localStorage.removeItem('nfc_admin_last_activity');
-        localStorage.removeItem('nfc_admin_role');
-        window.location.href = '/admin';
-        return;
-      }
-    } else {
-      window.location.href = '/admin';
-      return;
-    }
-    setAuthChecking(false);
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.user) {
+          setIsAuthenticated(true);
+          setUserRole(data.user.role || 'staff');
+        } else {
+          window.location.href = '/admin?reason=login_required';
+          return;
+        }
+      })
+      .catch(() => { window.location.href = '/admin?reason=login_required'; })
+      .finally(() => setAuthChecking(false));
   }, []);
 
   // REALTIME LISTENER SUPABASE
