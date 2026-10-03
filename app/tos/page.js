@@ -38,7 +38,7 @@ export default function TosPage() {
             </section>
             <section>
               <h2 className="text-lg font-semibold mb-2">3. Aktivasi &amp; Penggunaan</h2>
-              <p className="text-muted-foreground">Setiap kartu memiliki PIN unik 6-digit yang kami kirim via WhatsApp. PIN wajib dirahasiakan. Satu PIN hanya untuk satu kartu. Setelah aktivasi berhasil, link target bisa diubah via portal admin tanpa biaya tambahan.</p>
+              <p className="text-muted-foreground">Kartu baru menggunakan PIN default 000000. Saat aktivasi, Anda wajib membuat PIN baru 6-digit milik Anda sendiri — PIN ini wajib dirahasiakan dan dipakai untuk mengubah atau me-reset papan. Satu PIN hanya untuk satu kartu. Setelah aktivasi, link target bisa diubah kapan saja lewat halaman aktivasi tanpa biaya tambahan.</p>
             </section>
             <section>
               <h2 className="text-lg font-semibold mb-2">4. Garansi</h2>

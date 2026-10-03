@@ -128,7 +128,7 @@ export default function LandingPage() {
 
   const steps = [
     { num: 1, title: 'Pesan via WhatsApp', desc: 'Chat admin, bayar, paket dikirim 1-3 hari.' },
-    { num: 2, title: 'Aktivasi 1 Menit', desc: 'Scan QR aktivasi, masukkan PIN, tempelkan link Google Review.' },
+    { num: 2, title: 'Aktivasi 1 Menit', desc: 'Scan QR aktivasi, masukkan PIN default 000000, buat PIN baru & tempel link Google Review.' },
     { num: 3, title: 'Pajang di Toko', desc: 'Letakkan di meja kasir. Pelanggan tap → review masuk.' },
   ];
 

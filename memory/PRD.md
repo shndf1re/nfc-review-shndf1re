@@ -25,3 +25,9 @@
 - Aturan: kartu belum aktif = PIN 000000 (juga terima PIN lama sbg fallback); aktif = PIN pelanggan; reset -> 000000. Generate/bulk/admin reset -> 000000. WA pelanggan pakai PIN default.
 - Migrasi data: 54 kartu inactive di-set pin 000000 (backup di memory/backup_inactive_pins_before_000000.json, gitignored).
 - Catatan keamanan: RLS tabel devices masih mengizinkan anon baca/ubah (admin page pakai anon key) -> saran perketat RLS + pindahkan query admin ke API.
+
+## Update: Audit UI publik (Okt 2026)
+- Tema global (:root/.dark) disamakan dengan admin (indigo/violet); font Inter aktif global (tailwind fontFamily.sans).
+- /about redesign (hero, stats, cerita, misi, CTA) + components/site/site-shell.jsx (SiteNav/SiteFooter).
+- /c/[sessionId] checkout redesign (timer promo, stepper, qty stepper, kurir radio-card, kupon, ringkasan sticky, modal pesanan) — logika Tripay/ongkir/emsifa tetap; alert() -> error inline.
+- app/not-found.js (404 bermerek). Teks TOS + landing "Cara Kerja" diperbarui ke alur PIN default 000000.
