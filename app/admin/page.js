@@ -40,6 +40,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 );
 
+const DEFAULT_CARD_PIN = '000000';
 const getNfcBaseUrl = () => SITE_CONFIG?.nfcDomainUrl || (typeof window !== 'undefined' ? window.location.origin : '');
 const cmToPx = (cm) => Math.round((cm / 2.54) * 300);
 
@@ -266,7 +267,7 @@ export default function AdminPage() {
 
     setLoading(true);
     const randomId = generateUniqueCode();
-    const randomPin = Math.floor(100000 + Math.random() * 900000).toString();
+    const randomPin = DEFAULT_CARD_PIN; // kartu baru selalu pakai PIN default 000000
 
     const { data, error } = await supabase.from('devices').insert([{ id: randomId, pin: randomPin, is_active: false }]).select().single();
     if (error) {
@@ -289,7 +290,13 @@ export default function AdminPage() {
   };
 
   const handleCopyNfcUrl = (deviceId) => { navigator.clipboard.writeText(`${getNfcBaseUrl()}/r/${deviceId}?src=nfc`); showToast('📋 Link NFC disalin ke clipboard!'); };
-  const handleSendWaCustomer = (device) => window.open(`https://wa.me/?text=${encodeURIComponent(`Halo Kak! Terima kasih telah memesan Papan Akrilik Google Review (${SITE_CONFIG.brandName}).\n\nBerikut detail aktivasi papan Anda:\n- ID Kartu: ${device.id}\n- PIN Akses: ${device.pin}\n\nSilakan buka link aktivasi berikut:\n🔗 ${getNfcBaseUrl()}/setup/${device.id}`)}`, '_blank');
+  const handleSendWaCustomer = (device) => {
+    const pinLine = device.is_active
+      ? `- PIN Akses: ${device.pin}`
+      : `- PIN Default: ${DEFAULT_CARD_PIN}\n  (saat aktivasi Anda akan diminta membuat PIN baru sendiri)`;
+    const text = `Halo Kak! Terima kasih telah memesan Papan Akrilik Google Review (${SITE_CONFIG.brandName}).\n\nBerikut detail aktivasi papan Anda:\n- ID Kartu: ${device.id}\n${pinLine}\n\nSilakan buka link aktivasi berikut:\n🔗 ${getNfcBaseUrl()}/setup/${device.id}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+  };
 
   const formatReviewUrl = (url) => {
     let cleanUrl = url.trim();
@@ -355,7 +362,7 @@ export default function AdminPage() {
       const { data: verifyRes } = await supabase.rpc('verify_sales_pin', { input_pin: pinModal.pinInput.trim() });
       if (!verifyRes || !verifyRes[0]?.is_valid) return setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: '❌ PIN Admin Salah!' }));
       const count = parseInt(pinModal.bulkQty) || 1;
-      const newDevices = Array.from({ length: count }, () => ({ id: generateUniqueCode(), pin: Math.floor(100000 + Math.random() * 900000).toString(), is_active: false }));
+      const newDevices = Array.from({ length: count }, () => ({ id: generateUniqueCode(), pin: DEFAULT_CARD_PIN, is_active: false }));
       const { error } = await supabase.from('devices').insert(newDevices);
       if (error) return setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: error.message }));
       showToast(`⚡ Berhasil membuat ${count} kartu baru!`);
@@ -367,7 +374,7 @@ export default function AdminPage() {
       const { data: verifyRes } = await supabase.rpc('verify_sales_pin', { input_pin: pinModal.pinInput.trim() });
       if (!verifyRes || !verifyRes[0]?.is_valid) return setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: '❌ PIN Admin Salah!' }));
       const formattedUrl = formatReviewUrl(bulkEditUrl);
-      const { error } = await supabase.from('devices').update({ label_name: bulkEditLabel.trim() || null, target_url: formattedUrl || null, is_active: Boolean(formattedUrl) }).in('id', selectedDeviceIds);
+      const { error } = await supabase.from('devices').update({ label_name: bulkEditLabel.trim() || null, target_url: formattedUrl || null, is_active: Boolean(formattedUrl), ...(formattedUrl ? {} : { pin: DEFAULT_CARD_PIN }) }).in('id', selectedDeviceIds);
       if (error) return setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: error.message }));
       showToast(`✅ ${selectedDeviceIds.length} Kartu berhasil di-update!`);
       setShowBulkEditForm(false); setBulkEditLabel(''); setBulkEditUrl(''); setSelectedDeviceIds([]); fetchDashboardData();
@@ -385,12 +392,12 @@ export default function AdminPage() {
 
     if (pinModal.actionType === 'saveEdit') {
       const formattedUrl = formatReviewUrl(editTargetUrl);
-      const { error } = await supabase.from('devices').update({ label_name: editLabelName.trim() || null, target_url: formattedUrl || null, is_active: Boolean(formattedUrl) }).eq('id', device.id);
+      const { error } = await supabase.from('devices').update({ label_name: editLabelName.trim() || null, target_url: formattedUrl || null, is_active: Boolean(formattedUrl), ...(formattedUrl ? {} : { pin: DEFAULT_CARD_PIN }) }).eq('id', device.id);
       if (error) return setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: error.message }));
       setEditingDeviceId(null); setEditTargetUrl(''); setEditLabelName('');
       showToast(formattedUrl ? 'Data toko berhasil diperbarui!' : '🔄 Kartu di-reset menjadi Belum Dipakai!');
     } else if (pinModal.actionType === 'resetCard') {
-      const { error } = await supabase.from('devices').update({ label_name: null, target_url: null, is_active: false }).eq('id', device.id);
+      const { error } = await supabase.from('devices').update({ label_name: null, target_url: null, is_active: false, pin: DEFAULT_CARD_PIN }).eq('id', device.id);
       if (error) return setPinModal(prev => ({ ...prev, isSubmitting: false, errorMsg: error.message }));
       showToast(`🔄 Kartu ${device.id} berhasil di-reset!`);
     } else if (pinModal.actionType === 'deleteCard') {
@@ -646,7 +653,12 @@ export default function AdminPage() {
                                 </>
                               ) : <span className="text-xs text-muted-foreground">—</span>}
                             </Td>
-                            <Td><span className="rounded-md bg-muted px-2 py-1 font-mono text-xs font-semibold tracking-widest">{device.pin || '-'}</span></Td>
+                            <Td>
+                              <div className="flex items-center gap-1.5">
+                                <span className="rounded-md bg-muted px-2 py-1 font-mono text-xs font-semibold tracking-widest">{device.pin || '-'}</span>
+                                {device.pin === DEFAULT_CARD_PIN && <Pill tone="slate">default</Pill>}
+                              </div>
+                            </Td>
                             <Td><RowActions device={device} /></Td>
                           </tr>
                         );
@@ -675,6 +687,7 @@ export default function AdminPage() {
                               </div>
                               <div className="mt-1.5 flex items-center gap-2 text-xs text-muted-foreground">
                                 <KeyRound className="h-3.5 w-3.5" /> PIN <span className="font-mono font-semibold tracking-widest text-foreground">{device.pin || '-'}</span>
+                                {device.pin === DEFAULT_CARD_PIN && <Pill tone="slate">default</Pill>}
                               </div>
                               {device.label_name && (
                                 <div className="mt-2.5 rounded-lg bg-muted/60 px-3 py-2">
