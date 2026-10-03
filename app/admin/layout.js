@@ -2,14 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { Inter } from 'next/font/google';
-
-const inter = Inter({ subsets: ['latin'] });
+import { usePathname } from 'next/navigation';
+import { LayoutDashboard, DollarSign, BarChart3, Users, LogOut, Menu, X, Home, Shield } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { ThemeToggle } from '@/components/theme-toggle';
+import { cn } from '@/lib/utils';
 
 export default function AdminLayout({ children }) {
   const pathname = usePathname();
-  const router = useRouter();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userRole, setUserRole] = useState('staff');
   const [userName, setUserName] = useState('');
@@ -17,10 +17,10 @@ export default function AdminLayout({ children }) {
   const [isCheckingSession, setIsCheckingSession] = useState(true);
 
   const allMenuItems = [
-    { name: 'Dashboard', path: '/admin', icon: '📱', roles: ['super_admin', 'staff'] },
-    { name: 'Penjualan', path: '/admin/sales', icon: '💰', roles: ['super_admin', 'staff'] },
-    { name: 'Statistik', path: '/admin/stats', icon: '📊', roles: ['super_admin', 'staff'] },
-    { name: 'Kelola Tim', path: '/admin/users', icon: '👥', roles: ['super_admin'] },
+    { name: 'Dashboard', path: '/admin', icon: LayoutDashboard, roles: ['super_admin', 'staff'] },
+    { name: 'Penjualan', path: '/admin/sales', icon: DollarSign, roles: ['super_admin', 'staff'] },
+    { name: 'Statistik', path: '/admin/stats', icon: BarChart3, roles: ['super_admin', 'staff'] },
+    { name: 'Kelola Tim', path: '/admin/users', icon: Users, roles: ['super_admin'] },
   ];
 
   const checkSession = async () => {
@@ -32,12 +32,8 @@ export default function AdminLayout({ children }) {
           setIsAuthenticated(true);
           setUserRole(data.user.role || 'staff');
           setUserName(data.user.name || data.user.username || '');
-        } else {
-          setIsAuthenticated(false);
-        }
-      } else {
-        setIsAuthenticated(false);
-      }
+        } else setIsAuthenticated(false);
+      } else setIsAuthenticated(false);
     } catch (e) {
       setIsAuthenticated(false);
     } finally {
@@ -46,162 +42,128 @@ export default function AdminLayout({ children }) {
   };
 
   const handleLogout = async () => {
-    try {
-      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
-    } catch (e) {}
+    try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }); } catch (e) {}
     setIsAuthenticated(false);
     if (typeof window !== 'undefined') window.location.href = '/admin';
   };
 
   useEffect(() => {
     checkSession();
-    // Re-check sesi setiap 60 detik (deteksi JWT expired tanpa aktivitas user)
     const interval = setInterval(checkSession, 60 * 1000);
     return () => clearInterval(interval);
   }, [pathname]);
 
-  const filteredMenuItems = allMenuItems.filter(item => item.roles.includes(userRole));
+  const filteredMenuItems = allMenuItems.filter((item) => item.roles.includes(userRole));
 
-  if (isCheckingSession) {
-    return <div className={inter.className} style={{ minHeight: '100vh', backgroundColor: '#f8fafc' }} />;
-  }
-
-  // Jika belum login & bukan di halaman /admin (yang punya form login) → render children saja
-  // (middleware sudah redirect ke /admin). Khusus /admin, render children untuk tampilkan form.
-  if (!isAuthenticated) {
-    return (
-      <div className={inter.className} style={{ minHeight: '100vh', backgroundColor: '#f8fafc' }}>
-        {children}
-      </div>
-    );
-  }
+  if (isCheckingSession) return <div className="min-h-screen bg-background" />;
+  if (!isAuthenticated) return <div className="min-h-screen bg-background">{children}</div>;
 
   return (
-    <div className={inter.className} style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#f8fafc' }}>
+    <div className="min-h-screen flex bg-background">
+      {/* Mobile overlay */}
       {isSidebarOpen && (
-        <div
-          onClick={() => setIsSidebarOpen(false)}
-          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', zIndex: 40 }}
-        />
+        <div className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm lg:hidden" onClick={() => setIsSidebarOpen(false)} />
       )}
 
+      {/* Sidebar */}
       <aside
-        className="admin-sidebar"
-        style={{
-          width: '260px',
-          backgroundColor: '#0f172a',
-          color: '#ffffff',
-          display: 'flex',
-          flexDirection: 'column',
-          position: 'fixed',
-          top: 0,
-          bottom: 0,
-          left: isSidebarOpen ? 0 : '-260px',
-          transition: 'left 0.25s cubic-bezier(0.4,0,0.2,1)',
-          zIndex: 50,
-          borderRight: '1px solid #1e293b',
-        }}
+        className={cn(
+          'fixed inset-y-0 left-0 z-50 w-64 flex-col border-r border-border bg-card transition-transform duration-200 lg:translate-x-0 lg:static lg:flex',
+          isSidebarOpen ? 'translate-x-0 flex' : '-translate-x-full'
+        )}
       >
-        <style>{`
-          @media (min-width: 1024px) {
-            .admin-sidebar { left: 0 !important; }
-            .admin-content { margin-left: 260px; }
-            .admin-menu-btn { display: none !important; }
-          }
-        `}</style>
-        <div style={{ padding: '24px 20px', borderBottom: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ width: '36px', height: '36px', backgroundColor: '#2563eb', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800', fontSize: '18px' }}>N</div>
-            <div>
-              <h2 style={{ margin: 0, fontSize: '16px', fontWeight: '700', color: '#f8fafc', letterSpacing: '-0.3px' }}>NFC Portal</h2>
-              <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>Management System</span>
+        {/* Brand */}
+        <div className="flex h-16 items-center justify-between border-b border-border px-5">
+          <Link href="/admin" className="flex items-center gap-2">
+            <div className="h-9 w-9 rounded-xl bg-primary text-primary-foreground flex items-center justify-center">
+              <Shield className="h-5 w-5" />
             </div>
-          </div>
-          <button onClick={() => setIsSidebarOpen(false)} style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '18px', cursor: 'pointer' }}>✕</button>
+            <div>
+              <div className="font-bold text-sm leading-none">NFC Portal</div>
+              <div className="text-[10px] text-muted-foreground mt-0.5">Admin Panel</div>
+            </div>
+          </Link>
+          <Button variant="ghost" size="icon" className="lg:hidden h-8 w-8" onClick={() => setIsSidebarOpen(false)}>
+            <X className="h-4 w-4" />
+          </Button>
         </div>
 
-        <nav style={{ flex: 1, padding: '20px 12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <span style={{ fontSize: '10px', fontWeight: '700', color: '#475569', letterSpacing: '0.8px', padding: '0 12px 8px 12px' }}>MENU UTAMA</span>
-          {filteredMenuItems.map((item) => {
-            const isActive = pathname === item.path;
-            return (
-              <Link
-                key={item.path}
-                href={item.path}
-                onClick={() => setIsSidebarOpen(false)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', borderRadius: '10px',
-                  textDecoration: 'none', fontSize: '13px', fontWeight: isActive ? '700' : '500',
-                  color: isActive ? '#ffffff' : '#94a3b8', backgroundColor: isActive ? '#2563eb' : 'transparent',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                <span style={{ fontSize: '16px' }}>{item.icon}</span>
-                {item.name}
-              </Link>
-            );
-          })}
+        {/* Nav */}
+        <nav className="flex-1 overflow-y-auto p-3">
+          <div className="px-2 pb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Menu Utama</div>
+          <div className="space-y-1">
+            {filteredMenuItems.map((item) => {
+              const isActive = pathname === item.path;
+              return (
+                <Link
+                  key={item.path}
+                  href={item.path}
+                  onClick={() => setIsSidebarOpen(false)}
+                  className={cn(
+                    'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                    isActive
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                  )}
+                >
+                  <item.icon className="h-4 w-4" />
+                  {item.name}
+                </Link>
+              );
+            })}
+          </div>
         </nav>
 
-        <div style={{ padding: '16px', borderTop: '1px solid #1e293b', backgroundColor: '#090d16' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-            <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#334155', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: '700', color: '#f8fafc' }}>
-              {userRole === 'super_admin' ? '👑' : '👤'}
+        {/* User footer */}
+        <div className="border-t border-border p-3">
+          <div className="flex items-center gap-3 rounded-lg bg-muted/50 p-3 mb-2">
+            <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary">
+              {userName.charAt(0).toUpperCase() || 'A'}
             </div>
-            <div style={{ flex: 1, overflow: 'hidden' }}>
-              <strong style={{ fontSize: '12px', color: '#f8fafc', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {userName || (userRole === 'super_admin' ? 'Super Admin' : 'Staff Admin')}
-              </strong>
-              <span style={{ fontSize: '10px', color: '#22c55e', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#22c55e' }} /> Sesi Aktif
-              </span>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold truncate">{userName || 'Admin'}</div>
+              <div className="text-[11px] text-muted-foreground flex items-center gap-1">
+                <span className="h-1.5 w-1.5 rounded-full bg-chart-2 animate-pulse" />
+                {userRole === 'super_admin' ? 'Super Admin' : 'Staff Admin'}
+              </div>
             </div>
           </div>
-
-          <button
-            onClick={handleLogout}
-            style={{
-              width: '100%', padding: '10px', backgroundColor: '#1e293b', color: '#f87171',
-              border: '1px solid #334155', borderRadius: '8px', fontSize: '12px', fontWeight: '600',
-              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-            }}
-          >
-            🚪 Keluar Akun
-          </button>
+          <Button variant="outline" size="sm" onClick={handleLogout} className="w-full text-destructive hover:text-destructive hover:bg-destructive/10 hover:border-destructive/30">
+            <LogOut className="h-4 w-4 mr-2" />
+            Keluar Akun
+          </Button>
         </div>
       </aside>
 
-      <div className="admin-content" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        <header
-          style={{
-            backgroundColor: '#ffffff', borderBottom: '1px solid #e2e8f0', padding: '12px 20px',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            position: 'sticky', top: 0, zIndex: 30,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <button
-              className="admin-menu-btn"
-              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              style={{
-                padding: '8px 10px', backgroundColor: '#f8fafc', border: '1px solid #cbd5e1',
-                borderRadius: '8px', fontSize: '14px', cursor: 'pointer', display: 'flex',
-                alignItems: 'center', gap: '6px', fontWeight: '600', color: '#0f172a',
-              }}
-            >
-              ☰ Menu
-            </button>
-            <span style={{ fontSize: '14px', fontWeight: '700', color: '#0f172a' }}>
-              {allMenuItems.find((m) => m.path === pathname)?.name || 'Admin'}
-            </span>
+      {/* Main area */}
+      <div className="flex-1 flex flex-col min-w-0">
+        <header className="sticky top-0 z-30 h-16 border-b border-border bg-background/80 backdrop-blur-xl flex items-center justify-between px-4 lg:px-6">
+          <div className="flex items-center gap-3">
+            <Button variant="outline" size="icon" className="lg:hidden h-9 w-9" onClick={() => setIsSidebarOpen(true)}>
+              <Menu className="h-4 w-4" />
+            </Button>
+            <div>
+              <div className="text-sm font-semibold">
+                {allMenuItems.find((m) => m.path === pathname)?.name || 'Admin'}
+              </div>
+              <div className="text-[11px] text-muted-foreground hidden sm:block">
+                Portal manajemen NFC Review
+              </div>
+            </div>
           </div>
 
-          <Link href="/" style={{ fontSize: '12px', color: '#64748b', textDecoration: 'none', fontWeight: '600' }}>
-            🌐 Beranda
-          </Link>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <Button asChild variant="outline" size="sm" className="hidden sm:inline-flex">
+              <Link href="/">
+                <Home className="h-4 w-4 mr-1.5" />
+                Beranda
+              </Link>
+            </Button>
+          </div>
         </header>
 
-        <main style={{ flex: 1 }}>{children}</main>
+        <main className="flex-1">{children}</main>
       </div>
     </div>
   );

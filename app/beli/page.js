@@ -2,26 +2,26 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { Loader2 } from 'lucide-react';
 
 export default function BeliRedirectPage() {
   const router = useRouter();
 
   useEffect(() => {
-    // Generate UUID acak unik (contoh: 9f8a7b6c-5d4e-4f3a-8b2c-1d0e9f8a7b6c)
     const uniqueSessionId = crypto.randomUUID();
-
-    // Simpan session ID ke browser pengguna
     if (typeof window !== 'undefined') {
       localStorage.setItem('active_checkout_session', uniqueSessionId);
     }
-
-    // Direct pembeli ke URL unik dinamis
     router.replace(`/c/${uniqueSessionId}`);
   }, [router]);
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8fafc', fontFamily: 'sans-serif' }}>
-      <p style={{ color: '#64748b', fontSize: '14px', fontWeight: '600' }}>⏳ Memuat halaman pembayaran aman...</p>
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="flex flex-col items-center gap-3 text-center">
+        <Loader2 className="h-8 w-8 text-primary animate-spin" />
+        <div className="text-sm font-medium">Memuat halaman pembayaran aman...</div>
+        <div className="text-xs text-muted-foreground">Mohon tunggu sebentar</div>
+      </div>
     </div>
   );
 }

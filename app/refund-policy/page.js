@@ -1,28 +1,62 @@
 import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { ThemeToggle } from '@/components/theme-toggle';
 
-export default function RefundPolicyPage() {
+export const metadata = { title: 'Kebijakan Refund - NFC Review' };
+
+export default function RefundPage() {
   return (
-    <div style={{ maxWidth: '800px', margin: '0 auto', padding: '60px 24px', fontFamily: '-apple-system, sans-serif', color: '#0f172a', lineHeight: '1.6' }}>
-      <Link href="/" style={{ color: '#2563eb', textDecoration: 'none', fontWeight: '600' }}>⬅ Kembali ke Beranda</Link>
-      <h1 style={{ marginTop: '24px', fontSize: '32px', fontWeight: '800' }}>Kebijakan Pengembalian Dana (Refund Policy)</h1>
-      
-      <p>Kami berkomitmen memberikan produk dengan kualitas terbaik. Jika terjadi kendala pada pesanan Anda, berikut adalah kebijakan pengembalian dan garansi kami:</p>
-      
-      <h3>1. Garansi Produk (Chip NFC & Papan)</h3>
-      <p>Kami memberikan garansi penukaran produk (Retur) apabila:
-        <ul>
-          <li>Papan akrilik patah/pecah saat diterima (Wajib menyertakan Video Unboxing tanpa jeda).</li>
-          <li>Chip NFC rusak atau tidak dapat dibaca sama sekali oleh perangkat yang mendukung NFC.</li>
-          <li>Kesalahan cetak fatal dari pihak kami.</li>
-        </ul>
-      </p>
-      
-      <h3>2. Ketentuan Pengembalian Dana (Refund)</h3>
-      <p>Pengembalian dana hanya dapat dilakukan jika stok produk kami kosong setelah Anda melakukan pembayaran, atau kami tidak dapat memenuhi pesanan sesuai kesepakatan waktu awal.</p>
-      <p>Kami <strong>tidak menerima</strong> pengembalian dana (Refund) jika produk sudah diproses atau dikirim, atau karena alasan pembatalan sepihak setelah pembayaran berhasil. Namun, kami akan bertanggung jawab penuh memberikan <strong>Produk Pengganti (Retur)</strong> jika barang cacat sesuai poin 1.</p>
-      
-      <h3>3. Proses Klaim</h3>
-      <p>Hubungi Customer Service WhatsApp kami maksimal 2x24 jam sejak resi ekspedisi dinyatakan "Terkirim". Sertakan nomor pesanan (Invoice) dan bukti video unboxing.</p>
+    <div className="min-h-screen bg-background">
+      <nav className="sticky top-0 z-50 border-b border-border/40 bg-background/80 backdrop-blur-xl">
+        <div className="container flex h-16 items-center justify-between">
+          <Link href="/" className="flex items-center gap-2">
+            <img src="/app-icon.png" alt="logo" className="h-9 w-9 rounded-xl" />
+            <span className="font-bold text-base">NFC Review<span className="text-primary">.</span></span>
+          </Link>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <Button asChild variant="outline" size="sm"><Link href="/"><ArrowLeft className="h-4 w-4 mr-1.5" /> Beranda</Link></Button>
+          </div>
+        </div>
+      </nav>
+      <section className="container py-16 max-w-3xl">
+        <h1 className="text-3xl md:text-4xl font-bold mb-2">Kebijakan Pengembalian Dana</h1>
+        <p className="text-muted-foreground mb-8">Terakhir diperbarui: 1 Juni 2026</p>
+        <Card>
+          <CardContent className="pt-6 space-y-6 text-sm leading-relaxed">
+            <section>
+              <h2 className="text-lg font-semibold mb-2">1. Kondisi Refund 100%</h2>
+              <ul className="text-muted-foreground list-disc pl-5 space-y-1">
+                <li>Barang hilang/rusak selama pengiriman (dengan bukti dari ekspedisi)</li>
+                <li>Chip NFC tidak berfungsi dari pabrik (dibuktikan dengan video test)</li>
+                <li>Salah kirim produk / spek tidak sesuai pesanan</li>
+              </ul>
+            </section>
+            <section>
+              <h2 className="text-lg font-semibold mb-2">2. Kondisi TIDAK Berlaku Refund</h2>
+              <ul className="text-muted-foreground list-disc pl-5 space-y-1">
+                <li>Kartu sudah diaktifkan &amp; digunakan</li>
+                <li>Kerusakan akibat kelalaian pengguna (jatuh, terbakar, dsb)</li>
+                <li>Perubahan rencana sepihak dari pembeli</li>
+              </ul>
+            </section>
+            <section>
+              <h2 className="text-lg font-semibold mb-2">3. Prosedur Pengajuan</h2>
+              <ol className="text-muted-foreground list-decimal pl-5 space-y-1">
+                <li>Chat admin WhatsApp dengan foto/video bukti</li>
+                <li>Tim kami review dalam 1x24 jam</li>
+                <li>Jika disetujui, dana dikembalikan via transfer bank/e-wallet 2-3 hari kerja</li>
+              </ol>
+            </section>
+            <section>
+              <h2 className="text-lg font-semibold mb-2">4. Kontak</h2>
+              <p className="text-muted-foreground">WhatsApp admin: <strong>+62 851 8314 4404</strong></p>
+            </section>
+          </CardContent>
+        </Card>
+      </section>
     </div>
   );
 }
